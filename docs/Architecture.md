@@ -205,12 +205,12 @@ nutrirag/
 │   ├── src/
 │   │   ├── pages/
 │   │   ├── components/
-│   │   ├── api/
-│   │   │   ├── searchApi.ts
-│   │   │   ├── recipesApi.ts
-│   │   │   └── transformApi.ts
+│   │   ├── services/
+│   │   │   ├── search.service.ts
+│   │   │   ├── recipes.service.ts
+│   │   │   └── transform.service.ts
 │   ├── package.json
-│   ├── vite.config.js
+│   ├── vite.config.ts
 │   └── Dockerfile
 │
 ├── shared/
@@ -220,10 +220,7 @@ nutrirag/
 │   │   ├── analytics.ts
 │   └── utils/
 │
-├── infra/
-│   ├── docker-compose.yml
-│   ├── github-actions.yml
-│
+├── docker-compose.yml
 └── README.md
 
 ```
