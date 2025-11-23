@@ -1,5 +1,5 @@
 import re
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, List
 from app.models.transform import TransformConstraints
 
 
@@ -132,3 +132,26 @@ def extract_transform_goal_and_constraints(query: str) -> Tuple[str, TransformCo
         constraints.decrease_sodium = True
 
     return goal, constraints
+
+
+def split_into_subqueries(query: str) -> List[str]:
+    """
+    Découpe une requête multi-étapes en plusieurs sous-queries.
+    Exemple :
+    "Trouve-moi une recette de poulet puis rends-la plus saine et sans lactose"
+    → ["Trouve-moi une recette de poulet",
+       "rends-la plus saine et sans lactose"]
+    """
+    pattern = r"\b(?:puis|ensuite|et ensuite|et après)\b"
+    parts = re.split(pattern, query, flags=re.IGNORECASE)
+
+    subqueries: List[str] = []
+    for part in parts:
+        cleaned = part.strip(" ,.;")
+        if cleaned:
+            subqueries.append(cleaned)
+
+    # Si on n'a rien trouvé on garde la query entière
+    if not subqueries:
+        subqueries = [query.strip()]
+    return subqueries

@@ -1,7 +1,7 @@
 from typing import Dict, Any, Optional, List
 from app.services.search_service import SearchService
 from app.services.transform_service import TransformService
-from app.utils.extractor import extract_search_filters, extract_transform_goal_and_constraints
+from app.utils.extractor import extract_search_filters, extract_transform_goal_and_constraints, split_into_subqueries
 from time import time
 
 
@@ -51,15 +51,13 @@ class Orchestrator:
         # TODO: Équipe 5 - Détection d'intention
         # Simple rule-based pour le moment
         query_lower = query.lower()
-        
-        if any(word in query_lower for word in ["recherche", "trouve", "donne"]):
+        if any(word in query_lower for word in ["ensuite", "puis", "après"]):
+            return "multi_step"
+        elif any(word in query_lower for word in ["recherche", "trouve", "donne"]):
             return "search"
         elif any(word in query_lower for word in ["transforme", "rends", "plus sain"]):
             return "transform"
-        elif "puis" in query_lower or "ensuite" in query_lower:
-            return "multi_step"
-        
-        return "search"  # Default
+        return "UNDEFINED"  # Default
     
     async def _handle_search(self, query: str, user_profile: Optional[Dict]) -> Dict:
         # Gérer l'intention de recherche
@@ -90,7 +88,8 @@ class Orchestrator:
             }],
             "final": {
                 "results": [r.dict() for r in results]
-            }
+            },
+            "success" : True
         }
     
     async def _handle_transform(self, query: str, context: Optional[Dict]) -> Dict:
@@ -100,16 +99,16 @@ class Orchestrator:
         recipe_id = None
         if context:
             # On accepte plusieurs clés possibles pour être robustes
-            recipe_id = context.get("recipe_id") or context.get("last_recipe_id")
+            recipe_id = context.get("last_recipe_id") or context.get("recipe_id")
         # Si on trouve rien dans le contexte alors on renvoie rien
         if recipe_id is None:
             return {
                 "intent": "transform",
                 "steps": [],
                 "final": {
-                    "success": False,
                     "error": "Aucune recette cible trouvée dans le contexte pour la transformation."
-                }
+                },
+                "success": False
             }
         
         start_time = time()
@@ -142,7 +141,8 @@ class Orchestrator:
                 "success": result.success,
                 "execution_time_ms": execution_time_ms
             }],
-            "final": result.dict() if hasattr(result, "dict") else result
+            "final": result.dict() if hasattr(result, "dict") else result,
+            "success" : True
         }
 
         # raise NotImplementedError("Équipe 5: Implémentation nécessaire - Gestion de l'intention de transformation")
@@ -157,5 +157,57 @@ class Orchestrator:
         # TODO: Décomposer la requête en étapes
         # Exécuter séquentiellement, en passant les résultats entre les étapes
         
-        raise NotImplementedError("Équipe 5: Implémentation nécessaire - Gestion des requêtes multi-étapes")
+        # raise NotImplementedError("Équipe 5: Implémentation nécessaire - Gestion des requêtes multi-étapes")
+
+        if context is None:
+            context = {}
+
+        # Découper la requête globale en sous-requêtes
+        # en splittant les query par puis|ensuite|et ensuite|et après
+        subqueries = split_into_subqueries(query)
+
+        all_steps: List[Dict[str, Any]] = []
+        last_final: Optional[Dict[str, Any]] = None
+
+        for sub_query in subqueries:
+            result = await self.process(sub_query, context, user_profile)
+            steps = result.get("steps", [])
+            all_steps.extend(steps)
+            if not result['success']:
+                return {
+                    "intent": "multi_step",
+                    "steps": all_steps,
+                    "final": {
+                        "error": "Aucune recette cible trouvée dans le contexte pour la transformation."
+                    },
+                    "success": False,
+                    "context": context,
+                }
+            last_final = result.get("final", last_final)
+            # MAJ le contexte pour que les étapes suivantes puissent l'utiliser
+            if result["intent"] == "search":
+                final_results = (result["final"] or {})["results"] or []
+                if final_results:
+                    # On prend la première recette comme référence pour les étapes suivantes
+                    # Peut etre qu'on peut trier par score de similarité et prendre la meilleure prochainement
+                    first = final_results[0]
+                    recipe_id = first["id"]
+                    if recipe_id is not None:
+                        context["last_recipe_id"] = recipe_id
+
+            # On peut potentiellement mettre à jour le last_recipe_id avec la recette transformée
+            if result["intent"] == "transform":
+                transform_final = result["final"] or {}
+                transformed_recipe_id = transform_final["recipe_id"]
+                if transformed_recipe_id is not None:
+                    context["last_recipe_id"] = transformed_recipe_id
+
+        return {
+            "intent": "multi_step",
+            "steps": all_steps,
+            "final": last_final,
+            "success": True,
+            "context": context,
+        }
+
 

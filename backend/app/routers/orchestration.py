@@ -32,15 +32,14 @@ async def orchestrate(request: OrchestrationRequest):
             context=request.context,
             user_profile=request.user_profile
         )
-        
-        total_time = (time() - start_time) * 1000
         print(result)
+        total_time = (time() - start_time) * 1000
         return OrchestrationResponse(
             steps=result["steps"],
             final_result=result["final"],
             intent_detected=result["intent"],
             total_execution_time_ms=total_time,
-            success=True
+            success=result["success"]
         )
         
     except NotImplementedError:

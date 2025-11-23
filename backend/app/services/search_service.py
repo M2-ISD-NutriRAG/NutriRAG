@@ -20,7 +20,7 @@ class SearchService:
         # Faire un return static afin de tester seulement
         return [
             SearchResult(
-                id=101,
+                id=9,
                 name="Poulet grillé aux légumes",
                 description="Une recette saine, riche en protéines, idéale pour un repas équilibré.",
                 similarity=0.91,
