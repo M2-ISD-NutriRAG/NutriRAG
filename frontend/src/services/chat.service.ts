@@ -1,11 +1,11 @@
 import { apiClient } from '@/lib/api'
-import type { ChatMessage, ChatRequest, ChatResponse } from '@shared/types'
+import type {OrchestrationRequest, OrchestrationResponse } from '@shared/types'
 
 // Re-export pour compatibilité
-export type { ChatMessage, ChatRequest, ChatResponse }
+export type {OrchestrationRequest, OrchestrationResponse }
 
 export const chatService = {
-  async sendMessage(request: ChatRequest): Promise<ChatResponse> {
+  async sendMessage(request: OrchestrationRequest): Promise<OrchestrationResponse> {
     const response = await apiClient.post('/api/orchestrate', request)
     return response.data
   },

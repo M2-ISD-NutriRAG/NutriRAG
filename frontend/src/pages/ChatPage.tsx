@@ -4,7 +4,8 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Card } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { chatService, type ChatMessage } from '@/services/chat.service'
+import { chatService } from '@/services/chat.service'
+import type { ChatMessage } from '@shared/types'
 import { cn } from '@/lib/utils'
 
 const suggestions = [
@@ -50,14 +51,17 @@ export function ChatPage() {
 
     try {
       const response = await chatService.sendMessage({
-        message: userMessage.content,
-        conversation_history: messages,
+        user_query: userMessage.content,
+        context:  messages.reduce((acc, message) => { // Transform List to Record
+          acc[message.id] = message
+          return acc
+        }, {} as Record<string, any>),
       })
 
       const assistantMessage: ChatMessage = {
         id: crypto.randomUUID(),
         role: 'assistant',
-        content: response.message,
+        content: response?.message ?? '',
         timestamp: new Date().toISOString(),
       }
 
