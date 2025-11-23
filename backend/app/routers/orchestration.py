@@ -34,7 +34,7 @@ async def orchestrate(request: OrchestrationRequest):
         )
         
         total_time = (time() - start_time) * 1000
-        
+        print(result)
         return OrchestrationResponse(
             steps=result["steps"],
             final_result=result["final"],

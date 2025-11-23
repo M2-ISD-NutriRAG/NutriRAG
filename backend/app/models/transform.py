@@ -14,6 +14,7 @@ class TransformConstraints(BaseModel):
     decrease_carbs: bool = False
     decrease_calories: bool = False
     decrease_sodium: bool = False
+    decrease_sugar: bool = False
 
 
 class TransformRequest(BaseModel):
