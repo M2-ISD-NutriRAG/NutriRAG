@@ -4,12 +4,12 @@ import { cn } from '@/lib/utils'
 
 const navigation = [
   {
-    name: 'Conversation',
+    name: 'Chat',
     href: '/',
     icon: MessageSquare,
   },
   {
-    name: 'Tableau de bord',
+    name: 'Dashboard',
     href: '/dashboard',
     icon: LayoutDashboard,
   },
@@ -25,7 +25,7 @@ export function Sidebar() {
         <UtensilsCrossed className="h-8 w-8 text-primary" />
         <div>
           <h1 className="text-xl font-bold text-foreground">NutriRAG</h1>
-          <p className="text-xs text-muted-foreground">Assistant IA Recettes</p>
+          <p className="text-xs text-muted-foreground">AI Recipe Assistant</p>
         </div>
       </div>
 
