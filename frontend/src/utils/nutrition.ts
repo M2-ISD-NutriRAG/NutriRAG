@@ -1,25 +1,25 @@
 /**
- * Utilitaires d'affichage pour les données nutritionnelles
- * ⚠️ Ces fonctions sont UNIQUEMENT pour l'affichage dans le frontend
- * Tous les calculs métier sont faits dans le backend
+ * Display utilities for nutritional data
+ * !!! These functions are ONLY for display in the frontend
+ * All business calculations are done in the backend
  */
 
 /**
- * Formate une valeur nutritionnelle pour l'affichage
- * @param value Valeur à formater
- * @param decimals Nombre de décimales (défaut: 1)
- * @returns Valeur formatée en string
+ * Formats a nutritional value for display
+ * @param value Value to format
+ * @param decimals Number of decimals (default: 1)
+ * @returns Formatted value as string
  */
 export function formatNutritionValue(value: number, decimals: number = 1): string {
   return value.toFixed(decimals)
 }
 
 /**
- * Retourne la couleur appropriée pour une valeur nutritionnelle
- * Utilisé pour l'UI (badges, indicateurs)
- * @param value Valeur nutritionnelle
- * @param type Type de nutriment
- * @returns Code couleur: 'green' (bon), 'orange' (moyen), 'red' (mauvais)
+ * Returns the appropriate color for a nutritional value
+ * Used for UI (badges, indicators)
+ * @param value Nutritional value
+ * @param type Nutrient type
+ * @returns Color code: 'green' (good), 'orange' (medium), 'red' (bad)
  */
 export function getNutritionColor(
   value: number,
@@ -44,31 +44,31 @@ export function getNutritionColor(
 }
 
 /**
- * Retourne le nom en français d'un nutriment
+ * Returns the English name of a nutrient
  */
 export function getNutrientName(type: string): string {
   const names: Record<string, string> = {
     calories: 'Calories',
-    protein: 'Protéines',
-    protein_g: 'Protéines',
-    carbs: 'Glucides',
-    carbs_g: 'Glucides',
-    fat: 'Lipides',
-    fat_g: 'Lipides',
-    fiber: 'Fibres',
-    fiber_g: 'Fibres',
+    protein: 'Protein',
+    protein_g: 'Protein',
+    carbs: 'Carbs',
+    carbs_g: 'Carbs',
+    fat: 'Fat',
+    fat_g: 'Fat',
+    fiber: 'Fiber',
+    fiber_g: 'Fiber',
     sodium: 'Sodium',
     sodium_mg: 'Sodium',
-    sugar: 'Sucres',
-    sugar_g: 'Sucres',
-    saturated_fat: 'Graisses saturées',
-    saturated_fat_g: 'Graisses saturées',
+    sugar: 'Sugar',
+    sugar_g: 'Sugar',
+    saturated_fat: 'Saturated Fat',
+    saturated_fat_g: 'Saturated Fat',
   }
   return names[type] || type
 }
 
 /**
- * Formate l'unité d'un nutriment
+ * Formats the unit of a nutrient
  */
 export function getNutrientUnit(type: string): string {
   if (type.includes('_mg')) return 'mg'

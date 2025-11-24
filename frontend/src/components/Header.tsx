@@ -2,12 +2,12 @@ import { useLocation } from 'react-router-dom'
 
 const pageTitles: Record<string, { title: string; description: string }> = {
   '/': {
-    title: 'Chat IA',
-    description: 'Discutez avec NutriRAG pour trouver et transformer des recettes',
+    title: 'AI Chat',
+    description: 'Chat with NutriRAG to find and transform recipes',
   },
   '/dashboard': {
-    title: 'Tableau de bord',
-    description: 'Analyses et statistiques',
+    title: 'Dashboard',
+    description: 'Analytics and statistics',
   },
 }
 
@@ -15,7 +15,7 @@ export function Header() {
   const location = useLocation()
   const pageInfo = pageTitles[location.pathname] || {
     title: 'NutriRAG',
-    description: 'Assistant IA Recettes',
+    description: 'AI Recipe Assistant',
   }
 
   return (
