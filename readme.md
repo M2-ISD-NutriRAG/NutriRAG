@@ -78,14 +78,3 @@ This file stores sensitive credentials and project parameters. **It MUST be adde
 | **`.gitignore`** | Specifies files and folders (e.g., `.env`, `data/embeddings/`) that should not be committed to Git. |
 | **`requirements.txt`** | Lists all necessary Python package dependencies required to run the project. |
 | **`notebooks/`** | Contains Jupyter Notebooks (`.ipynb`) for data exploration, experimentation, and interactive analysis. |
-
----
-
-## 🚀 Getting Started
-
-1.  Clone the repository: `git clone <repo-url>`
-2.  Install dependencies: `pip install -r requirements.txt`
-3.  Create the `.env` file with the required credentials.
-4.  Begin experimentation using the notebooks in `notebooks/`.
-
-Would you like me to generate the contents of the `.env` file for easy copying?
