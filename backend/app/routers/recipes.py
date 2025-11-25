@@ -14,16 +14,35 @@ async def get_recipe(recipe_id: int):
     # - Parsed ingredients
     # - Detailed nutrition
     # - Health score
-    #test
+    
     
     # TODO: Équipe 1 - Implémentation de la requête Snowflake
-    # session = get_snowflake_session()
-    # result = session.sql(f"""
-    #     SELECT *
-    #     FROM NutriRAG_Project.ENRICHED.recipes_detailed
-    #     WHERE id = {recipe_id}
-    # """).collect()
-    
+    session = get_snowflake_session()
+    result = session.sql(f"""
+        SELECT *
+        FROM NutriRAG_Project.DEV_SAMPLE.RECIPES_SAMPLE
+        WHERE id = {recipe_id}
+     """).collect()
+    row = result[0]
+
+
+    return {
+          "id": recipe_id,
+          "name": row["NAME"],
+          "description": row["DESCRIPTION"],
+          "minutes": row["MINUTES"],
+          "n_steps": row["N_STEPS"],
+          "n_ingredients": row["N_INGREDIENTS"],
+          "tags": row["TAGS"],
+          "ingredients_raw": row["INGREDIENTS"],
+          "ingredients_parsed": None,
+          "steps": row["STEPS"],
+          "nutrition_original": row["NUTRITION"],
+          "nutrition_detailed": None,
+          "score_health": None,
+          "rating_avg": None,
+          "rating_count": None
+        }
     # Mock response for now
     raise HTTPException(
         status_code=501,
@@ -62,6 +81,33 @@ async def get_recipe_nutrition(recipe_id: int):
 async def get_random_recipes(count: int = Query(5, ge=1, le=20)):
     # Obtenir des recettes aléatoires pour l'exploration
     # TODO: Équipe 1 - Échantillonner des recettes aléatoires
+    results = session.sql(f"""
+        SELECT *
+        FROM NutriRAG_Project.DEV_SAMPLE.RECIPES_SAMPLE
+        SAMPLE ({count} rows)
+    """).collect()
+
+    recipes = []
+    for row in results:
+        recipes.append({
+            "id": row["ID"],
+            "name": row["NAME"],
+            "description": row["DESCRIPTION"],
+            "minutes": row["MINUTES"],
+            "n_steps": row["N_STEPS"],
+            "n_ingredients": row["N_INGREDIENTS"],
+            "tags": row["TAGS"],
+            "ingredients_raw": row["INGREDIENTS"],
+            "ingredients_parsed": None,
+            "steps": row["STEPS"],
+            "nutrition_original": row["NUTRITION"],
+            "nutrition_detailed": None,
+            "score_health": None,
+            "rating_avg": None,
+            "rating_count": None
+        })
+
+    return recipes
 
     raise HTTPException(
         status_code=501,
