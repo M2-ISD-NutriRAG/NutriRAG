@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
 
 from app.models.recipe import Recipe, RecipeListResponse
-from app.services.snowflake_client import get_snowflake_session
+from app.services.snowflake_client import SnowflakeClient
 
 router = APIRouter()
 
@@ -13,9 +13,7 @@ async def get_recipe(recipe_id: int):
     # Returns enriched recipe with:
     # - Parsed ingredients
     # - Detailed nutrition
-    # - Health score
-    
-    
+    # - Health score    
     # TODO: Équipe 1 - Implémentation de la requête Snowflake
     session = get_snowflake_session()
     result = session.sql(f"""
