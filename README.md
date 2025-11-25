@@ -78,6 +78,27 @@ cd frontend
 npm install
 ```
 
+4. **Configurer pre-commit (optionnel mais recommandé)**
+
+Pre-commit permet d'exécuter automatiquement des vérifications de code (linting, formatage) avant chaque commit.
+
+```bash
+# Installer pre-commit
+pip install pre-commit
+
+# Installer les hooks pre-commit
+pre-commit install
+
+# (Optionnel) Exécuter pre-commit sur tous les fichiers
+pre-commit run --all-files
+```
+
+Les hooks configurés dans `.pre-commit-config.yaml` incluent :
+- **Ruff** : Linting Python (détection d'erreurs, respect des conventions)
+- **Ruff Format** : Formatage automatique du code Python
+
+Une fois installé, pre-commit s'exécutera automatiquement avant chaque `git commit` et bloquera le commit si des problèmes sont détectés.
+
 ### Développement
 
 #### Option 1: Développement local
