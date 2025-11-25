@@ -1,11 +1,3 @@
-# 🚀 Project Name
-
-## 📝 Overview
-
-This project is structured to manage a machine learning pipeline focused on generating and evaluating data embeddings for clustering and retrieval tasks. It uses configuration files to define the embedding models and data columns, ensuring reproducible experimentation.
-
----
-
 ## 📂 Project Structure Hierarchy
 
 The following diagram illustrates the project's file and folder organization:
