@@ -25,24 +25,25 @@ async def get_recipe(recipe_id: int):
      """).collect()
     row = result[0]
 
+    recipe = Recipe(
+        id=row["ID"],
+        name=row["NAME"],
+        description=row["DESCRIPTION"],
+        minutes=row["MINUTES"],
+        n_steps=row["N_STEPS"],
+        n_ingredients=row["N_INGREDIENTS"],
+        tags=row["TAGS"],
+        ingredients_raw=row["INGREDIENTS"],
+        ingredients_parsed=None,  # pas encore calculé
+        steps=row["STEPS"],
+        nutrition_original=row["NUTRITION"],
+        nutrition_detailed=None,  # pas encore calculé
+        score_health=None,
+        rating_avg=None,
+        rating_count=None
+    )
 
-    return {
-          "id": recipe_id,
-          "name": row["NAME"],
-          "description": row["DESCRIPTION"],
-          "minutes": row["MINUTES"],
-          "n_steps": row["N_STEPS"],
-          "n_ingredients": row["N_INGREDIENTS"],
-          "tags": row["TAGS"],
-          "ingredients_raw": row["INGREDIENTS"],
-          "ingredients_parsed": None,
-          "steps": row["STEPS"],
-          "nutrition_original": row["NUTRITION"],
-          "nutrition_detailed": None,
-          "score_health": None,
-          "rating_avg": None,
-          "rating_count": None
-        }
+    return recipe
     # Mock response for now
     raise HTTPException(
         status_code=501,
