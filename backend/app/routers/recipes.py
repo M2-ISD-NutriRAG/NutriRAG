@@ -15,8 +15,8 @@ async def get_recipe(recipe_id: int):
     # - Detailed nutrition
     # - Health score    
     # TODO: Équipe 1 - Implémentation de la requête Snowflake
-    session = get_snowflake_session()
-    result = session.sql(f"""
+    client = SnowflakeClient()
+    result = client.execute(f"""
         SELECT *
         FROM NutriRAG_Project.DEV_SAMPLE.RECIPES_SAMPLE
         WHERE id = {recipe_id}
