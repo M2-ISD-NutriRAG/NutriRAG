@@ -1,22 +1,22 @@
-import { Link, useLocation } from 'react-router-dom'
-import { MessageSquare, LayoutDashboard, UtensilsCrossed } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { Link, useLocation } from "react-router-dom";
+import { MessageSquare, LayoutDashboard, UtensilsCrossed } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 const navigation = [
   {
-    name: 'Chat',
-    href: '/',
+    name: "Chat",
+    href: "/",
     icon: MessageSquare,
   },
   {
-    name: 'Dashboard',
-    href: '/dashboard',
+    name: "Dashboard",
+    href: "/dashboard",
     icon: LayoutDashboard,
   },
-]
+];
 
 export function Sidebar() {
-  const location = useLocation()
+  const location = useLocation();
 
   return (
     <div className="flex h-screen w-64 flex-col border-r bg-card">
@@ -32,22 +32,22 @@ export function Sidebar() {
       {/* Navigation */}
       <nav className="flex-1 space-y-1 p-4">
         {navigation.map((item) => {
-          const isActive = location.pathname === item.href
+          const isActive = location.pathname === item.href;
           return (
             <Link
               key={item.name}
               to={item.href}
               className={cn(
-                'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                 isActive
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
               )}
             >
               <item.icon className="h-5 w-5" />
               {item.name}
             </Link>
-          )
+          );
         })}
       </nav>
 
@@ -60,6 +60,5 @@ export function Sidebar() {
         </p>
       </div>
     </div>
-  )
+  );
 }
-

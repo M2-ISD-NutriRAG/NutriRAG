@@ -1,12 +1,12 @@
-import * as React from "react"
-import { type VariantProps } from "class-variance-authority"
-import { cn } from "@/lib/utils"
-import { buttonVariants } from "./button-variants"
+import * as React from "react";
+import { type VariantProps } from "class-variance-authority";
+import { cn } from "@/lib/utils";
+import { buttonVariants } from "./button-variants";
 
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
     VariantProps<typeof buttonVariants> {
-  asChild?: boolean
+  asChild?: boolean;
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
@@ -17,9 +17,9 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         {...props}
       />
-    )
-  }
-)
-Button.displayName = "Button"
+    );
+  },
+);
+Button.displayName = "Button";
 
-export { Button }
+export { Button };

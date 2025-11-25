@@ -1,38 +1,44 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Activity, Users, TrendingUp, Clock } from 'lucide-react'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Activity, Users, TrendingUp, Clock } from "lucide-react";
 
 export function DashboardPage() {
   // Mock data for demonstration
   const kpis = [
     {
-      title: 'Total Searches',
-      value: '1,234',
-      change: '+12.5%',
+      title: "Total Searches",
+      value: "1,234",
+      change: "+12.5%",
       icon: Activity,
-      color: 'text-blue-500',
+      color: "text-blue-500",
     },
     {
-      title: 'Recipe Transformations',
-      value: '456',
-      change: '+8.2%',
+      title: "Recipe Transformations",
+      value: "456",
+      change: "+8.2%",
       icon: TrendingUp,
-      color: 'text-green-500',
+      color: "text-green-500",
     },
     {
-      title: 'Active Users',
-      value: '89',
-      change: '+23.1%',
+      title: "Active Users",
+      value: "89",
+      change: "+23.1%",
       icon: Users,
-      color: 'text-purple-500',
+      color: "text-purple-500",
     },
     {
-      title: 'Average Response Time',
-      value: '1.2s',
-      change: '-5.3%',
+      title: "Average Response Time",
+      value: "1.2s",
+      change: "-5.3%",
       icon: Clock,
-      color: 'text-orange-500',
+      color: "text-orange-500",
     },
-  ]
+  ];
 
   return (
     <div className="p-8">
@@ -45,15 +51,21 @@ export function DashboardPage() {
                 <CardTitle className="text-sm font-medium">
                   {kpi.title}
                 </CardTitle>
-                <kpi.icon className={cn('h-4 w-4', kpi.color)} />
+                <kpi.icon className={cn("h-4 w-4", kpi.color)} />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{kpi.value}</div>
                 <p className="text-xs text-muted-foreground">
-                  <span className={kpi.change.startsWith('+') ? 'text-green-500' : 'text-red-500'}>
+                  <span
+                    className={
+                      kpi.change.startsWith("+")
+                        ? "text-green-500"
+                        : "text-red-500"
+                    }
+                  >
                     {kpi.change}
-                  </span>
-                  {' '}compared to last week
+                  </span>{" "}
+                  compared to last week
                 </p>
               </CardContent>
             </Card>
@@ -66,15 +78,15 @@ export function DashboardPage() {
           <Card className="col-span-4">
             <CardHeader>
               <CardTitle>Overview</CardTitle>
-              <CardDescription>
-                Usage analytics and statistics
-              </CardDescription>
+              <CardDescription>Usage analytics and statistics</CardDescription>
             </CardHeader>
             <CardContent className="h-[300px] flex items-center justify-center">
               <div className="text-center text-muted-foreground">
                 <Activity className="mx-auto h-12 w-12 mb-4 opacity-50" />
                 <p>Graph visualization will be displayed here</p>
-                <p className="text-sm mt-2">Connect to the analytics service to see real data</p>
+                <p className="text-sm mt-2">
+                  Connect to the analytics service to see real data
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -83,9 +95,7 @@ export function DashboardPage() {
           <Card className="col-span-3">
             <CardHeader>
               <CardTitle>Recent Activity</CardTitle>
-              <CardDescription>
-                Latest user interactions
-              </CardDescription>
+              <CardDescription>Latest user interactions</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
@@ -95,7 +105,7 @@ export function DashboardPage() {
                     <div className="flex-1">
                       <p className="text-sm font-medium">Activity {item}</p>
                       <p className="text-xs text-muted-foreground">
-                        {item} minute{item > 1 ? 's' : ''} ago
+                        {item} minute{item > 1 ? "s" : ""} ago
                       </p>
                     </div>
                   </div>
@@ -117,15 +127,16 @@ export function DashboardPage() {
             <div className="text-center text-muted-foreground py-8">
               <TrendingUp className="mx-auto h-12 w-12 mb-4 opacity-50" />
               <p>Popular recipes will be displayed here</p>
-              <p className="text-sm mt-2">Data will be loaded from the analytics service</p>
+              <p className="text-sm mt-2">
+                Data will be loaded from the analytics service
+              </p>
             </div>
           </CardContent>
         </Card>
       </div>
     </div>
-  )
+  );
 }
 
 // Add cn utility import at top
-import { cn } from '@/lib/utils'
-
+import { cn } from "@/lib/utils";

@@ -2,5 +2,4 @@
  * Utilitaires frontend - Export centralisé
  */
 
-export * from './nutrition'
-
+export * from "./nutrition";
