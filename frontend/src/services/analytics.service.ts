@@ -1,5 +1,6 @@
 import { apiClient } from '@/lib/api'
-import { AnalyticsUsage, PopularRecipesResponse } from '@shared/types'
+import { PopularRecipesResponse } from '@shared/types'
+// import { AnalyticsUsage } from '@shared/types/analytics' --> unused
 
 // Types pour le frontend (pas encore dans backend)
 export interface KPIData {
