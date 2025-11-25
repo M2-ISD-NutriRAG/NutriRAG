@@ -1,6 +1,6 @@
 from typing import List, Optional
 from app.models.search import SearchFilters, SearchResult
-from app.services.snowflake_client import get_snowflake_session
+from app.services.snowflake_client import SnowflakeClient
 
 
 class SearchService:
@@ -14,7 +14,7 @@ class SearchService:
     ) -> List[SearchResult]:
         # Effectuer une recherche sémantique avec des filtres
         # TODO: Équipe 2 - Implémentation de la recherche sémantique avec des filtres
-        # session = get_snowflake_session()
+        # client = SnowflakeClient()
         
         raise NotImplementedError("Équipe 2: Implémentation nécessaire - RAG + recherche vectorielle + filtres")
     

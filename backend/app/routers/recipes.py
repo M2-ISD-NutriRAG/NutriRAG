@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
 
 from app.models.recipe import Recipe, RecipeListResponse
-from app.services.snowflake_client import get_snowflake_session
+from app.services.snowflake_client import SnowflakeClient
 
 router = APIRouter()
 
@@ -16,12 +16,12 @@ async def get_recipe(recipe_id: int):
     # - Health score
     
     # TODO: Équipe 1 - Implémentation de la requête Snowflake
-    # session = get_snowflake_session()
-    # result = session.sql(f"""
+    # client = SnowflakeClient()
+    # result = client.execute(f"""
     #     SELECT *
     #     FROM NutriRAG_Project.ENRICHED.recipes_detailed
     #     WHERE id = {recipe_id}
-    # """).collect()
+    # """, fetch='all')
     
     # Mock response for now
     raise HTTPException(
