@@ -39,6 +39,7 @@ yarn-error.log*
 dist/
 dist-ssr/
 *.local
+package-lock.json
 
 # IDEs
 .vscode/
