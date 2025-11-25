@@ -1,0 +1,147 @@
+---
+name: PR Size Labeler
+
+on: # yamllint disable-line rule:truthy
+    pull_request:
+        types: [opened, synchronize, reopened]
+
+jobs:
+    size-label:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            pull-requests: write
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - name: Calculate PR size and manage labels
+              uses: actions/github-script@v7
+              with:
+                  script: |
+                      // First, calculate the PR size to determine what label should be applied
+                      const { data: files } = await github.rest.pulls.listFiles({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        pull_number: context.issue.number,
+                      });
+
+                      // Files to ignore (similar to the pr-size-labeler action)
+                      const filesToIgnore = [
+                        'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', 'Cargo.lock',
+                        'composer.lock', 'Pipfile.lock', 'poetry.lock'
+                      ];
+
+                      const ignoredExtensions = ['.min.js', '.min.css', '.map', '.pyc'];
+                      const ignoredPaths = ['dist/', 'build/', '__pycache__/'];
+
+                      // Calculate total changes
+                      let totalChanges = 0;
+                      for (const file of files) {
+                        const filename = file.filename;
+                        
+                        // Skip if file should be ignored
+                        if (filesToIgnore.includes(filename) ||
+                            ignoredExtensions.some(ext => filename.endsWith(ext)) ||
+                            ignoredPaths.some(path => filename.includes(path))) {
+                          continue;
+                        }
+                        
+                        totalChanges += file.additions + file.deletions;
+                      }
+
+                      console.log(`Total changes: ${totalChanges}`);
+
+                      // Determine new label based on size thresholds
+                      let newLabel;
+                      if (totalChanges <= 10) {
+                        newLabel = 'size/XS';
+                      } else if (totalChanges <= 30) {
+                        newLabel = 'size/S';
+                      } else if (totalChanges <= 100) {
+                        newLabel = 'size/M';
+                      } else if (totalChanges <= 500) {
+                        newLabel = 'size/L';
+                      } else {
+                        newLabel = 'size/XL';
+                      }
+
+                      console.log(`New label should be: ${newLabel}`);
+
+                      // Get existing labels
+                      const sizeLabels = ['size/XS', 'size/S', 'size/M', 'size/L', 'size/XL'];
+                      const { data: labels } = await github.rest.issues.listLabelsOnIssue({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        issue_number: context.issue.number,
+                      });
+
+                      const existingSizeLabels = labels.filter(label => sizeLabels.includes(label.name));
+
+                      // Only remove existing size labels if they're different from the new label
+                      for (const label of existingSizeLabels) {
+                        if (label.name !== newLabel) {
+                          console.log(`Removing existing size label: ${label.name}`);
+                          await github.rest.issues.removeLabel({
+                            owner: context.repo.owner,
+                            repo: context.repo.repo,
+                            issue_number: context.issue.number,
+                            name: label.name,
+                          });
+                        } else {
+                          console.log(`Keeping existing size label: ${label.name} (same as calculated)`);
+                        }
+                      }
+
+                      // Add the new label if it's not already present
+                      const hasNewLabel = existingSizeLabels.some(label => label.name === newLabel);
+                      if (!hasNewLabel) {
+                        console.log(`Adding new size label: ${newLabel}`);
+                        await github.rest.issues.addLabels({
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          issue_number: context.issue.number,
+                          labels: [newLabel],
+                        });
+                      }
+
+            - name: Add XL message if applicable
+              uses: actions/github-script@v7
+              if: always()
+              with:
+                  script: |
+                      // Check if PR has XL label and add message if needed
+                      const { data: labels } = await github.rest.issues.listLabelsOnIssue({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        issue_number: context.issue.number,
+                      });
+
+                      const hasXLLabel = labels.some(label => label.name === 'size/XL');
+
+                      if (hasXLLabel) {
+                        const message = `This PR is very large. Consider breaking it down into smaller PRs for easier review and better maintainability.`;
+                        
+                        // Check if we already commented
+                        const { data: comments } = await github.rest.issues.listComments({
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          issue_number: context.issue.number,
+                        });
+                        
+                        const hasExistingComment = comments.some(comment => 
+                          comment.user.login && comment.user.login.endsWith('[bot]') && comment.body.includes('This PR is very large')
+                        );
+                        
+                        if (!hasExistingComment) {
+                          await github.rest.issues.createComment({
+                            owner: context.repo.owner,
+                            repo: context.repo.repo,
+                            issue_number: context.issue.number,
+                            body: message,
+                          });
+                        }
+                      }
