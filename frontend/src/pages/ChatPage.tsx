@@ -8,10 +8,10 @@ import { chatService, type ChatMessage } from '@/services/chat.service'
 import { cn } from '@/lib/utils'
 
 const suggestions = [
-  "Trouve-moi une recette végétarienne saine",
-  "Transforme cette recette en version low-carb",
-  "Que puis-je faire avec du poulet et du riz ?",
-  "Montre-moi des idées de petit-déjeuner riches en protéines",
+  "Find me a healthy vegetarian recipe",
+  "Transform this recipe into a low-carb version",
+  "What can I make with chicken and rice?",
+  "Show me high-protein breakfast ideas",
 ]
 
 export function ChatPage() {
@@ -19,7 +19,7 @@ export function ChatPage() {
     {
       id: crypto.randomUUID(),
       role: 'assistant',
-      content: 'Bonjour ! Je suis NutriRAG, votre assistant IA de recettes. Je peux vous aider à trouver des recettes, les transformer selon vos besoins alimentaires et fournir des informations nutritionnelles. Que souhaitez-vous cuisiner aujourd\'hui ?',
+      content: 'Hello! I am NutriRAG, your AI recipe assistant. I can help you find recipes, transform them according to your dietary needs, and provide nutritional information. What would you like to cook today?',
       timestamp: new Date().toISOString(),
     },
   ])
@@ -70,7 +70,7 @@ export function ChatPage() {
       const errorMessage: ChatMessage = {
         id: crypto.randomUUID(),
         role: 'assistant',
-        content: 'Désolé, j\'ai rencontré une erreur. Veuillez réessayer.',
+        content: 'Sorry, I encountered an error. Please try again.',
         timestamp: new Date().toISOString(),
       }
       setMessages((prev) => [...prev, errorMessage])
@@ -149,7 +149,7 @@ export function ChatPage() {
         <div className="bg-card px-4 py-3">
           <div className="mx-auto max-w-3xl">
             <p className="mb-2 text-xs font-medium text-muted-foreground">
-              Suggestions :
+              Suggestions:
             </p>
             <div className="flex flex-wrap gap-2">
               {suggestions.map((suggestion, index) => (
@@ -177,7 +177,7 @@ export function ChatPage() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder="Posez des questions sur les recettes, la nutrition ou les transformations..."
+                placeholder="Ask questions about recipes, nutrition, or transformations..."
                 className="min-h-[60px] resize-none border-0 focus-visible:ring-0"
                 disabled={isLoading}
               />
@@ -196,7 +196,7 @@ export function ChatPage() {
             </div>
           </Card>
           <p className="mt-2 text-center text-xs text-muted-foreground">
-            NutriRAG peut faire des erreurs. Vérifiez les informations nutritionnelles importantes.
+            NutriRAG may make errors. Verify important nutritional information.
           </p>
         </div>
       </div>
