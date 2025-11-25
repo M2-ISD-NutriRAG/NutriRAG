@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
+from app.services.snowflake_client import SnowflakeClient
 from app.routers import recipes, search, transform, analytics, orchestration
 
 
@@ -58,7 +59,7 @@ async def health_check():
     """Detailed health check"""
     return {
         "status": "healthy",
-        "database": "connected",  # TODO: Check Snowflake connection
+        "database": f"{'connected' if SnowflakeClient().is_connected() else 'not connected'}",
         "timestamp": "2025-11-18T00:00:00Z"
     }
 
@@ -66,4 +67,3 @@ async def health_check():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
-
