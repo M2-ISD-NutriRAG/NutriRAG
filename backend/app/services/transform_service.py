@@ -1,6 +1,6 @@
 from typing import Optional
 from app.models.transform import TransformConstraints, TransformResponse
-from app.services.snowflake_client import get_snowflake_session
+from app.services.snowflake_client import SnowflakeClient
 
 
 class TransformService:
@@ -14,7 +14,7 @@ class TransformService:
     ) -> TransformResponse:
         # Transformer une recette en fonction de l'objectif et des contraintes
         # TODO: Équipe 3 - Implémentation de la logique de transformation
-        # session = get_snowflake_session()
+        # client = SnowflakeClient()
         
         raise NotImplementedError("Équipe 3: Implémentation nécessaire - Logique de transformation")
 
