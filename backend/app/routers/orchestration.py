@@ -26,21 +26,19 @@ async def orchestrate(request: OrchestrationRequest):
         # 2. Route to appropriate agent(s)
         # 3. Handle sequential/parallel calls
         # 4. Manage context between steps
-        
+
         result = await orchestrator.process(
             query=request.user_query,
             context=request.context,
             user_profile=request.user_profile
         )
-        
         total_time = (time() - start_time) * 1000
-        
         return OrchestrationResponse(
             steps=result["steps"],
             final_result=result["final"],
             intent_detected=result["intent"],
             total_execution_time_ms=total_time,
-            success=True
+            success=result["success"]
         )
         
     except NotImplementedError:

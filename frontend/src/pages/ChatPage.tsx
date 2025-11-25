@@ -57,8 +57,11 @@ export function ChatPage() {
       const assistantMessage: ChatMessage = {
         id: crypto.randomUUID(),
         role: 'assistant',
-        content: response.message,
+        content: response?.message ?? '',
         timestamp: new Date().toISOString(),
+        metadata: {
+            intent: response.intent
+        },
       }
 
       setMessages((prev) => [...prev, assistantMessage])
