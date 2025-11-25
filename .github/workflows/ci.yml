@@ -2,9 +2,11 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    paths:
+      - backend/**
   pull_request:
-    branches: [main]
+    paths:
+      - backend/**
 
 jobs:
   test:
@@ -30,13 +32,3 @@ jobs:
           cd backend
           source venv/bin/activate
           pytest
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install Node.js dependencies
-        run: |
-          cd frontend
-          npm install
