@@ -14,6 +14,7 @@ async def get_recipe(recipe_id: int):
     # - Parsed ingredients
     # - Detailed nutrition
     # - Health score
+    #test
     
     # TODO: Équipe 1 - Implémentation de la requête Snowflake
     # session = get_snowflake_session()
