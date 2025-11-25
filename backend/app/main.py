@@ -65,7 +65,5 @@ async def health_check():
 
 
 if __name__ == "__main__":
-    client = SnowflakeClient()
-    print(client.execute("SELECT CURRENT_VERSION()", fetch="one"))
     import uvicorn
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
