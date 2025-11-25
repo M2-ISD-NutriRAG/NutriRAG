@@ -1,0 +1,8 @@
+pandas
+snowflake-connector-python
+python-dotenv
+torch
+sentence-transformers
+umap-learn
+hdbscan
+plotly

@@ -1,0 +1,72 @@
+[
+    {
+        "NAME": "The Ultimate Chewy Chocolate Chip Cookies",
+        "TAGS": "sweet dessert, baking, comfort food, family-friendly",
+        "INGREDIENTS": "semi-sweet chocolate chips, all-purpose flour, light brown sugar, granulated sugar, unsalted butter, egg, vanilla extract, baking soda, sea salt",
+        "STEPS": "cream butter and sugars, beat in egg and vanilla, mix in dry ingredients, fold in chocolate chips, scoop onto baking sheet, bake at 375°F (190°C) for 9-11 minutes, cool on wire rack",
+        "DESCRIPTION": "The ultimate classic homemade cookie with a soft, chewy center, crisp edges, and melty chocolate chips. Perfect for dessert, a snack, or any occasion."
+    },
+    {
+        "NAME": "Spicy Chicken Curry (Indian-Style)",
+        "TAGS": "main dish, spicy, Indian cuisine, gluten-free",
+        "INGREDIENTS": "chicken thighs, curry powder, garam masala, fresh ginger, onion, garlic, canned tomatoes, coconut milk, chili peppers, vegetable oil, cilantro",
+        "STEPS": "sauté onions, ginger, and garlic, add spices and toast, add chicken and brown, add tomatoes and coconut milk, simmer for 25 minutes, garnish with cilantro",
+        "DESCRIPTION": "A deeply flavorful and aromatic Indian-style chicken curry with a kick of heat. Best served over basmati rice or with naan bread."
+    },
+    {
+        "NAME": "Hearty Vegan Lasagna with Tofu Ricotta",
+        "TAGS": "vegan, vegetarian, Italian-inspired, healthy, main dish",
+        "INGREDIENTS": "firm tofu, lasagna noodles, marinara sauce, spinach, zucchini, nutritional yeast, lemon juice, garlic, Italian herbs, vegan cheese",
+        "STEPS": "make tofu ricotta by crumbling tofu with nutritional yeast and herbs, sauté vegetables, layer sauce, noodles, tofu ricotta, and vegetables, bake covered for 30 minutes, then uncovered for 10",
+        "DESCRIPTION": "A satisfying and protein-packed plant-based lasagna with a creamy, ricotta-like tofu filling and layers of fresh vegetables."
+    },
+    {
+        "NAME": "Moist Gluten-Free Banana Bread",
+        "TAGS": "gluten-free, baking, snack, breakfast, easy",
+        "INGREDIENTS": "ripe bananas, gluten-free flour blend, eggs, brown sugar, butter (or coconut oil), walnuts, vanilla extract, baking soda, cinnamon",
+        "STEPS": "mash bananas, mix with wet ingredients, combine with dry ingredients, fold in walnuts, pour into loaf pan, bake at 350°F (175°C) for 55-65 minutes, cool completely",
+        "DESCRIPTION": "An incredibly moist and tender gluten-free banana bread, sweetened naturally with ripe bananas and studded with crunchy walnuts."
+    },
+    {
+        "NAME": "30-Minute Chicken & Veggie Pasta Skillet",
+        "TAGS": "fast meal, weeknight dinner, one-pan, family-friendly",
+        "INGREDIENTS": "chicken breast, penne pasta, broccoli florets, bell peppers, garlic, olive oil, chicken broth, lemon juice, Italian seasoning, Parmesan cheese",
+        "STEPS": "sauté chicken and garlic, add broth and pasta, simmer for 10 minutes, add vegetables and cook until tender, stir in lemon juice and cheese",
+        "DESCRIPTION": "A complete, easy, and fast one-pan recipe with tender chicken, fresh vegetables, and pasta in a light broth, ideal for busy evenings."
+    },
+    {
+        "NAME": "Creamy Wild Mushroom Risotto",
+        "TAGS": "Italian cuisine, gourmet, comfort food, main course",
+        "INGREDIENTS": "arborio rice, wild mushrooms (cremini, shiitake), shallots, garlic, dry white wine, vegetable broth, Parmesan cheese, butter, fresh thyme, parsley",
+        "STEPS": "sauté mushrooms and set aside, cook shallots and garlic, toast rice, deglaze with wine, add warm broth gradually while stirring, finish with mushrooms, Parmesan, and butter",
+        "DESCRIPTION": "A rich, creamy, and authentic Italian risotto with an earthy flavor from wild mushrooms, finished with Parmesan for a luxurious dinner."
+    },
+    {
+        "NAME": "Grilled Salmon with Lemon-Dill Butter",
+        "TAGS": "fish, main course, healthy, keto, gluten-free",
+        "INGREDIENTS": "salmon fillets, fresh dill, lemon, butter, garlic, olive oil, salt, black pepper",
+        "STEPS": "create lemon-dill butter sauce, season salmon, grill skin-side down for 6 minutes, flip and grill until flaky, baste with sauce, serve with extra lemon",
+        "DESCRIPTION": "A simple yet elegant healthy grilled salmon, basted with a fresh lemon and dill butter sauce. Perfect for a light and flavorful dinner."
+    },
+    {
+        "NAME": "Creamy Strawberry Banana Yogurt Smoothie",
+        "TAGS": "beverage, breakfast, healthy, quick, snack",
+        "INGREDIENTS": "fresh strawberries, ripe banana, Greek yogurt, milk (or almond milk), honey, chia seeds, ice",
+        "STEPS": "combine all ingredients in a blender, blend until smooth and creamy, adjust sweetness to taste, serve immediately",
+        "DESCRIPTION": "A refreshing, creamy, and protein-packed smoothie that's naturally sweetened. Ideal for a quick breakfast or a post-workout snack."
+    },
+    {
+        "NAME": "Stuffed Bell Peppers with Rice, Beans & Corn",
+        "TAGS": "healthy, main dish, vegetarian, gluten-free, high-fiber",
+        "INGREDIENTS": "bell peppers, cooked rice, black beans, corn, onion, diced tomatoes, chili powder, cumin, shredded cheese (or vegan cheese)",
+        "STEPS": "sauté onion and spices, mix with rice, beans, corn, and tomatoes, stuff mixture into halved peppers, top with cheese, bake at 375°F (190°C) for 25-30 minutes",
+        "DESCRIPTION": "Colorful, nutritious, and filling vegetarian stuffed peppers packed with protein and fiber from rice, beans, and corn."
+    },
+    {
+        "NAME": "Classic Savory Beef Meatloaf with Glaze",
+        "TAGS": "traditional, comfort food, family dinner, make-ahead",
+        "INGREDIENTS": "ground beef, breadcrumbs, onion, garlic, egg, ketchup, Worcestershire sauce, Dijon mustard, brown sugar, parsley, milk",
+        "STEPS": "sauté onion and garlic, mix with beef, breadcrumbs, egg, and seasonings, shape into a loaf, mix ketchup and brown sugar for glaze, bake for 1 hour, brush with glaze halfway through",
+        "DESCRIPTION": "A hearty, savory, and tender classic meatloaf with a sweet and tangy glaze. The ultimate comfort food for a family dinner."
+    }
+]
