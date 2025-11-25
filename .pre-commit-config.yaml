@@ -1,0 +1,11 @@
+repos:
+  # Backend Python linting and formatting with Ruff
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.6
+    hooks:
+      - id: ruff
+        name: Ruff Linter (Backend)
+        files: ^backend/.*\.py$
+      - id: ruff-format
+        name: Ruff Formatter (Backend)
+        files: ^backend/.*\.py$
