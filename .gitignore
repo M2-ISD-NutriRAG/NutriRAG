@@ -1,6 +1,6 @@
-data/embedding
-metrics/clustering
-metrics/retrival
+data/embedding/
+metrics/clustering/
+metrics/retrival/
 .venv
 .env
 

@@ -1,6 +1,9 @@
 {
   "input_recipies_file": "data/recipes_samples.csv",
+
+  "output_embedding_dir": "data/embedding/exp{experiment_id}/",
   "output_recipies_embedding_file": "data/embedding/exp{experiment_id}/recipies_samples_embeddings.csv",
+  
   "output_clustering_dir": "metrics/clustering/exp{experiment_id}/",
   "metric_clustering_file": "metrics/clustering/exp{experiment_id}/{model_config}/consencus_clustering.json",
 
