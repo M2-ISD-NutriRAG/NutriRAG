@@ -38,6 +38,7 @@ Markers categorize your tests. Our project uses these markers (see `pytest.ini`)
 - `@pytest.mark.unit` - Fast, isolated tests
 - `@pytest.mark.integration` - Tests with external dependencies
 - `@pytest.mark.contract` - API contract tests
+- `@pytest.mark.slow` - Slow tests (avoid running frequently)
 
 ---
 
@@ -165,6 +166,6 @@ assert isinstance(obj, MyClass)
 
 ✓ **One test, one thing** - Test one behavior per test function  
 ✓ **Clear names** - Use descriptive test names like `test_user_cannot_login_with_invalid_password`  
-✓ **Use markers** - Always mark tests as `unit`, `integration`, or `contract`  
+✓ **Use markers** - Always mark tests as `unit`, `integration`, or `contract` (or `slow`)  
 ✓ **Fast feedback** - Run `pytest -m unit` frequently during development  
 ✓ **Organize** - Keep test types in separate directories
