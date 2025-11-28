@@ -9,25 +9,25 @@ class TransformationType(Enum):
 
 class TransformConstraints(BaseModel):
     # Constraints for recipe transformation
-    transformation : TransformationType
-    no_lactose: Optional [bool] = False
-    no_gluten: Optional [bool] = False
-    no_nuts: Optional [bool] = False
-    vegetarian: Optional [bool] = False
-    vegan: Optional [bool] = False
+    transformation: TransformationType
+    no_lactose: Optional[bool] = False
+    no_gluten: Optional[bool] = False
+    no_nuts: Optional[bool] = False
+    vegetarian: Optional[bool] = False
+    vegan: Optional[bool] = False
     
-    increase_protein: Optional [bool] = False
-    decrease_sugar: Optional [bool] = False
-    decrease_protein: Optional [bool] = False
-    decrease_carbs: Optional [bool] = False
-    decrease_calories: Optional [bool] = False
-    decrease_sodium: Optional [bool] = False
+    increase_protein: Optional[bool] = False
+    decrease_sugar: Optional[bool] = False
+    decrease_protein: Optional[bool] = False
+    decrease_carbs: Optional[bool] = False
+    decrease_calories: Optional[bool] = False
+    decrease_sodium: Optional[bool] = False
 
 # recipe object request
 class Recipe(BaseModel):
     name: str
-    ingredients:  List[str]
-    quantity_ingredients :  List[str]
+    ingredients: List[str]
+    quantity_ingredients: List[str]
     minutes: float
     steps: List[str]
 
