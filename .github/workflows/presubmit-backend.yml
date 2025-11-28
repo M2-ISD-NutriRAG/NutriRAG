@@ -6,6 +6,7 @@ on:
             - "backend/**/*.py"
             - "backend/requirements.txt"
             - "backend/pytest.ini"
+            - ".github/workflows/presubmit-backend.yml"
     push:
         branches:
             - main
@@ -13,6 +14,7 @@ on:
             - "backend/**/*.py"
             - "backend/requirements.txt"
             - "backend/pytest.ini"
+            - ".github/workflows/presubmit-backend.yml"
 
 jobs:
     test:
