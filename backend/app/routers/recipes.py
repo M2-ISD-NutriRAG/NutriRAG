@@ -1,10 +1,45 @@
 from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
-
+import json
 from app.models.recipe import Recipe, RecipeListResponse
 from app.services.snowflake_client import SnowflakeClient
 
 router = APIRouter()
+
+
+
+def parse_list_string(value: str):
+    """
+    Transforme un string comme :
+    '[\n  "tag1",\n  "tag2"\n]'
+    ou
+    '[\n  6.9e+01,\n  3\n]'
+    en vraie liste Python.
+    """
+    if value is None:
+        return None
+
+    value = value.strip()
+
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        pass
+
+    if value.startswith("[") and value.endswith("]"):
+        content = value[1:-1].strip()
+
+        parts = [p.strip().strip('"').strip("'") for p in content.split(",")]
+
+        out = []
+        for p in parts:
+            try:
+                out.append(float(p))
+            except:
+                out.append(p)
+        return out
+
+    return [value]
 
 
 @router.get("/{recipe_id}", response_model=Recipe)
@@ -20,21 +55,21 @@ async def get_recipe(recipe_id: int):
         SELECT *
         FROM NutriRAG_Project.DEV_SAMPLE.RECIPES_SAMPLE
         WHERE id = {recipe_id}
-     """).collect()
+     """, fetch="one")
     row = result[0]
 
     recipe = Recipe(
-        id=row["ID"],
-        name=row["NAME"],
-        description=row["DESCRIPTION"],
-        minutes=row["MINUTES"],
-        n_steps=row["N_STEPS"],
-        n_ingredients=row["N_INGREDIENTS"],
-        tags=row["TAGS"],
-        ingredients_raw=row["INGREDIENTS"],
+        id=row[1],
+        name=row[0],
+        description=row[9],
+        minutes=row[2],
+        n_steps=row[7],
+        n_ingredients=row[11],
+        tags=parse_list_string(row[5]),
+        ingredients_raw=parse_list_string(row[10]),
         ingredients_parsed=None,  # pas encore calculé
-        steps=row["STEPS"],
-        nutrition_original=row["NUTRITION"],
+        steps=parse_list_string(row[8]),
+        nutrition_original=parse_list_string(row[6]),
         nutrition_detailed=None,  # pas encore calculé
         score_health=None,
         rating_avg=None,
