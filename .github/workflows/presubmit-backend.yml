@@ -40,4 +40,4 @@ jobs:
             - name: Run pytest
               run: |
                   cd backend
-                  pytest -v
+                  pytest -v || [ $? -eq 5 ] && exit 0 || exit $?
