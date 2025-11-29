@@ -1,91 +1,102 @@
+# 🍲 Recipe Embedding and Retrieval Evaluation Project
+
+This project focuses on generating vector **embeddings** for recipe data and **evaluating** their performance in a retrieval context. It allows for systematic experimentation with different embedding models and combinations of data columns.
+
 ## 📂 Project Structure Hierarchy
 
-The following diagram illustrates the project's file and folder organization:
+The following diagram illustrates the project's key file and folder organization:
 
-## ⚙️ Configuration Files
 
-The **`config/`** directory houses the critical configuration logic for the machine learning pipeline.
-
-### `config/col_embedding_model.json`
-
-* **Location**: `config/col_embedding_model.json`
-* **Purpose**: This JSON file is the single source of truth for defining which data columns (`col`) are targeted for embedding generation and which specific embedding models (`embedding_model`) should be used for the transformation.
-* **Role in Pipeline**: Ensures that experiments involving different columns and models are strictly defined and tracked.
 
 ---
 
-## 💾 Data Storage
-
-The **`data/`** directory manages both the raw input data and the resulting processed embeddings.
-
-### `data/data.csv`
-
-* **Content**: The main dataset used for analysis.
-* **Volume**: Contains **1,000 data points**.
-
-### `data/embeddings/`
-
-* **Content**: Storage for all generated vector embeddings.
-* **Generation Source**: These embeddings are created based on the specifications detailed in `config/col_embedding_model.json`.
-
----
-
-## 📊 Metrics and Evaluation
-
-The **`metrics/`** directory is dedicated to storing the results and performance evaluations of the models.
-
-### `metrics/clustering/`
-
-* **Content**: Stores all **clustering metrics** (e.g., Silhouette Score, Inertia, etc.).
-* **Granularity**: Each file or subdirectory here tracks the clustering performance for a specific combination of:
-    * **Configuration** defined in `col_embedding_model.json`.
-    * **Embedding Model** used.
-
-### `metrics/retrieval/`
-
-* **Content**: Stores all **retrieval metrics** (e.g., Mean Average Precision (MAP), Recall@K).
-* **Granularity**: Each file tracks the retrieval performance for a specific combination of:
-    * **Configuration** defined in `col_embedding_model.json`.
-    * **Embedding Model** used.
-
----
-
-## Environment and Utility Files
-
-These files are essential for setting up the environment, tracking dependencies, and managing sensitive information.
+## ⚙️ Configuration and Environment
 
 ### 🔒 `.env` File (Environment Variables)
 
-This file stores sensitive credentials and project parameters. **It MUST be added to `.gitignore`.**
+This file stores sensitive database credentials and project-specific parameters. **It MUST be added to `.gitignore`.**
 
-| Variable Name | Description | Default Value |
+| Variable Name | Description | Example Value |
 | :--- | :--- | :--- |
-| `USER` | Database User Name | |
-| `PASSWORD` | Database Password | |
-| `PASSCODE` | MFA Passcode (if required) | |
-| `ACCOUNT` | Database Account Identifier | |
-| `WAREHOUSE` | Database Warehouse Name | |
-| `DATABASE` | Database Name | |
-| `SCHEMA` | Database Schema Name | |
-| `TABLE` | Database Table Name | |
-| `CONFIG_FILE_PATH` | Path to the main configuration file | `"config/col_embedding_model.json"` |
-| `EXPERIENCE_ID` | Identifier for tracking experimental runs | `1` |
+| `USER` | Database User Name | `MY_USER` |
+| `PASSWORD` | Database Password | `secure_password` |
+| `PASSCODE` | MFA Passcode (if required) | `123456` |
+| `ACCOUNT` | Database Account Identifier | `xy12345.eu-central-1` |
+| `WAREHOUSE` | Database Warehouse Name | `COMPUTE_WH` |
+| `DATABASE` | Database Name | `RECIPE_DB` |
+| `SCHEMA` | Database Schema Name | `PUBLIC` |
+| `TABLE` | Database Table Name | `RECIPES` |
+| `CONFIG_FILE_PATH` | Path to the main configuration file for experiments | `"config/base_config.json"` |
 
-### 📚 Other Utility Files
+### 🛠️ Utility Files
 
 | File | Purpose |
 | :--- | :--- |
-| **`.gitignore`** | Specifies files and folders (e.g., `.env`, `data/embeddings/`) that should not be committed to Git. |
-| **`requirements.txt`** | Lists all necessary Python package dependencies required to run the project. |
-| **`notebooks/`** | Contains Jupyter Notebooks (`.ipynb`) for data exploration, experimentation, and interactive analysis. |
+| **`requirements.txt`** | Lists all necessary **Python package dependencies** required to run the project. |
+| **`config/base_config.json`** | The main **configuration file** used to define which columns to embed and which embedding models to test. |
 
 ---
 
-## 🚀 Getting Started
+## 📓 Notebooks (Execution Workflow)
 
-1.  Clone the repository: `git clone <repo-url>`
-2.  Install dependencies: `pip install -r requirements.txt`
-3.  Create the `.env` file with the required credentials.
-4.  Begin experimentation using the notebooks in `notebooks/`.
+The project workflow is managed by two primary Jupyter notebooks:
 
-Would you like me to generate the contents of the `.env` file for easy copying?
+### 1. `create_embedding.ipynb`
+
+* **Purpose**: Handles the process of **generating vector embeddings**.
+* **Workflow**: Reads the raw data from `data/`, applies the embedding logic (as defined by the configuration in `config/base_config.json`), and saves the resulting embeddings to an experiment-specific folder in `experiments/`.
+
+### 2. `eval_embedding_model_config.ipynb`
+
+* **Purpose**: Orchestrates the systematic **evaluation of different models and column combinations**.
+* **Workflow**: Iterates through models and column combinations defined in the configuration, performs the retrieval search using the embeddings, calculates metrics against the ground truth queries, and saves the results to the `metrics/` subfolder within each experiment.
+
+---
+
+## 💾 Data and Ground Truth
+
+### 📂 `data/`
+
+* **Content**: Contains the raw dataset.
+* **Dataset**: A dataset of **1,000 recipes** used for embedding generation.
+
+### 📂 `query/`
+
+* **Content**: Contains the **ground truth for retrieval evaluation**.
+* **File (`query/query_test`)**: A JSON file/structure containing a list of objects. Each object includes a `query_text` and a list of `documents` (recipe IDs) that are **relevant ground truth** for that query. This is essential for testing the retrieval system's accuracy.
+
+**Example Structure:**
+```json
+[
+  {
+    "query_text": "a vegan dessert that require minimum time to prepare",
+    "documents": [15969, 421673, 329664, 482506, ...]
+  }
+]
+```
+
+## 📈 Experiments and Results (Expériences et Résultats)
+
+All experimental runs and their corresponding outputs are organized under the **`experiments/`** directory.
+
+---
+
+## 📂 `experiments/`
+
+* **Structure** : Contains subfolders for each experimental run (e.g., `exp1`, `exp2`, etc.).
+* **Per-Experiment Folder (`expX`)** : Each folder stores the output of a single run defined by a specific configuration.
+    * **`config.json`** : The exact **configuration** used for this specific experiment run (ensures reproducibility).
+    * **`recipies_samples_emebdding.csv`** : The **generated embeddings** (e.g., a CSV file containing the recipe IDs and the corresponding vector embeddings).
+    * **`metrics/`** : A subfolder dedicated to storing the evaluation results for this experiment.
+
+---
+
+### 📊 `experiments/expX/metrics/` (Detailed Metrics / Métriques Détaillées)
+
+This subfolder contains three critical files for analyzing retrieval performance:
+
+| File Name | Purpose (Objectif) | Granularity (Granularité) |
+| :--- | :--- | :--- |
+| **`retrieval_result.json`** | Stores the **list of retrieved documents** for every query. | Per **Query**, **Top-K value**, **Model**, and **Configuration**. |
+| **`retrieval_per_query.json`** | Stores all calculated retrieval metrics (Precision, Recall, etc.). | Per **Query**, **Top-K value**, **Model**, and **Configuration**. |
+| **`retrieval_metrics.json`** | Stores the **aggregated metrics** (e.g., Mean Average Precision, Mean Recall). | Per **Top-K value**, **Model**, and **Configuration** (averaged over all queries). |

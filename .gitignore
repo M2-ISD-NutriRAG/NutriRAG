@@ -1,6 +1,6 @@
-data/embedding/
-metrics/clustering/
-metrics/retrival/
+experiments/*
+!experiments/.gitkeep
+
 .venv
 .env
 
