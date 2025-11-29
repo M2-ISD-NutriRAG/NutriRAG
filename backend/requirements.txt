@@ -8,6 +8,7 @@ python-multipart==0.0.6
 # Snowflake
 snowflake-snowpark-python==1.11.1
 snowflake-connector-python==3.6.0
+cryptography>=41.0.0  # Required for Snowflake key pair authentication
 
 # Database and data processing
 pandas==2.1.4
@@ -16,6 +17,7 @@ numpy==1.26.3
 # Utilities
 python-dotenv==1.0.0
 httpx==0.26.0
+colorama==0.4.6
 
 # Development
 pytest==7.4.4
