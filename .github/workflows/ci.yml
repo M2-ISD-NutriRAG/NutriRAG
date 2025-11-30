@@ -4,154 +4,78 @@ on:
   push:
     branches: 
       - main
-      - 'equipe2/rag-create-table'  # Quotes pour les branches avec /
-     # - 'equipe2/**'   #: toutes les branches equipe2/*
+      - 'equipe2/**'  # Toutes les branches de équipe 2
   pull_request:
-    branches: 
-      - main
-     # - 'equipe2/rag-create-table'
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
-  lint-and-test:
-    name: Lint, Format & Test
+  # Vérifications essentielles
+  essential-checks:
+    name: Essential Checks
     runs-on: ubuntu-latest
     
-    strategy:
-      matrix:
-        python-version: ['3.9', '3.10', '3.11']
-    
     steps:
-      # 1. Checkout du code
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # Pour les analyses de diff
       
-      # 2. Setup Python
-      - name: Set up Python ${{ matrix.python-version }}
+      - name: Set up Python 3.11
         uses: actions/setup-python@v4
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: '3.11'
           cache: 'pip'
       
-      # 3. Affichage de la version Python
-      - name: Display Python version
-        run: |
-          python --version
-          pip --version
-      
-      # 4. Installation des dépendances
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install flake8 black isort mypy pylint pytest pytest-cov
-          pip install -r requirements.txt || echo "No requirements.txt found"
+          pip install --upgrade pip
+          pip install flake8 black pytest pytest-cov
+          pip install -r requirements.txt || echo "No requirements.txt"
       
-      # 5. Linting avec Flake8
-      - name: Lint with Flake8
+      # Erreurs Python critiques
+      - name: Check for Python errors
         run: |
-          # Stop build si erreurs Python ou complexité trop élevée
           flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-          # Warnings (pas d'arrêt du build)
-          flake8 . --count --max-complexity=10 --max-line-length=127 --statistics || true
-        continue-on-error: false
       
-      # 6. Check formatting avec Black
-      - name: Check code formatting with Black
+      # Code mal formaté
+      - name: Check code formatting
         run: |
-          black --check --diff .
+          black --check .
+      
+      # Tests échouent
+      - name: Run tests
+        run: |
+          pytest tests/ -v
+      
+      # Problèmes de qualité
+      - name: Code quality warnings
+        run: |
+          flake8 . --count --max-complexity=10 --max-line-length=127 --statistics
         continue-on-error: true
       
-      # 7. Check imports avec isort
-      - name: Check imports with isort
+      # Sécurité
+      - name: Security check
         run: |
-          isort --check-only --diff .
-        continue-on-error: true
-      
-      # 8. Type checking avec mypy
-      - name: Type checking with mypy
-        run: |
-          mypy . --ignore-missing-imports --no-strict-optional || true
-        continue-on-error: true
-      
-      # 9. Analyse de code avec pylint
-      - name: Analyze code with pylint
-        run: |
-          pylint **/*.py --fail-under=7.0 || true
-        continue-on-error: true
-      
-      # 10. Tests unitaires avec pytest
-      - name: Run tests with pytest
-        run: |
-          pytest tests/ --cov=. --cov-report=xml --cov-report=html --cov-report=term-missing || echo "No tests found"
-        continue-on-error: true
-      
-      # 11. Security check avec bandit
-      - name: Security check with bandit
-        run: |
-          pip install bandit
-          bandit -r . -f json -o bandit-report.json || true
-        continue-on-error: true
-      
-      # 12. Dependency check
-      - name: Check for security vulnerabilities
-        run: |
-          pip install safety
-          safety check --json || true
+          pip install bandit safety
+          bandit -r . || true
+          safety check || true
         continue-on-error: true
 
-  code-quality:
-    name: Code Quality Analysis
+  # C'est optionnel ca bloque pas le pipeline
+  # Stats de qualité de code
+  code-stats:
+    name: Code Statistics
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'  # Seulement sur PR
     
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v4
         with:
-          fetch-depth: 0
+          python-version: '3.11'
       
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-      
-      - name: Install dependencies
+      - name: Code complexity
         run: |
           pip install radon
-      
-      - name: Calculate cyclomatic complexity
-        run: |
-          radon cc . -a -nb
-      
-      - name: Calculate maintainability index
-        run: |
-          radon mi . -nb
-
-  documentation:
-    name: Documentation Check
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Check README exists
-        run: |
-          if [ ! -f "README.md" ]; then
-            echo "Warning: README.md not found"
-            exit 1
-          fi
-
-  build-summary:
-    name: Build Summary
-    needs: [lint-and-test, code-quality]
-    runs-on: ubuntu-latest
-    if: always()
-    
-    steps:
-      - name: Check build status
-        run: |
-          echo "Build completed!"
-          echo "Lint and Test: ${{ needs.lint-and-test.result }}"
-          echo "Code Quality: ${{ needs.code-quality.result }}"
+          radon cc . -a
+          radon mi .
+        continue-on-error: true
