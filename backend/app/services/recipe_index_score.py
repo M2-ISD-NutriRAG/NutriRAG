@@ -7,7 +7,6 @@ nutrition_table: Dict[str, Dict[str, float]]
 
 ingredients_amounts_test = {"butter": 20.0, "milk": 200.0}
 
-
 def compute_nutrition_for_ingredient(
     grams: float,
     nutrition_per_100g: Dict[str, Any],
@@ -62,7 +61,6 @@ def compute_nutrition_for_ingredient(
         potassium_mg=val("POTASSIUM_MG", 0.0),
         vitamin_c_mg=val("VITC_MG", 0.0),
     )
-
 
 def compute_recipe_nutrition_totals(
     ingredients_amounts: Dict[str, float],
@@ -119,3 +117,126 @@ def compute_recipe_nutrition_totals(
         recipe_nutrition.vitamin_c_mg = (recipe_nutrition.vitamin_c_mg or 0.0) + (ing_nut.vitamin_c_mg or 0.0)
 
     return recipe_nutrition
+
+def compute_benefit_score(protein_g: float, fiber_g: float) -> float:
+    """
+    Compute the benefit score of a recipe based on total protein and fiber.
+    Returns a value in [0, 1].
+    """
+    protein_ref = 50.0  
+    fiber_ref   = 30.0
+
+    s_protein = min(protein_g / protein_ref, 1.0)
+    s_fiber   = min((fiber_g or 0.0) / fiber_ref, 1.0)
+
+    benefit_score = (s_protein + s_fiber) / 2.0
+
+    return benefit_score
+
+def compute_risk_score(
+    sugar_g: float,
+    saturated_fat_g: float,
+    sodium_mg: float,
+    alpha_sugar: float = 1.2,
+    alpha_satfat: float = 1.0,
+    alpha_sodium: float = 1.5,
+) -> float:
+    """
+    Compute risk score where exceeding nutrient limits creates negative scores proportional to how badly limits are exceeded.
+    Returns float between -inf and 1.0
+    """
+
+    Sugar_limit = 50.0     
+    SatFat_limit = 20.0   
+    Sodium_limit = 2000.0
+
+    def subscore(x, L, alpha):
+        x = max(x, 0.0)
+        if x <= L:
+            return 1.0 - (x / L)
+        else:
+            return -alpha * ((x / L) - 1.0)
+
+    h_sugar   = subscore(sugar_g, Sugar_limit, alpha_sugar)
+    h_satfat  = subscore(saturated_fat_g, SatFat_limit, alpha_satfat)
+    h_sodium  = subscore(sodium_mg, Sodium_limit, alpha_sodium)
+
+    risk_control_score = (h_sugar + h_satfat + h_sodium) / 3.0
+    return risk_control_score
+
+def compute_micronutrient_density_score(
+    calcium_mg: float,
+    iron_mg: float,
+    magnesium_mg: float,
+    potassium_mg: float,
+    vitamin_c_mg: float,
+) -> float:
+    """
+    Compute a micronutrient density score in [0, 1] based on totals for the recipe.
+    """
+
+    Calcium_ref   = 1000.0
+    Iron_ref      = 18.0
+    Magnesium_ref = 350.0
+    Potassium_ref = 3500.0
+    VitC_ref      = 90.0
+
+    m_ca = min(max(calcium_mg, 0.0)   / Calcium_ref,   1.0)
+    m_fe = min(max(iron_mg, 0.0)      / Iron_ref,      1.0)
+    m_mg = min(max(magnesium_mg, 0.0) / Magnesium_ref, 1.0)
+    m_k  = min(max(potassium_mg, 0.0) / Potassium_ref, 1.0)
+    m_c  = min(max(vitamin_c_mg, 0.0) / VitC_ref,      1.0)
+
+    micronutrient_score = (m_ca + m_fe + m_mg + m_k + m_c) / 5.0
+
+    return micronutrient_score
+
+def compute_rhi(nutrition: NutritionDetailed) -> float:
+    """
+    Compute the Recipe Health Index (RHI) on [0, 100] for a whole recipe.
+    Uses:
+      - benefit score (protein + fiber, vs daily references)
+      - risk score (sugar, saturated fat, sodium vs daily limits, with penalties above limits)
+      - micronutrient density score (Ca, Fe, Mg, K, Vit C vs daily references)
+
+    RHI = max(0, 0.4 * risk + 0.4 * benefit + 0.2 * micro) * 100
+    """
+
+    protein_g = float(nutrition.protein_g)
+    fiber_g = float(nutrition.fiber_g or 0.0)
+    sugar_g = float(nutrition.sugar_g or 0.0)
+    sat_fat_g = float(nutrition.saturated_fat_g)
+    sodium_mg = float(nutrition.sodium_mg)
+
+    calcium_mg = float(nutrition.calcium_mg or 0.0)
+    iron_mg = float(nutrition.iron_mg or 0.0)
+    magnesium_mg = float(nutrition.magnesium_mg or 0.0)
+    potassium_mg = float(nutrition.potassium_mg or 0.0)
+    vitamin_c_mg = float(nutrition.vitamin_c_mg or 0.0)
+
+    benefit = compute_benefit_score(protein_g=protein_g, fiber_g=fiber_g)
+    risk = compute_risk_score(
+        sugar_g=sugar_g,
+        saturated_fat_g=sat_fat_g,
+        sodium_mg=sodium_mg,
+    )
+    micro = compute_micronutrient_density_score(
+        calcium_mg=calcium_mg,
+        iron_mg=iron_mg,
+        magnesium_mg=magnesium_mg,
+        potassium_mg=potassium_mg,
+        vitamin_c_mg=vitamin_c_mg,
+    )
+
+    rhi_raw = 0.4 * risk + 0.4 * benefit + 0.2 * micro
+
+    rhi_0_1 = max(0.0, min(1.0, rhi_raw))
+    rhi = rhi_0_1 * 100.0
+
+    return rhi
+
+"""
+call order example : 
+recipe_nutrition = compute_recipe_nutrition_totals(ingredients_amounts, nutrition_table)
+rhi = compute_rhi(recipe_nutrition)
+"""
