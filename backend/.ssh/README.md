@@ -9,6 +9,7 @@ This guide walks you through setting up secure key pair authentication for Snowf
 **Why use it?** Key pair authentication is ideal for automated scripts and bypasses MFA requirements while maintaining security.
 
 **What you'll do:**
+
 1. Generate RSA keys
 2. Configure Snowflake to accept your public key
 3. Configure your application to use the private key
@@ -40,10 +41,12 @@ openssl rsa -in backend/.ssh/rsa_key.p8 -pubout -out backend/.ssh/rsa_key.pub
 ```
 
 **Files created:**
+
 - `rsa_key.p8` - Your private key (🔒 KEEP SECRET)
 - `rsa_key.pub` - Your public key (safe to share)
 
 **Set appropriate permissions (Linux/Mac):**
+
 ```bash
 chmod 600 backend/.ssh/rsa_key.p8
 ```
@@ -55,15 +58,18 @@ chmod 600 backend/.ssh/rsa_key.p8
 You need to get the public key content WITHOUT the header/footer lines.
 
 **Option A: View and copy manually**
+
 ```bash
 cat backend/.ssh/rsa_key.pub
 ```
 
 Copy everything EXCEPT these lines:
+
 - `-----BEGIN PUBLIC KEY-----`
 - `-----END PUBLIC KEY-----`
 
 **Option B: Extract directly (Linux/Mac)**
+
 ```bash
 grep -v "BEGIN PUBLIC KEY" backend/.ssh/rsa_key.pub | grep -v "END PUBLIC KEY" | tr -d '\n'
 ```
@@ -81,6 +87,7 @@ ALTER USER YOUR_USERNAME SET RSA_PUBLIC_KEY='<paste_public_key_content_here>';
 ```
 
 **Example:**
+
 ```sql
 ALTER USER JOHN_DOE SET RSA_PUBLIC_KEY='MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...';
 ```
@@ -88,9 +95,11 @@ ALTER USER JOHN_DOE SET RSA_PUBLIC_KEY='MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKC
 **Important:** Paste only the base64 content, NOT the BEGIN/END lines!
 
 3. **Verify it was added** (optional):
+
 ```sql
 DESCRIBE USER YOUR_USERNAME;
 ```
+
 Look for the `RSA_PUBLIC_KEY_FP` property - it should show a fingerprint value.
 
 ---
@@ -110,16 +119,19 @@ pip install -r backend/requirements.txt
 Add the private key path to your `.env` file at the project root:
 
 **Option A: Relative path** (simpler, but working directory dependent)
+
 ```bash
 SNOWFLAKE_PRIVATE_KEY_PATH=backend/.ssh/rsa_key.p8
 ```
 
 **Option B: Absolute path** (recommended for reliability)
+
 ```bash
 SNOWFLAKE_PRIVATE_KEY_PATH=path_to_your_project/backend/.ssh/rsa_key.p8
 ```
 
 **Optional:** Comment out the password line if you have one:
+
 ```bash
 # SNOWFLAKE_PASSWORD=your_old_password
 ```
@@ -136,6 +148,7 @@ python -m data.embeddings.create_table
 ```
 
 **Success indicators:**
+
 - ✅ No MFA prompt
 - ✅ Connection established
 - ✅ Script runs without authentication errors
@@ -158,6 +171,7 @@ The `SnowflakeClient` automatically:
 ### Problem: "Permission denied" when reading private key
 
 **Solution:** Ensure correct file permissions (Linux/Mac)
+
 ```bash
 chmod 600 backend/.ssh/rsa_key.p8
 ```
@@ -165,6 +179,7 @@ chmod 600 backend/.ssh/rsa_key.p8
 ### Problem: "JWT token is invalid" or "Public key not found"
 
 **Possible causes:**
+
 - Public key not added to Snowflake user account
 - Wrong username used in ALTER USER command
 - Extra spaces/line breaks in the public key string
@@ -175,6 +190,7 @@ chmod 600 backend/.ssh/rsa_key.p8
 ### Problem: Still getting MFA prompts
 
 **Check these:**
+
 1. ✅ Environment variable is set correctly in `.env`
 2. ✅ Private key path is correct (try absolute path)
 3. ✅ `.env` file is loaded by your application
@@ -183,6 +199,7 @@ chmod 600 backend/.ssh/rsa_key.p8
 ### Problem: "Could not deserialize key data" or cryptography errors
 
 **Solution:** Ensure the private key is in PKCS#8 format and regenerate if needed:
+
 ```bash
 openssl genrsa 2048 | openssl pkcs8 -topk8 -inform PEM -out backend/.ssh/rsa_key.p8 -nocrypt
 ```
@@ -190,6 +207,7 @@ openssl genrsa 2048 | openssl pkcs8 -topk8 -inform PEM -out backend/.ssh/rsa_key
 ### Problem: Connection works locally but fails in Docker
 
 **Solution:** Ensure the private key is accessible in the Docker container:
+
 - Mount the `.ssh` directory as a volume, OR
 - Copy the key during Docker build (not recommended for production), OR
 - Use Docker secrets for production environments
@@ -225,15 +243,18 @@ cat backend/.ssh/rsa_key.pub
 ## Quick Reference
 
 **Key files:**
+
 - `rsa_key.p8` → Private key (keep secret)
 - `rsa_key.pub` → Public key (add to Snowflake)
 
 **Environment variable:**
+
 ```bash
 SNOWFLAKE_PRIVATE_KEY_PATH=backend/.ssh/rsa_key.p8
 ```
 
 **Snowflake SQL:**
+
 ```sql
 ALTER USER YOUR_USERNAME SET RSA_PUBLIC_KEY='<public_key_content>';
 ```
