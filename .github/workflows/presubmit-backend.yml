@@ -3,7 +3,7 @@ name: Backend Presubmit
 on:
     pull_request:
         paths:
-            - "backend/**/*.py"
+            - "backend/**.py"
             - "backend/requirements.txt"
             - "backend/pytest.ini"
             - ".github/workflows/presubmit-backend.yml"
@@ -11,7 +11,7 @@ on:
         branches:
             - main
         paths:
-            - "backend/**/*.py"
+            - "backend/**.py"
             - "backend/requirements.txt"
             - "backend/pytest.ini"
             - ".github/workflows/presubmit-backend.yml"
