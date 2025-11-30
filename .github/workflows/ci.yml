@@ -2,9 +2,14 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: 
+      - main
+      - 'equipe2/rag-create-table'  # Quotes pour les branches avec /
+     # - 'equipe2/**'   #: toutes les branches equipe2/*
   pull_request:
-    branches: [ main, develop ]
+    branches: 
+      - main
+     # - 'equipe2/rag-create-table'
   workflow_dispatch:
 
 jobs:
