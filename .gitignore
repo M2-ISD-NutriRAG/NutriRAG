@@ -39,6 +39,7 @@ yarn-error.log*
 dist/
 dist-ssr/
 *.local
+package-lock.json
 
 # IDEs
 .vscode/
@@ -59,4 +60,15 @@ logs/
 
 # Snowflake
 .snowflake/
+
+# Allow README in .ssh directory
+!backend/.ssh/README.md
+
+# SSH keys and certificates (IMPORTANT: Never commit private keys!)
+*.p8
+*.pem
+*.key
+*_key
+*_key.pub
+rsa_key*
 

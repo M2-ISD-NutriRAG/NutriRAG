@@ -49,12 +49,12 @@ class Orchestrator:
         # TODO: Équipe 5 - Détection d'intention
         # Simple rule-based pour le moment
         query_lower = query.lower()
-        
-        if any(word in query_lower for word in ["recherche", "trouve", "recette"]):
+
+        if any(word in query_lower for word in ["search", "find", "recipe"]):
             return "search"
-        elif any(word in query_lower for word in ["transforme", "rends", "plus sain"]):
+        elif any(word in query_lower for word in ["transform", "make", "healthier"]):
             return "transform"
-        elif "puis" in query_lower or "ensuite" in query_lower:
+        elif "then" in query_lower or "afterwards" in query_lower:
             return "multi_step"
         
         return "search"  # Default

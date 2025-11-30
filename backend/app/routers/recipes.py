@@ -1,8 +1,9 @@
 from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
 
+from shared.snowflake.client import SnowflakeClient
+
 from app.models.recipe import Recipe, RecipeListResponse
-from app.services.snowflake_client import get_snowflake_session
 
 router = APIRouter()
 
@@ -14,19 +15,19 @@ async def get_recipe(recipe_id: int):
     # - Parsed ingredients
     # - Detailed nutrition
     # - Health score
-    
+
     # TODO: Équipe 1 - Implémentation de la requête Snowflake
-    # session = get_snowflake_session()
-    # result = session.sql(f"""
+    # client = SnowflakeClient()
+    # result = client.execute(f"""
     #     SELECT *
     #     FROM NutriRAG_Project.ENRICHED.recipes_detailed
     #     WHERE id = {recipe_id}
-    # """).collect()
-    
+    # """, fetch='all')
+
     # Mock response for now
     raise HTTPException(
         status_code=501,
-        detail="Équipe 1: Implémentation nécessaire - Requête Snowflake ENRICHED.recipes_detailed"
+        detail="Équipe 1: Implémentation nécessaire - Requête Snowflake ENRICHED.recipes_detailed",
     )
 
 
@@ -35,14 +36,14 @@ async def list_recipes(
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
     tag: Optional[str] = None,
-    min_rating: Optional[float] = None
+    min_rating: Optional[float] = None,
 ):
     # List recipes with pagination and filters
     # TODO: Équipe 1 - Implémentation de la requête Snowflake avec filtres
-    
+
     raise HTTPException(
         status_code=501,
-        detail="Équipe 1: Implémentation nécessaire - Requête des recettes avec filtres"
+        detail="Équipe 1: Implémentation nécessaire - Requête des recettes avec filtres",
     )
 
 
@@ -53,7 +54,7 @@ async def get_recipe_nutrition(recipe_id: int):
 
     raise HTTPException(
         status_code=501,
-        detail="Équipe 1: Implémentation nécessaire - Retourner la décomposition nutritionnelle détaillée par ingrédient"
+        detail="Équipe 1: Implémentation nécessaire - Retourner la décomposition nutritionnelle détaillée par ingrédient",
     )
 
 
@@ -64,6 +65,5 @@ async def get_random_recipes(count: int = Query(5, ge=1, le=20)):
 
     raise HTTPException(
         status_code=501,
-        detail="Équipe 1: Implémentation nécessaire - Échantillonnage des recettes aléatoires"
+        detail="Équipe 1: Implémentation nécessaire - Échantillonnage des recettes aléatoires",
     )
-

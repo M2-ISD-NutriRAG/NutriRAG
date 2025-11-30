@@ -20,22 +20,20 @@
 
 → orchestrator → router multi-agents
 
-
-
 # API CONTRACTS
 
 ## 1. API – Recipes (Équipe 1)
 
 ### GET /recipes/{id}
 
-| Field | Type |
-| --- | --- |
-| id | number |
-| name | string |
+| Field              | Type                          |
+| ------------------ | ----------------------------- |
+| id                 | number                        |
+| name               | string                        |
 | ingredients_parsed | array<{quantity, unit, name}> |
-| nutrition_detailed | object |
-| steps | array |
-| score_health | float |
+| nutrition_detailed | object                        |
+| steps              | array                         |
+| score_health       | float                         |
 
 → backend call Snowflake:
 
@@ -122,6 +120,7 @@ Response:
 ```
 
 → Backend call SP:
+
 ```sql
 CALL transform_recipe(:recipe_id, :goal, :constraints_json);
 ```
@@ -135,6 +134,7 @@ CALL transform_recipe(:recipe_id, :goal, :constraints_json);
 ### GET /analytics/kpi
 
 Response:
+
 ```json
 {
   "matching_rate": 0.87,
@@ -176,7 +176,6 @@ Orchestrator flow:
 3. Call Equipe 3 transform
 4. Return final result
 
-
 # MONOREPO (FastAPI + React + Snowflake)
 
 ```
@@ -192,14 +191,33 @@ nutrirag/
 │   │   │   ├── analytics.py
 │   │   │   └── orchestration.py
 │   │   ├── services/
-│   │   │   ├── snowflake_client.py
 │   │   │   ├── search_service.py
 │   │   │   ├── transform_service.py
 │   │   │   └── orchestrator.py
 │   │   ├── models/
 │   │   └── utils/
+│   ├── data/
+│   │   ├── embeddings/
+│   │   │   ├── README.md
+│   │   │   ├── config.py
+│   │   │   ├── create_table.py
+│   │   │   ├── embedding_generators.py
+│   │   │   ├── processors.py
+│   │   │   ├── table_operations.py
+│   │   │   ├── text_preparation.py
+│   │   │   └── types.py
+│   ├── shared/
+│   │   ├── snowflake/
+│   │   │   ├── README.md
+│   │   │   ├── client.py
+│   │   │   └── tables.py
+│   │   ├── models/
+│   │   │   ├── README.md
+│   │   │   └── embedding_models.py
+│   │   └── utils/
+│   │       └── console.py
 │   ├── requirements.txt
-│   ├── Dockerfile
+│   └── Dockerfile
 │
 ├── frontend/
 │   ├── src/
