@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 # Snowflake Key Pair Authentication Setup
+=======
+# Snowflake Key Pair Authentification Setup
+>>>>>>> b4341ca (feat: add Snowflake key pair authentication support)
 
 This guide walks you through setting up secure key pair authentication for Snowflake, eliminating the need for password/MFA prompts.
 
