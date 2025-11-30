@@ -190,4 +190,19 @@ Projet académique - Master ISD - Université Paris-Saclay
 
 ---
 
-**Bon projet ! 🚀**
+**Bon projet ! **
+
+# CI / CD 
+Pour lancer le CI localement :
+Windows:
+```
+cd c:\Users\hagop\Desktop\M2_ISD\Snowflake\NutriRAG
+.\test-ci-locally.ps1
+```
+
+Linux :
+```
+cd /path/to/NutriRAG
+chmod +x test-ci-locally.sh
+./test-ci-locally.sh
+```
