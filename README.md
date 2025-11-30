@@ -97,6 +97,25 @@ Les hooks configurés dans `.pre-commit-config.yaml` incluent :
 
 Une fois installé, pre-commit s'exécutera automatiquement avant chaque `git commit` et bloquera le commit si des problèmes sont détectés.
 
+**Corriger les erreurs détectées par pre-commit :**
+
+Si pre-commit bloque votre commit à cause d'erreurs, voici les commandes pour les corriger :
+
+```bash
+# Pour les erreurs de linting (ruff) - corrige automatiquement ce qui peut l'être
+ruff check --fix .
+
+# Pour vérifier les erreurs restantes sans les corriger
+ruff check .
+
+# Pour formater le code (ruff-format) - s'exécute automatiquement mais peut être lancé manuellement
+ruff format .
+
+# Après correction, recommencer le commit
+git add .
+git commit -m "votre message"
+```
+
 ### Développement
 
 #### Option 1: Développement local
