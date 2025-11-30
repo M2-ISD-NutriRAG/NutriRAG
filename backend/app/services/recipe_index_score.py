@@ -1,0 +1,121 @@
+from pydantic import BaseModel
+from typing import Dict, Any
+from backend.app.models.recipe import NutritionDetailed
+
+ingredients_amounts: Dict[str, float]
+nutrition_table: Dict[str, Dict[str, float]]
+
+ingredients_amounts_test = {"butter": 20.0, "milk": 200.0}
+
+
+def compute_nutrition_for_ingredient(
+    grams: float,
+    nutrition_per_100g: Dict[str, Any],
+) -> NutritionDetailed:
+    """
+    Compute nutrition for a given *amount* of an ingredient.
+    
+    Parameters
+    ----------
+    grams : amount used for ingredient
+    nutrition_per_100g : dict
+        Nutrients per 100 g for this ingredient from  DB:
+        {
+            "ENERGY_KCAL": 717.0,
+            "PROTEIN_G": 0.85,
+            "FAT_G": 81.11,
+            "SATURATED_FATS_G": 51.37,
+            "CARB_G": 0.06,
+            "FIBER_G": 0.0,
+            "SUGAR_G": 0.06,
+            "SODIUM_MG": 11.0,
+            "CALCIUM_MG": ...,
+            ...
+        }
+    
+    Returns
+    -------
+    NutritionDetailed
+        Nutrition **for that amount** of this ingredient (not per 100 g).
+    """
+    factor = grams / 100.0  # convert per 100g → per `grams`
+
+    def val(key: str, default: float = 0.0) -> float:
+        v = nutrition_per_100g.get(key)
+        if v is None:
+            return default
+        return float(v) * factor
+
+    return NutritionDetailed(
+        calories=val("ENERGY_KCAL"),
+        protein_g=val("PROTEIN_G"),
+        fat_g=val("FAT_G"),
+        saturated_fat_g=val("SATURATED_FATS_G"),
+        carbs_g=val("CARB_G"),
+        fiber_g=val("FIBER_G", 0.0),
+        sugar_g=val("SUGAR_G", 0.0),
+        sodium_mg=val("SODIUM_MG"),
+
+        calcium_mg=val("CALCIUM_MG", 0.0),
+        iron_mg=val("IRON_MG", 0.0),
+        magnesium_mg=val("MAGNESIUM_MG", 0.0),
+        potassium_mg=val("POTASSIUM_MG", 0.0),
+        vitamin_c_mg=val("VITC_MG", 0.0),
+    )
+
+
+def compute_recipe_nutrition_totals(
+    ingredients_amounts: Dict[str, float],
+    nutrition_table: Dict[str, Dict[str, Any]],
+) -> NutritionDetailed:
+    """
+    Compute recipe nutrition information for all ingredients
+
+    Parameters
+    ----------
+    ingredients_amounts : recipe ingredients quantity dict
+    nutrition_table : recipe ingredients nutrition dict
+    Returns
+    -------
+    NutritionDetailed
+        Total nutrients for the  recipe
+    """
+    recipe_nutrition = NutritionDetailed(
+        calories=0.0,
+        protein_g=0.0,
+        fat_g=0.0,
+        saturated_fat_g=0.0,
+        carbs_g=0.0,
+        fiber_g=0.0,
+        sugar_g=0.0,
+        sodium_mg=0.0,
+        calcium_mg=0.0,
+        iron_mg=0.0,
+        magnesium_mg=0.0,
+        potassium_mg=0.0,
+        vitamin_c_mg=0.0,
+    )
+
+    for name, grams in ingredients_amounts.items():
+        nutr_100g = nutrition_table.get(name)
+        if nutr_100g is None:
+            continue
+
+        ing_nut = compute_nutrition_for_ingredient(grams, nutr_100g)
+
+        recipe_nutrition.calories += ing_nut.calories
+        recipe_nutrition.protein_g += ing_nut.protein_g
+        recipe_nutrition.fat_g += ing_nut.fat_g
+        recipe_nutrition.saturated_fat_g += ing_nut.saturated_fat_g
+        recipe_nutrition.carbs_g += ing_nut.carbs_g
+        recipe_nutrition.fiber_g = (recipe_nutrition.fiber_g or 0.0) + (ing_nut.fiber_g or 0.0)
+        recipe_nutrition.sugar_g = (recipe_nutrition.sugar_g or 0.0) + (ing_nut.sugar_g or 0.0)
+        recipe_nutrition.sodium_mg += ing_nut.sodium_mg
+
+        recipe_nutrition.calcium_mg = (recipe_nutrition.calcium_mg or 0.0) + (ing_nut.calcium_mg or 0.0)
+        recipe_nutrition.iron_mg = (recipe_nutrition.iron_mg or 0.0) + (ing_nut.iron_mg or 0.0)
+        recipe_nutrition.magnesium_mg = (recipe_nutrition.magnesium_mg or 0.0) + (ing_nut.magnesium_mg or 0.0)
+        recipe_nutrition.potassium_mg = (recipe_nutrition.potassium_mg or 0.0) + (ing_nut.potassium_mg or 0.0)
+        recipe_nutrition.vitamin_c_mg = (recipe_nutrition.vitamin_c_mg or 0.0) + (ing_nut.vitamin_c_mg or 0.0)
+
+    return recipe_nutrition
