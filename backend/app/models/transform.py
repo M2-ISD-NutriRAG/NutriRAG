@@ -34,6 +34,7 @@ class Recipe(BaseModel):
 class TransformRequest(BaseModel):
     # Transform request body
     recipe: Recipe
+    ingredients_to_remove: Optional[List[str]] = None
     constraints: Optional[TransformConstraints] = None
 
 class Substitution(BaseModel):
@@ -46,26 +47,27 @@ class Substitution(BaseModel):
 
 class NutritionDelta(BaseModel):
     # Changes in nutrition values
-    calories: float
-    protein_g: float
-    fat_g: float
-    carbs_g: float
-    fiber_g: float
-    sodium_mg: float
-    score_health: float
+    calories: float = 0.0
+    protein_g: float = 0.0
+    saturated_fats_g: float = 0.0
+    fat_g: float = 0.0 
+    carb_g: float = 0.0 
+    fiber_g: float = 0.0 
+    sodium_mg: float = 0.0 
+    sugar_g: float = 0.0 
+    score_health: float = 0.0 
 
 
 class TransformResponse(BaseModel):
     # Transform response
-    recipe_id: int
+    recipe: Recipe
     original_name: str
     transformed_name: str
     
-    substitutions: List[Substitution]
+    substitutions: Optional[List[Substitution]]
     
-    nutrition_before: float ## nutri score before
-    nutrition_after: float ## nutri score after 
-    delta: NutritionDelta
+    nutrition_before: Optional[NutritionDelta] ## nutri score before
+    nutrition_after: Optional[NutritionDelta] ## nutri score after 
     
     success: bool
     message: Optional[str] = None
