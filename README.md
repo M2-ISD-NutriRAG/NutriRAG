@@ -83,10 +83,8 @@ npm install
 Pre-commit permet d'exécuter automatiquement des vérifications de code (linting, formatage) avant chaque commit.
 
 ```bash
-# Installer pre-commit
+# Depuis la racine du projet, avec venv activé
 pip install pre-commit
-
-# Installer les hooks pre-commit
 pre-commit install
 
 # (Optionnel) Exécuter pre-commit sur tous les fichiers
