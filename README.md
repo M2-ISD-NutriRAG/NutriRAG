@@ -98,6 +98,7 @@ pre-commit run --all-files
 Les hooks configurés dans `.pre-commit-config.yaml` incluent :
 
 **Hooks généraux :**
+
 - **trailing-whitespace** : Supprime les espaces en fin de ligne
 - **end-of-file-fixer** : Assure qu'il y a une ligne vide en fin de fichier
 - **check-yaml** : Valide la syntaxe des fichiers YAML
@@ -105,6 +106,7 @@ Les hooks configurés dans `.pre-commit-config.yaml` incluent :
 - **check-added-large-files** : Empêche l'ajout de gros fichiers
 
 **Hooks Python :**
+
 - **Ruff** : Linting Python (détection d'erreurs, respect des conventions)
 - **Ruff Format** : Formatage automatique du code Python
 
@@ -183,6 +185,25 @@ Accéder à :
 ## Testing
 
 For information on how to write and run tests, see [Testing Guide](./backend/tests/README.md)
+
+## Documentation Backend
+
+### Modules Principaux
+
+- **[Embeddings Pipeline](backend/data/embeddings/README.md)** - Création de tables Snowflake avec embeddings pour la recherche sémantique
+
+  - Configuration des modèles d'embedding (Cortex vs local)
+  - Modes de traitement (in-memory vs batch)
+  - Guide de dépannage
+
+- **[Snowflake Integration](backend/shared/snowflake/README.md)** - Client Snowflake et définitions de tables
+
+  - Authentification (password vs key pair)
+  - Schémas de tables (RecipesSampleTable, RecipesUnifiedEmbeddingsTable)
+
+- **[Embedding Models](backend/shared/models/README.md)** - Modèles d'embedding disponibles
+  - Modèles locaux (SentenceTransformers)
+  - Modèles Snowflake Cortex
 
 ## Équipes & Responsabilités
 
