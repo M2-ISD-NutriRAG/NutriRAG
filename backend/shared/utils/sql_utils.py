@@ -1,7 +1,7 @@
 """
 SQL utilities for executing SQL files and queries with Snowflake.
 
-This module provides reusable functions for SQL operations using the SnowflakeSetup
+This module provides reusable functions for SQL operations using the SnowflakeClient
 connection management.
 """
 
@@ -38,7 +38,7 @@ def load_sql_file(sql_file_path: Path) -> str:
 
 def execute_sql_file(sql_file_path: Path, silent: bool = False) -> bool:
     """
-    Execute a SQL file against Snowflake using the existing SnowflakeSetup connection.
+    Execute a SQL file against Snowflake using the SnowflakeClient.
 
     Args:
         sql_file_path: Path to the SQL file to execute
@@ -80,80 +80,54 @@ def execute_sql_content(
         print(f"   {sql_content[:200]}...")
         print()
 
-    # Get connection using SnowflakeClient
-    client = None
-    conn = None
-
     try:
-        client = SnowflakeClient(autoconnect=True)
-        conn = client._conn
+        with SnowflakeClient() as client:
+            if not silent:
+                # Show connection info
+                conn_info = client.execute(
+                    "SELECT CURRENT_USER(), CURRENT_ROLE(), CURRENT_WAREHOUSE(), CURRENT_DATABASE(), CURRENT_SCHEMA()",
+                    fetch="one",
+                )
+                if conn_info:
+                    user, role, warehouse, database, schema = conn_info
+                    print("✅ Connected successfully!")
+                    print(f"   User: {user}")
+                    print(f"   Role: {role}")
+                    print(f"   Warehouse: {warehouse}")
+                    print(f"   Database: {database}")
+                    print(f"   Schema: {schema}")
+                    print()
 
-        if not silent:
-            # Show connection info
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT CURRENT_USER(), CURRENT_ROLE(), CURRENT_WAREHOUSE(), CURRENT_DATABASE(), CURRENT_SCHEMA()"
-            )
-            user, role, warehouse, database, schema = cursor.fetchone()
-            cursor.close()
-
-            print("✅ Connected successfully!")
-            print(f"   User: {user}")
-            print(f"   Role: {role}")
-            print(f"   Warehouse: {warehouse}")
-            print(f"   Database: {database}")
-            print(f"   Schema: {schema}")
-            print()
-
-        # Execute the SQL
-        cursor = conn.cursor()
-
-        try:
-            # Clean SQL (remove comments and empty lines)
-            clean_sql = "\n".join(
-                line
-                for line in sql_content.split("\n")
-                if line.strip() and not line.strip().startswith("--")
-            )
+            # Clean SQL (remove empty lines and full-line comments only)
+            # Only removes lines that are purely comments (start with -- after whitespace)
+            # Preserves inline comments and -- within strings
+            lines = []
+            for line in sql_content.split("\n"):
+                stripped = line.strip()
+                if stripped and not stripped.startswith("--"):
+                    lines.append(line)  # Keep original line with indentation
+            clean_sql = "\n".join(lines)
 
             if not silent:
                 print(f"📋 Executing {description}")
 
-            cursor.execute(clean_sql)
-
-            # Try to fetch results
-            try:
-                result = cursor.fetchall()
-                if result:
-                    if not silent:
-                        print(f"✅ Result: {result}")
-                    return True
-                else:
-                    if not silent:
-                        print("✅ Execution completed successfully")
-                    return True
-            except Exception:
-                # Some statements don't return results
+            # Execute the SQL - let the client handle whether to fetch results or not
+            result = client.execute(clean_sql)
+            if result:
+                if not silent:
+                    print(f"✅ Result: {result}")
+            else:
                 if not silent:
                     print("✅ Execution completed successfully")
-                return True
-
-        except Exception as e:
-            if not silent:
-                print(f"❌ Error executing {description}: {e}")
-            return False
-        finally:
-            cursor.close()
+            return True
 
     except Exception as e:
-        if not silent:
-            print(f"❌ Connection error: {e}")
+        print(f"❌ Connection error: {type(e).__name__}: {e}")
         return False
-    finally:
-        if client is not None:
-            client.close()
-            if not silent:
-                print("🔌 Connection closed")
+
+    # Connection automatically closed by context manager
+    if not silent:
+        print("🔌 Connection closed")
 
 
 def execute_sql_query(
@@ -170,45 +144,48 @@ def execute_sql_query(
     Returns:
         Query results as list of dictionaries if fetch_results=True, None otherwise
     """
-    client = None
     try:
-        client = SnowflakeClient(autoconnect=True)
-        if not silent:
-            print(
-                f"🔍 Executing query: {query[:100]}{'...' if len(query) > 100 else ''}"
-            )
-        # Use the client's execute method
-        # Assume client.execute returns a list of tuples (rows) and optionally column names
-        # If fetch_results is False, just execute without fetching
-        if fetch_results:
-            # Use fetch="all" to get all rows
-            rows = client.execute(query, fetch="all")
-            # Try to get column names from client (if available)
-            # If client.execute returns list of tuples, get column names from client.get_columns or similar
-            # For now, assume client.execute returns list of tuples and client has get_columns method
-            columns = getattr(client, "get_columns", lambda q: [])(query)
-            # If columns is empty, try to infer from first row if possible
-            if not columns and rows and hasattr(rows[0], "_fields"):
-                columns = list(rows[0]._fields)
-            # Convert to list of dictionaries
-            results = [
-                dict(zip(columns, row)) for row in rows
-            ] if columns else [row for row in rows]
+        with SnowflakeClient() as client:
             if not silent:
-                print(f"✅ Query returned {len(results)} rows")
-            return results
-        else:
-            client.execute(query, fetch=None)
-            if not silent:
-                print("✅ Query executed successfully")
-            return None
+                print(
+                    f"🔍 Executing query: {query[:100]}{'...' if len(query) > 100 else ''}"
+                )
+
+            if fetch_results:
+                # Use client's execute method to fetch results
+                result = client.execute(query, fetch="all")
+
+                # Convert to list of dictionaries if we have results
+                if result:
+                    if not silent:
+                        print(f"✅ Query returned {len(result)} rows")
+
+                    # Convert tuples to list of dictionaries
+                    results = []
+                    for row in result:
+                        if isinstance(row, (list, tuple)):
+                            # For now, create generic column names
+                            columns = [f"col_{i}" for i in range(len(row))]
+                            results.append(dict(zip(columns, row)))
+                        else:
+                            # Single value result
+                            results.append({"col_0": row})
+
+                    return results
+                else:
+                    if not silent:
+                        print("✅ Query returned 0 rows")
+                    return []
+            else:
+                # Execute without fetching results
+                client.execute(query)
+                if not silent:
+                    print("✅ Query executed successfully")
+                return None
+
     except Exception as e:
-        if not silent:
-            print(f"❌ Query execution error: {e}")
+        print(f"❌ Query execution error: {type(e).__name__}: {e}")
         raise
-    finally:
-        if client is not None:
-            client.close()
 
 
 if __name__ == "__main__":
@@ -225,9 +202,10 @@ if __name__ == "__main__":
                 print(f"✅ Connected as {result[1]} (Snowflake {result[0]})")
                 success = True
             else:
+                print("❌ Connection test failed: No result returned")
                 success = False
     except Exception as e:
-        print(f"❌ Connection test failed: {e}")
+        print(f"❌ Connection test failed: {type(e).__name__}: {e}")
         success = False
 
     if success:
