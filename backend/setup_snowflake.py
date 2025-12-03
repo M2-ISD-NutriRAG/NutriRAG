@@ -357,6 +357,108 @@ class SnowflakeSetup:
             self.print_error(f"Failed to install dependencies: {e}")
             return False
 
+    def get_connection(self, silent: bool = False):
+        """
+        Get a Snowflake connection using key pair authentication.
+
+        Args:
+            silent: If True, suppress print statements (for use in other scripts)
+
+        Returns:
+            snowflake.connector.SnowflakeConnection: Active connection
+
+        Raises:
+            ImportError: If required packages are not installed
+            ValueError: If required environment variables are missing
+            FileNotFoundError: If private key file not found
+            Exception: If connection fails
+        """
+        # Check if dependencies are installed
+        try:
+            import snowflake.connector
+        except ImportError:
+            raise ImportError("snowflake-connector-python is not installed!")
+
+        # Load environment variables
+        try:
+            from dotenv import load_dotenv
+
+            load_dotenv(self.env_file)
+        except ImportError:
+            if not silent:
+                self.print_warning(
+                    "python-dotenv not installed. Make sure env vars are set manually."
+                )
+
+        import os
+
+        # Get Snowflake credentials
+        account = os.getenv("SNOWFLAKE_ACCOUNT")
+        user = os.getenv("SNOWFLAKE_USER")
+        warehouse = os.getenv("SNOWFLAKE_WAREHOUSE")
+        database = os.getenv("SNOWFLAKE_DATABASE")
+        schema = os.getenv("SNOWFLAKE_SCHEMA")
+        private_key_path = os.getenv("SNOWFLAKE_PRIVATE_KEY_PATH")
+        role = os.getenv("SNOWFLAKE_ROLE")
+
+        # Check required variables
+        missing_vars = []
+        for var_name, var_value in [
+            ("SNOWFLAKE_ACCOUNT", account),
+            ("SNOWFLAKE_USER", user),
+            ("SNOWFLAKE_PRIVATE_KEY_PATH", private_key_path),
+        ]:
+            if not var_value:
+                missing_vars.append(var_name)
+
+        if missing_vars:
+            raise ValueError(
+                f"Missing environment variables: {', '.join(missing_vars)}"
+            )
+
+        # Check if private key file exists
+        key_file = Path(private_key_path)
+        if not key_file.is_absolute():
+            key_file = self.project_root / private_key_path
+
+        if not key_file.exists():
+            raise FileNotFoundError(f"Private key file not found: {key_file}")
+
+        # Load private key
+        from cryptography.hazmat.backends import default_backend
+        from cryptography.hazmat.primitives import serialization
+
+        with open(key_file, "rb") as key:
+            p_key = serialization.load_pem_private_key(
+                key.read(), password=None, backend=default_backend()
+            )
+
+        # Serialize private key
+        pkb = p_key.private_bytes(
+            encoding=serialization.Encoding.DER,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        )
+
+        # Create connection
+        conn_params = {
+            "user": user,
+            "account": account,
+            "private_key": pkb,
+            "ocsp_fail_open": True,
+        }
+
+        if warehouse:
+            conn_params["warehouse"] = warehouse
+        if database:
+            conn_params["database"] = database
+        if schema:
+            conn_params["schema"] = schema
+        if role:
+            conn_params["role"] = role
+
+        return snowflake.connector.connect(**conn_params)
+
     def test_connection(self, detailed: bool = False) -> bool:
         """
         Test the Snowflake connection with the new key pair authentication.
@@ -371,7 +473,10 @@ class SnowflakeSetup:
 
         # Check if dependencies are installed
         try:
-            import snowflake.connector
+            import importlib.util
+
+            if importlib.util.find_spec("snowflake.connector") is None:
+                raise ImportError("snowflake-connector-python not found")
         except ImportError:
             self.print_error("snowflake-connector-python is not installed!")
             self.print_info("Install it using: pip install -r requirements.txt")
@@ -431,39 +536,9 @@ class SnowflakeSetup:
         print(f"  Auth:      Key Pair ({key_file})\n")
 
         try:
-            # Load private key
-            from cryptography.hazmat.backends import default_backend
-            from cryptography.hazmat.primitives import serialization
-
-            with open(key_file, "rb") as key:
-                p_key = serialization.load_pem_private_key(
-                    key.read(), password=None, backend=default_backend()
-                )
-
-            # Serialize private key
-            pkb = p_key.private_bytes(
-                encoding=serialization.Encoding.DER,
-                format=serialization.PrivateFormat.PKCS8,
-                encryption_algorithm=serialization.NoEncryption(),
-            )
-
-            # Create connection
+            # Use the new get_connection method
             self.print_info("Connecting to Snowflake...")
-            conn_params = {
-                "user": user,
-                "account": account,
-                "private_key": pkb,
-                "ocsp_fail_open": True,
-            }
-
-            if warehouse:
-                conn_params["warehouse"] = warehouse
-            if database:
-                conn_params["database"] = database
-            if schema:
-                conn_params["schema"] = schema
-
-            conn = snowflake.connector.connect(**conn_params)
+            conn = self.get_connection(silent=True)
 
             self.print_success("Connection successful! No MFA prompt required!")
 
