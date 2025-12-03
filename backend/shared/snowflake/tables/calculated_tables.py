@@ -1,4 +1,4 @@
-"""Snowflake table definitions for INGREDIENTS_QUANTITY, Ingredients Tagged and INGREDIENTS_MATCHING tables."""
+"""Snowflake table definitions for INGREDIENTS_QUANTITY, INGREDIENTS_TAGGED and INGREDIENTS_MATCHING tables."""
 
 from typing import List
 
