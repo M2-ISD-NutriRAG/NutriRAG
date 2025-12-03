@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import List, Optional
 
-from shared.snowflake.tables import Table
+from shared.snowflake.tables.recipes_sample_table import Table
 
 
 @dataclass
@@ -14,7 +14,7 @@ class TableConfig:
     Attributes:
         source_table: Source table (e.g., RecipesSampleTable).
         target_table: Target table (e.g., RecipesUnifiedEmbeddingsTable).
-        columns_to_concat: List of column enums (e.g. RecipesSampleTable.Columns) to concatenate for embedding.
+        columns_to_concat: List of column enums (e.g. RecipesSampleTable) to concatenate for embedding.
         drop_existing: Whether to drop and recreate the target table.
         keep_concatenated_text: Whether to keep the CONCATENATED_TEXT_FOR_RAG column in the final table.
                                Useful for debugging or analysis. Default is False to save storage.
