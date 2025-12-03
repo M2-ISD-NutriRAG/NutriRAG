@@ -14,7 +14,10 @@ Quick Reference:
 """
 
 from shared.models.embedding_models import EmbeddingModel
-from shared.snowflake.tables import RecipesSampleTable, RecipesUnifiedEmbeddingsTable
+from shared.snowflake.tables.recipes_sample_table import (
+    RecipesSampleTable,
+    RecipesUnifiedEmbeddingsTable,
+)
 
 from data.embeddings.types import ProcessingMode
 
@@ -55,9 +58,9 @@ TARGET_TABLE = RecipesUnifiedEmbeddingsTable
 
 # Column names
 CONCATENATED_TEXT_FOR_RAG = (
-    RecipesUnifiedEmbeddingsTable.Columns.CONCATENATED_TEXT_FOR_RAG.value
+    RecipesUnifiedEmbeddingsTable.CONCATENATED_TEXT_FOR_RAG.value
 )
-EMBEDDING = RecipesUnifiedEmbeddingsTable.Columns.EMBEDDING.value
+EMBEDDING = RecipesUnifiedEmbeddingsTable.EMBEDDING.value
 
 # Snowflake constants
 CORTEX_EMBED_FUNCTION_PREFIX = "SNOWFLAKE.CORTEX.EMBED_TEXT_"

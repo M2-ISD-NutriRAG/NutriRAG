@@ -4,7 +4,7 @@ from shared.models.embedding_models import (
     get_embedding_config,
 )
 from shared.snowflake.client import SnowflakeClient
-from shared.snowflake.tables import (
+from shared.snowflake.tables.recipes_sample_table import (
     Table,
     RecipesSampleTable,
     RecipesUnifiedEmbeddingsTable,

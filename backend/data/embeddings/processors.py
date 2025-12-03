@@ -59,7 +59,9 @@ class EmbeddingPipeline:
         Returns:
             DataFrame with CONCATENATED_TEXT_FOR_RAG column added.
         """
-        return prepare_text_column(source_df, self.table_config.columns_to_concat)
+        return prepare_text_column(
+            source_df, self.table_config.columns_to_concat
+        )
 
     def _finalize_dataframe(self, df_with_embeddings: DataFrame) -> DataFrame:
         """Finalize DataFrame by optionally removing concatenated text column.
@@ -90,9 +92,11 @@ class EmbeddingPipeline:
         """
         print_message(
             MessageType.SUCCESS,
-            f"💾 Saving to '{self.table_config.target_table.NAME}' (mode: {mode})...",
+            f"💾 Saving to '{self.table_config.target_table.get_table_name()}' (mode: {mode})...",
         )
-        df_final.write.mode(mode).save_as_table(self.table_config.target_table.NAME)
+        df_final.write.mode(mode).save_as_table(
+            self.table_config.target_table.get_table_name()
+        )
         print_message(MessageType.SUCCESS, "✓ Complete.")
 
     def process_in_memory(self, source_df: DataFrame) -> None:
@@ -184,7 +188,7 @@ class BatchProcessor:
     def _process_batch_chunk(
         self,
         batch_data: List[dict[str, Any]],
-        model: 'SentenceTransformer',
+        model: "SentenceTransformer",
     ) -> None:
         """Process a single batch of data and save to Snowflake.
 
@@ -223,19 +227,23 @@ class BatchProcessor:
         # Save to table
         write_mode = self._determine_write_mode()
         df_final.write.mode(write_mode).save_as_table(
-            self.table_config.target_table.NAME
+            self.table_config.target_table.get_table_name()
         )
-        print_message(MessageType.SUCCESS, f"   ✓ Saved batch ({len(batch_data)} rows)")
+        print_message(
+            MessageType.SUCCESS, f"   ✓ Saved batch ({len(batch_data)} rows)"
+        )
 
     def _drop_existing_table_if_needed(self) -> None:
         """Drop existing table if drop_existing flag is set."""
         if self.table_config.drop_existing:
             print_message(
                 MessageType.WARNING,
-                f"🗑️  Dropping table '{self.table_config.target_table.NAME}' if exists...",
+                f"🗑️  Dropping table '{self.table_config.target_table.get_table_name()}' if exists...",
             )
             try:
-                self.session.table(self.table_config.target_table.NAME).drop_table()
+                self.session.table(
+                    self.table_config.target_table.get_table_name()
+                ).drop_table()
             except Exception as e:
                 # Table likely doesn't exist, which is fine
                 print_message(
@@ -244,7 +252,7 @@ class BatchProcessor:
                 )
 
     def process_batch_mode(
-        self, source_df: DataFrame, model: 'SentenceTransformer'
+        self, source_df: DataFrame, model: "SentenceTransformer"
     ) -> None:
         """Process dataset in batches using streaming.
 
@@ -273,7 +281,9 @@ class BatchProcessor:
         )
 
         # Stream and process batches
-        print_message(MessageType.HIGHLIGHT, "📡 Streaming data from Snowflake...")
+        print_message(
+            MessageType.HIGHLIGHT, "📡 Streaming data from Snowflake..."
+        )
         iterator = df_with_text.to_local_iterator()
 
         for batch_data in self._stream_batches(iterator):
@@ -342,7 +352,8 @@ def process_batch_mode(
 
     # Load model
     print_message(
-        MessageType.HIGHLIGHT, f"📦 Loading model '{embedding_config.model.value}'..."
+        MessageType.HIGHLIGHT,
+        f"📦 Loading model '{embedding_config.model.value}'...",
     )
     model = SentenceTransformer(embedding_config.model.value)
 
