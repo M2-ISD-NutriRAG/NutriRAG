@@ -82,6 +82,7 @@ def execute_sql_content(
 
     # Get connection using SnowflakeSetup
     setup = SnowflakeSetup()
+    conn = None
 
     try:
         conn = setup.get_connection(silent=True)
@@ -148,7 +149,7 @@ def execute_sql_content(
             print(f"❌ Connection error: {e}")
         return False
     finally:
-        if "conn" in locals():
+        if conn is not None:
             conn.close()
             if not silent:
                 print("🔌 Connection closed")
@@ -169,6 +170,8 @@ def execute_sql_query(
         Query results as list of dictionaries if fetch_results=True, None otherwise
     """
     setup = SnowflakeSetup()
+    conn = None
+    cursor = None
 
     try:
         conn = setup.get_connection(silent=True)
@@ -209,9 +212,9 @@ def execute_sql_query(
             print(f"❌ Query execution error: {e}")
         raise
     finally:
-        if "cursor" in locals():
+        if cursor is not None:
             cursor.close()
-        if "conn" in locals():
+        if conn is not None:
             conn.close()
 
 
