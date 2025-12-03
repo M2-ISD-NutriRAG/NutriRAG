@@ -16,7 +16,10 @@ from data.embeddings.config import (
     TARGET_TABLE,
 )
 from data.embeddings.processors import process_in_memory, process_batch_mode
-from data.embeddings.table_operations import get_source_dataframe, verify_table_schema
+from data.embeddings.table_operations import (
+    get_source_dataframe,
+    verify_table_schema,
+)
 from data.embeddings.types import TableConfig, ProcessingConfig, ProcessingMode
 
 
@@ -42,7 +45,7 @@ def create_embeddings_table(
     """
     print_message(
         MessageType.HEADER,
-        f"Creating Embeddings Table: {table_config.target_table.NAME}",
+        f"Creating Embeddings Table: {table_config.target_table.get_table_name()}",
         width=60,
     )
 
@@ -62,7 +65,11 @@ def create_embeddings_table(
         process_in_memory(session, source_df, table_config, embedding_config)
     else:
         process_batch_mode(
-            session, source_df, table_config, embedding_config, processing_config
+            session,
+            source_df,
+            table_config,
+            embedding_config,
+            processing_config,
         )
 
 
@@ -89,7 +96,9 @@ def main() -> None:
         # Build processing config
         processing_config = ProcessingConfig(
             mode=PROCESSING_MODE,
-            batch_size=BATCH_SIZE if PROCESSING_MODE == ProcessingMode.BATCH else None,
+            batch_size=BATCH_SIZE
+            if PROCESSING_MODE == ProcessingMode.BATCH
+            else None,
         )
 
         # Create table
