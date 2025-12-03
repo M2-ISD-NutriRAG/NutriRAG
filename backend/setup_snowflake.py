@@ -357,6 +357,118 @@ class SnowflakeSetup:
             self.print_error(f"Failed to install dependencies: {e}")
             return False
 
+    def update_env_file(self) -> bool:
+        """
+        Update the .env file with the private key path.
+
+        Returns:
+            True if .env file was updated successfully, False otherwise
+        """
+        self.print_header("Step 5: Update .env File with Private Key Path")
+
+        # Get the absolute path of the private key
+        default_key_path = str(self.private_key_path.resolve())
+
+        self.print_info(f"Default private key location: {default_key_path}")
+
+        if not self.private_key_path.exists():
+            self.print_warning(
+                "Private key file not found at default location!"
+            )
+            self.print_info(
+                "Please ensure the key file exists before continuing."
+            )
+
+        print(
+            f"\n{Colors.BOLD}Enter the absolute path to your private key:{Colors.ENDC}"
+        )
+        print(
+            f"{Colors.OKCYAN}(Press Enter to use default: {default_key_path}){Colors.ENDC}"
+        )
+
+        user_input = input(
+            f"{Colors.BOLD}Private key path: {Colors.ENDC}"
+        ).strip()
+
+        if user_input:
+            key_path = Path(user_input)
+            if not key_path.is_absolute():
+                self.print_warning(
+                    "Path is not absolute. Converting to absolute path..."
+                )
+                key_path = key_path.resolve()
+        else:
+            key_path = self.private_key_path.resolve()
+
+        # Verify the key file exists
+        if not key_path.exists():
+            self.print_error(f"Private key file not found at: {key_path}")
+            if not self.confirm_action("Continue anyway and add path to .env?"):
+                return False
+        else:
+            self.print_success(f"Private key file verified: {key_path}")
+
+        # Read existing .env file if it exists
+        env_lines = []
+        key_path_found = False
+
+        if self.env_file.exists():
+            with open(self.env_file, "r") as f:
+                env_lines = f.readlines()
+
+            # Update existing SNOWFLAKE_PRIVATE_KEY_PATH if present
+            for i, line in enumerate(env_lines):
+                if line.startswith("SNOWFLAKE_PRIVATE_KEY_PATH="):
+                    env_lines[i] = f"SNOWFLAKE_PRIVATE_KEY_PATH={key_path}\n"
+                    key_path_found = True
+                    break
+
+        # If not found, add it
+        if not key_path_found:
+            # If file doesn't exist, copy from .env.example
+            if not self.env_file.exists():
+                env_example = self.project_root / ".env.example"
+                if env_example.exists():
+                    self.print_info("Creating .env file from .env.example...")
+                    with open(env_example, "r") as f:
+                        env_lines = f.readlines()
+
+                    # Update the SNOWFLAKE_PRIVATE_KEY_PATH line
+                    for i, line in enumerate(env_lines):
+                        if line.startswith("SNOWFLAKE_PRIVATE_KEY_PATH="):
+                            env_lines[i] = (
+                                f"SNOWFLAKE_PRIVATE_KEY_PATH={key_path}\n"
+                            )
+                            key_path_found = True
+                            break
+
+            # If still not found, append it
+            if not key_path_found:
+                if env_lines and not env_lines[-1].endswith("\n"):
+                    env_lines.append("\n")
+                env_lines.append(f"SNOWFLAKE_PRIVATE_KEY_PATH={key_path}\n")
+
+        # Write back to .env file
+        try:
+            with open(self.env_file, "w") as f:
+                f.writelines(env_lines)
+
+            self.print_success(f"Updated .env file: {self.env_file}")
+            self.print_success(f"SNOWFLAKE_PRIVATE_KEY_PATH={key_path}")
+
+            print(f"\n{Colors.BOLD}Important:{Colors.ENDC}")
+            print(
+                "  * Make sure to fill in other Snowflake credentials in .env"
+            )
+            print("  * Required: SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER")
+            print(f"  * Edit the file: {self.env_file}\n")
+
+            return True
+
+        except Exception as e:
+            self.print_error(f"Failed to update .env file: {e}")
+            return False
+
     def test_connection(self, detailed: bool = False) -> bool:
         """
         Test the Snowflake connection with the new key pair authentication.
@@ -501,9 +613,6 @@ class SnowflakeSetup:
                 "  2. Check that SNOWFLAKE_USER matches the user with the public key"
             )
             print("  3. Ensure private key file has correct permissions (600)")
-            print(
-                f"  4. See troubleshooting guide: {self.ssh_dir / 'README.md'}"
-            )
             return False
 
     def show_current_config(self) -> None:
@@ -619,7 +728,12 @@ class SnowflakeSetup:
             self.print_error("Setup incomplete: Dependencies not satisfied")
             return False
 
-        # Step 5: Test connection
+        # Step 5: Update .env file with private key path
+        if not self.update_env_file():
+            self.print_error("Setup incomplete: .env file not configured")
+            return False
+
+        # Step 6: Test connection
         self.print_info("\nNow let's test the connection...")
         self.test_connection(detailed=True)
 
@@ -627,12 +741,14 @@ class SnowflakeSetup:
         self.print_header("Setup Complete!")
         print(f"{Colors.OKGREEN}✓ RSA key pair generated{Colors.ENDC}")
         print(f"{Colors.OKGREEN}✓ Public key added to Snowflake{Colors.ENDC}")
-        print(f"{Colors.OKGREEN}✓ Dependencies checked{Colors.ENDC}\n")
+        print(f"{Colors.OKGREEN}✓ Dependencies checked{Colors.ENDC}")
+        print(
+            f"{Colors.OKGREEN}✓ .env file updated with private key path{Colors.ENDC}\n"
+        )
 
         print(f"{Colors.BOLD}Next steps:{Colors.ENDC}")
         print("  * Test your connection using option 2 from the menu")
-        print("  * You should no longer see MFA prompts")
-        print(f"  * For troubleshooting, see: {self.ssh_dir / 'README.md'}\n")
+        print("  * You should no longer see MFA prompts\n")
 
         return True
 
@@ -658,6 +774,9 @@ class SnowflakeSetup:
         print(f"{Colors.OKCYAN}5.{Colors.ENDC} Regenerate RSA keys only")
         print(f"{Colors.OKCYAN}6.{Colors.ENDC} Show public key for Snowflake")
         print(f"{Colors.OKCYAN}7.{Colors.ENDC} Install dependencies")
+        print(
+            f"{Colors.OKCYAN}8.{Colors.ENDC} Update .env file with private key path"
+        )
         print(f"{Colors.OKCYAN}0.{Colors.ENDC} Exit\n")
 
     def run_interactive(self) -> None:
@@ -665,7 +784,7 @@ class SnowflakeSetup:
         while True:
             self.show_menu()
             choice = input(
-                f"{Colors.BOLD}Enter your choice [0-7]: {Colors.ENDC}"
+                f"{Colors.BOLD}Enter your choice [0-8]: {Colors.ENDC}"
             ).strip()
 
             if choice == "1":
@@ -706,6 +825,10 @@ class SnowflakeSetup:
                 self.install_dependencies()
                 input(f"\n{Colors.BOLD}Press Enter to continue...{Colors.ENDC}")
 
+            elif choice == "8":
+                self.update_env_file()
+                input(f"\n{Colors.BOLD}Press Enter to continue...{Colors.ENDC}")
+
             elif choice == "0":
                 print(
                     f"\n{Colors.OKGREEN}Thank you for using Snowflake Setup!{Colors.ENDC}\n"
@@ -714,7 +837,7 @@ class SnowflakeSetup:
 
             else:
                 self.print_error(
-                    "Invalid choice. Please enter a number between 0 and 7."
+                    "Invalid choice. Please enter a number between 0 and 8."
                 )
                 input(f"\n{Colors.BOLD}Press Enter to continue...{Colors.ENDC}")
 
