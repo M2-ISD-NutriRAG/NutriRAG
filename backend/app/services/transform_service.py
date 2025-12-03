@@ -362,6 +362,9 @@ class TransformService:
         
         # Copier les données pour filtrage selon contraintes
         df_filtered = self.pca_data.copy()
+
+        # 03/12 ajout filtrage sur category_llm 
+        df_filtered = df_filtered[df_filtered['Category_LLM'] == row['Category_LLM']]
         
         # Appliquer les filtres de contraintes
         if constraints:
@@ -455,6 +458,20 @@ class TransformService:
             })
         
         return result
+    
+
+    def juge_substitut(self, candidats):
+        """
+        Fonction qui fait le choix final de l'ingrédient qui sera substitué parmis la liste des candidats
+
+        Args:
+            candidats: Liste des ingrédients candidats (extraits de get_neighbors_pca() )
+
+        Returns:
+            ingredient_id
+        """
+        pass
+
     
     def substituer_ledit_ingr(self, ingredient: str, contraintes: TransformConstraints) -> tuple[str, bool]:
         """
