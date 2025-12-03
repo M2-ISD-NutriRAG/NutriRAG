@@ -175,6 +175,7 @@ class SnowflakeClient:
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         self.close()
 
+<<<<<<< HEAD
     def __repr__(self) -> str:
         """Redact sensitive fields when object is printed or logged."""
         safe_config = {
@@ -183,6 +184,8 @@ class SnowflakeClient:
         }
         return f"SnowflakeClient(config={safe_config})"
 
+=======
+>>>>>>> 555951e (fix: better architecture for create embeddings table)
     def execute(
         self,
         query: str,
@@ -219,7 +222,10 @@ class SnowflakeClient:
         ok = self._conn is not None and not self._conn.is_closed()
         version = None
         if ok:
+<<<<<<< HEAD
             cur = None
+=======
+>>>>>>> 555951e (fix: better architecture for create embeddings table)
             try:
                 cur = self._conn.cursor()
                 cur.execute("SELECT CURRENT_VERSION()")
@@ -227,6 +233,10 @@ class SnowflakeClient:
             except Exception:
                 version = None
             finally:
+<<<<<<< HEAD
                 if cur is not None:
                     cur.close()
+=======
+                cur.close()
+>>>>>>> 555951e (fix: better architecture for create embeddings table)
         return {"ok": ok, "version": version}

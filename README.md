@@ -182,10 +182,13 @@ Accéder à :
 
 [Architecture.md](./docs/Architecture.md)
 
+<<<<<<< HEAD
 ## Testing
 
 For information on how to write and run tests, see [Testing Guide](./backend/tests/README.md)
 
+=======
+>>>>>>> 555951e (fix: better architecture for create embeddings table)
 ## Documentation Backend
 
 ### Modules Principaux
