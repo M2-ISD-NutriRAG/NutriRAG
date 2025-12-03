@@ -5,7 +5,7 @@ from typing import Optional
 from snowflake.snowpark import DataFrame, Session
 
 from shared.utils.console import print_message, MessageType
-from shared.snowflake.tables import Table
+from shared.snowflake.tables.recipes_sample_table import Table
 
 from data.embeddings.config import EMBEDDING
 from data.embeddings.types import TableConfig
@@ -22,7 +22,7 @@ def _table_exists(session: Session, table: type[Table]) -> bool:
         True if table exists, False otherwise.
     """
     try:
-        df = session.table(table.NAME)
+        df = session.table(table.get_table_name())
         _ = df.schema  # Verify table exists
         return True
     except Exception:
@@ -47,34 +47,40 @@ def get_source_dataframe(
         # Target doesn't exist - must create from source
         print_message(
             MessageType.INFO,
-            f"ℹ️  Target table '{table_config.target_table.NAME}' does not exist.",
+            f"ℹ️  Target table '{table_config.target_table.get_table_name()}' does not exist.",
         )
         if not table_config.source_table:
-            print_message(MessageType.ERROR, "❌ Error: No source table specified.")
+            print_message(
+                MessageType.ERROR, "❌ Error: No source table specified."
+            )
             return None
         print_message(
-            MessageType.INFO, f"   → Creating from '{table_config.source_table.NAME}'"
+            MessageType.INFO,
+            f"   → Creating from '{table_config.source_table.get_table_name()}'",
         )
-        return session.table(table_config.source_table.NAME)
+        return session.table(table_config.source_table.get_table_name())
 
     # Target exists
     print_message(
-        MessageType.INFO, f"ℹ️  Target table '{table_config.target_table.NAME}' exists."
+        MessageType.INFO,
+        f"ℹ️  Target table '{table_config.target_table.get_table_name()}' exists.",
     )
 
     if table_config.drop_existing:
         if table_config.source_table:
             print_message(
                 MessageType.INFO,
-                f"   → Drop mode: Reloading from '{table_config.source_table.NAME}'",
+                f"   → Drop mode: Reloading from '{table_config.source_table.get_table_name()}'",
             )
-            return session.table(table_config.source_table.NAME)
+            return session.table(table_config.source_table.get_table_name())
         else:
-            print_message(MessageType.INFO, "   → Drop mode: Reusing existing data")
-            return session.table(table_config.target_table.NAME)
+            print_message(
+                MessageType.INFO, "   → Drop mode: Reusing existing data"
+            )
+            return session.table(table_config.target_table.get_table_name())
     else:
         print_message(MessageType.INFO, "   → Append mode")
-        return session.table(table_config.target_table.NAME)
+        return session.table(table_config.target_table.get_table_name())
 
 
 def _verify_embedding_column(
@@ -100,7 +106,8 @@ def _verify_embedding_column(
         raise ValueError(f"EMBEDDING column not found in table {table_name}")
 
     print_message(
-        MessageType.SUCCESS, f"✓ EMBEDDING column type: {embedding_field.datatype}"
+        MessageType.SUCCESS,
+        f"✓ EMBEDDING column type: {embedding_field.datatype}",
     )
 
     # Validate dimension if specified
@@ -116,7 +123,8 @@ def _verify_embedding_column(
                 f"but got: {embedding_field.datatype}"
             )
         print_message(
-            MessageType.SUCCESS, f"✓ Vector dimension matches expected: {expected_dimension}"
+            MessageType.SUCCESS,
+            f"✓ Vector dimension matches expected: {expected_dimension}",
         )
 
 
@@ -156,7 +164,9 @@ def _display_sample_data(dataframe: DataFrame):
         # Select the first column as a fallback (could be ID, etc.)
         columns_to_show.append(available_columns[0])
     else:
-        print_message(MessageType.WARNING, "No columns available to display sample data.")
+        print_message(
+            MessageType.WARNING, "No columns available to display sample data."
+        )
         return
 
     columns_to_show.append(EMBEDDING)
@@ -168,7 +178,9 @@ def _display_sample_data(dataframe: DataFrame):
 
 
 def verify_table_schema(
-    session: Session, table: type[Table], expected_dimension: Optional[int] = None
+    session: Session,
+    table: type[Table],
+    expected_dimension: Optional[int] = None,
 ) -> None:
     """Verifies and displays the schema of the created table.
 
@@ -180,12 +192,18 @@ def verify_table_schema(
     Raises:
         ValueError: If EMBEDDING column is missing or has incorrect dimension.
     """
-    print_message(MessageType.HEADER, f"Schema Verification: {table.NAME}", width=40)
+    print_message(
+        MessageType.HEADER,
+        f"Schema Verification: {table.get_table_name()}",
+        width=40,
+    )
 
-    df = session.table(table.NAME)
+    df = session.table(table.get_table_name())
 
     # Verify EMBEDDING column exists and has correct dimension
-    _verify_embedding_column(df.schema.fields, table.NAME, expected_dimension)
+    _verify_embedding_column(
+        df.schema.fields, table.get_table_name(), expected_dimension
+    )
 
     # Check row count
     row_count = _check_row_count(df)
