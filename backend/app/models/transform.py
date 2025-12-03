@@ -1,27 +1,40 @@
+from enum import Enum
 from typing import Optional, Dict, List
 from pydantic import BaseModel, Field
 
+class TransformationType(Enum):
+    ADD = 0,
+    DELETE = 1,
+    SUBSTITUTION = 2
 
 class TransformConstraints(BaseModel):
     # Constraints for recipe transformation
-    no_lactose: bool = False
-    no_gluten: bool = False
-    no_nuts: bool = False
-    vegetarian: bool = False
-    vegan: bool = False
+    transformation: TransformationType
+    no_lactose: Optional[bool] = False
+    no_gluten: Optional[bool] = False
+    no_nuts: Optional[bool] = False
+    vegetarian: Optional[bool] = False
+    vegan: Optional[bool] = False
     
-    increase_protein: bool = False
-    decrease_carbs: bool = False
-    decrease_calories: bool = False
-    decrease_sodium: bool = False
+    increase_protein: Optional[bool] = False
+    decrease_sugar: Optional[bool] = False
+    decrease_protein: Optional[bool] = False
+    decrease_carbs: Optional[bool] = False
+    decrease_calories: Optional[bool] = False
+    decrease_sodium: Optional[bool] = False
 
+# recipe object request
+class Recipe(BaseModel):
+    name: str
+    ingredients: List[str]
+    quantity_ingredients: List[str]
+    minutes: float
+    steps: List[str]
 
 class TransformRequest(BaseModel):
     # Transform request body
-    recipe_id: int
-    goal: str = Field(..., description="healthier, low-carb, high-protein, etc.")
+    recipe: Recipe
     constraints: Optional[TransformConstraints] = None
-
 
 class Substitution(BaseModel):
     # Single ingredient substitution
@@ -30,7 +43,6 @@ class Substitution(BaseModel):
     original_quantity: Optional[float] = None
     substitute_quantity: Optional[float] = None
     reason: str
-
 
 class NutritionDelta(BaseModel):
     # Changes in nutrition values
@@ -51,8 +63,8 @@ class TransformResponse(BaseModel):
     
     substitutions: List[Substitution]
     
-    nutrition_before: Dict[str, float]
-    nutrition_after: Dict[str, float]
+    nutrition_before: float ## nutri score before
+    nutrition_after: float ## nutri score after 
     delta: NutritionDelta
     
     success: bool

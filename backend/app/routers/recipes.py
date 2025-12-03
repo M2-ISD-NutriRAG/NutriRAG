@@ -1,8 +1,9 @@
 from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
 import json
+from shared.snowflake.client import SnowflakeClient
+
 from app.models.recipe import Recipe, RecipeListResponse
-from app.services.snowflake_client import SnowflakeClient
 
 router = APIRouter()
 
@@ -47,7 +48,6 @@ async def get_recipe(recipe_id: int):
     # Get a single recipe by ID
     # Returns enriched recipe with:
     # - Parsed ingredients
-    # - Detailed nutrition
     # - Health score    
     # TODO: Équipe 1 - Implémentation de la requête Snowflake
     client = SnowflakeClient()
@@ -95,11 +95,7 @@ async def get_recipe(recipe_id: int):
             rating_count=None)
 
     return recipe
-    # Mock response for now
-    raise HTTPException(
-        status_code=501,
-        detail="Équipe 1: Implémentation nécessaire - Requête Snowflake ENRICHED.recipes_detailed"
-    )
+
 
 
 @router.get("/", response_model=RecipeListResponse)
@@ -107,14 +103,14 @@ async def list_recipes(
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
     tag: Optional[str] = None,
-    min_rating: Optional[float] = None
+    min_rating: Optional[float] = None,
 ):
     # List recipes with pagination and filters
     # TODO: Équipe 1 - Implémentation de la requête Snowflake avec filtres
-    
+
     raise HTTPException(
         status_code=501,
-        detail="Équipe 1: Implémentation nécessaire - Requête des recettes avec filtres"
+        detail="Équipe 1: Implémentation nécessaire - Requête des recettes avec filtres",
     )
 
 
@@ -125,7 +121,7 @@ async def get_recipe_nutrition(recipe_id: int):
 
     raise HTTPException(
         status_code=501,
-        detail="Équipe 1: Implémentation nécessaire - Retourner la décomposition nutritionnelle détaillée par ingrédient"
+        detail="Équipe 1: Implémentation nécessaire - Retourner la décomposition nutritionnelle détaillée par ingrédient",
     )
 
 
