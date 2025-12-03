@@ -1,6 +1,5 @@
 """Snowflake table definitions for CLEANED_INGREDIENT table."""
 
-from typing import List
 
 from shared.snowflake.tables.table import define_snowflake_table, Table
 
