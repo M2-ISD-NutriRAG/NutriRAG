@@ -2,7 +2,8 @@ import pickle
 from fastapi import APIRouter, HTTPException
 from app.models.transform import TransformRequest, TransformResponse
 from app.services.transform_service import TransformService
-from app.services.snowflake_client import SnowflakeClient
+from shared.snowflake.client import SnowflakeClient
+
 
 router = APIRouter()
 transform_service = TransformService(SnowflakeClient())
