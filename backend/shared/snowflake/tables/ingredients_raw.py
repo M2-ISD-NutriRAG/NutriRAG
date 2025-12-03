@@ -1,4 +1,4 @@
-"""Snowflake table definitions for INGREDIENT_TAGGED table."""
+"""Snowflake table definitions for CLEANED_INGREDIENT table."""
 
 from typing import List
 
