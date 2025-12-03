@@ -131,7 +131,7 @@ async def get_random_recipes(count: int = Query(5, ge=1, le=20)):
     # TODO: Équipe 1 - Échantillonner des recettes aléatoires
     results = client.execute(f"""
         SELECT *
-        FROM {RecipesSampleTable}
+        FROM {RecipesSampleTable.get_full_table_name()}
         SAMPLE ({count} rows)
     """, fetch="all")
 
