@@ -11,15 +11,27 @@ from shared.snowflake.client import SnowflakeClient
 
 from app.routers import recipes, search, transform, analytics, orchestration
 
+# Global SnowflakeClient instance to avoid reconnection overhead
+_snowflake_client = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifecycle manager for startup and shutdown events"""
+    global _snowflake_client
     # Startup
     print("🚀 Starting NutriRAG Backend...")
+    try:
+        _snowflake_client = SnowflakeClient()
+        print("✅ Connected to Snowflake")
+    except Exception as e:
+        print(f"⚠️  Failed to connect to Snowflake: {e}")
+        _snowflake_client = None
     yield
     # Shutdown
     print("👋 Shutting down NutriRAG Backend...")
+    if _snowflake_client:
+        _snowflake_client.close()
 
 
 app = FastAPI(
@@ -64,9 +76,21 @@ async def root():
 @app.get("/health")
 async def health_check():
     """Detailed health check"""
+    db_status = "not connected"
+    if _snowflake_client:
+        connection_info = _snowflake_client.is_connected()
+        db_status = "connected" if connection_info.get("ok") else "not connected"
+
     return {
         "status": "healthy",
+<<<<<<< HEAD
+        "database": db_status,
+=======
         "database": f"{'connected' if SnowflakeClient().is_connected() else 'not connected'}",
+<<<<<<< HEAD
+=======
+>>>>>>> 555951e (fix: better architecture for create embeddings table)
+>>>>>>> e86ae7db66598f2c973f8d4efe1465845e4190e6
         "timestamp": "2025-11-18T00:00:00Z",
     }
 

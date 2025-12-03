@@ -175,6 +175,14 @@ class SnowflakeClient:
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         self.close()
 
+    def __repr__(self) -> str:
+        """Redact sensitive fields when object is printed or logged."""
+        safe_config = {
+            k: "***REDACTED***" if k in ("password", "private_key") else v
+            for k, v in self.config.items()
+        }
+        return f"SnowflakeClient(config={safe_config})"
+
     def execute(
         self,
         query: str,
@@ -211,6 +219,7 @@ class SnowflakeClient:
         ok = self._conn is not None and not self._conn.is_closed()
         version = None
         if ok:
+            cur = None
             try:
                 cur = self._conn.cursor()
                 cur.execute("SELECT CURRENT_VERSION()")
@@ -218,5 +227,6 @@ class SnowflakeClient:
             except Exception:
                 version = None
             finally:
-                cur.close()
+                if cur is not None:
+                    cur.close()
         return {"ok": ok, "version": version}
