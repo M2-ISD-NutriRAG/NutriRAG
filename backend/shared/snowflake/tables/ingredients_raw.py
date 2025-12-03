@@ -39,10 +39,5 @@ class CleanedIngredients(Table):
     VITC_MG = "VITC_MG"
     ZINC_MG = "ZINC_MG"
 
-    # @staticmethod
-    # def get_columns_to_concat_for_embedding() -> List["CleanedIngredients"]:
-    #     return [
-
-    #     ]
 
 
