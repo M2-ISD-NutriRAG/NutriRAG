@@ -130,10 +130,12 @@ async def get_random_recipes(count: int = Query(5, ge=1, le=20)):
     # Obtenir des recettes aléatoires pour l'exploration
     # TODO: Équipe 1 - Échantillonner des recettes aléatoires
     client = SnowflakeClient()
+    # Ensure count is strictly an integer and within bounds before interpolation
+    safe_count = int(count)
     results = client.execute(f"""
         SELECT *
-        FROM {RecipesSampleTable.get_full_table_name()}
-        SAMPLE ({count} rows)
+        FROM {RecipesSampleTable}
+        SAMPLE ({safe_count} rows)
     """, fetch="all")
 
     recipes = []
