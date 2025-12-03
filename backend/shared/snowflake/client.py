@@ -6,6 +6,10 @@ from typing import Any, Literal, Optional
 from snowflake.snowpark import Session
 import snowflake.connector
 from cryptography.hazmat.primitives import serialization
+from pathlib import Path
+from datetime import datetime, timezone
+import json
+import jwt
 
 
 def _load_private_key(private_key_path: str) -> bytes:
@@ -62,6 +66,13 @@ class SnowflakeClient:
         schema: Optional[str] = None,
         private_key_path: Optional[str] = None,
         autoconnect: bool = True,
+
+
+        schema_agent : Optional[str] = None,
+        agent :Optional[str] = None,
+        public_key_fp : Optional[str] = None,
+
+        token_cache_path : Optional[str] = None,
     ) -> None:
         # Load .env file once
         load_dotenv()
@@ -77,6 +88,12 @@ class SnowflakeClient:
             "warehouse": warehouse or os.getenv("SNOWFLAKE_WAREHOUSE"),
             "database": database or os.getenv("SNOWFLAKE_DATABASE"),
             "schema": schema or os.getenv("SNOWFLAKE_SCHEMA"),
+            "schema_agent" : os.getenv("SNOWFLAKE_SERVICES_SCHEMA"),
+            "agent" : os.getenv("AGENT_NAME"),
+            "public_key_fp" : os.getenv("PUBLIC_KEY_FP"),
+            "token_cache_path" : Path(os.getenv("PRIVATE_KEY_PATH")),
+            "private_key_jwt" : Path(os.getenv("SNOWFLAKE_PRIVATE_KEY_PATH")).read_text()
+
         }
 
         # Add authentication - either key pair or password
@@ -230,3 +247,50 @@ class SnowflakeClient:
                 if cur is not None:
                     cur.close()
         return {"ok": ok, "version": version}
+
+
+    # -------------------------------------------------------
+    # JWT TOKEN MANAGEMENT FOR CORTEX
+    # -------------------------------------------------------
+    def _load_token_from_cache(self):
+        cache_file = self.config["token_cache_path"]
+        if not cache_file.exists():
+            return None
+
+        try:
+            data = json.loads(cache_file.read_text())
+            exp = datetime.fromisoformat(data["exp"])
+
+            if exp > datetime.now(timezone.utc):
+                return data["token"]
+            return None
+
+        except Exception:
+            return None
+
+    def _save_token_to_cache(self, token, exp):
+        cache_file = self.config["token_cache_path"]
+        data = {"token": token, "exp": exp.isoformat()}
+        cache_file.write_text(json.dumps(data))
+
+    def _generate_jwt(self):
+        now = datetime.now(timezone.utc)
+        exp = now.replace(year=now.year + 10)
+
+        payload = {
+            "iss": f"{self.config['account'].upper()}.{self.config['user'].upper()}.{self.config['public_key_fp']}",
+            "sub": f"{self.config['account'].upper()}.{self.config['user'].upper()}",
+            "iat": now,
+            "exp": exp,
+        }
+
+        token = jwt.encode(payload, self.config['private_key_jwt'], algorithm="RS256")
+        self._save_token_to_cache(token, exp)
+        return token
+
+    def get_jwt(self) -> str:
+        """Public method: returns a valid JWT for Cortex Agents."""
+        token = self._load_token_from_cache()
+        if token:
+            return token
+        return self._generate_jwt()
