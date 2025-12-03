@@ -29,7 +29,7 @@ wheels/
 .pytest_cache/
 .coverage
 htmlcov/
-
+.venv/
 # Node
 node_modules/
 npm-debug.log*
