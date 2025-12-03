@@ -1,7 +1,7 @@
 import os
 from typing import List
 from snowflake.snowpark import Session
-from app.services.snowflake_client import get_snowflake_session
+from shared.snowflake.client import SnowflakeClient
 
 
 def run_remote_pipeline(session: Session, 
@@ -49,7 +49,7 @@ def run_remote_pipeline(session: Session,
 
 if __name__ == "__main__":
     # Récupération de la session via votre utilitaire
-    session = get_snowflake_session()
+    session = SnowflakeClient().get_snowpark_session()
     
     # Configuration
     TARGET = "RECIPE_EMBEDDINGS_TEST"
