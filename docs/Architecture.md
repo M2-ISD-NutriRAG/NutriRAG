@@ -88,6 +88,7 @@ Body:
 
 ```json
 {
+  "user": "BETTLE",
   "query": "vegetarian high protein",
   "k" : 5,
   "filers" : {
@@ -233,22 +234,11 @@ SELECT search_recipes(:query, :filters_json)
 
 ### POST /transform
 
-Cet endpoint applique une transformation nutritionnelle ou structurelle à une recette, selon :
- - un type de transformation (ADD, DELETE, SUBSTITUTION)
- - un ensemble de contraintes diététiques
- - un objectif nutritionnel (augmenter protéines, baisser sucre, etc.)
- - une recette complète envoyée par le client
-
-Cet endpoint applique une transformation nutritionnelle ou structurelle à une recette, selon :
- - un type de transformation (ADD, DELETE, SUBSTITUTION)
- - un ensemble de contraintes diététiques
- - un objectif nutritionnel (augmenter protéines, baisser sucre, etc.)
- - une recette complète envoyée par le client
-
 Body:
 
 ```json
 {
+  "user": "BETTLE",
   "recipe": {
     "name": "Creamy Pasta with Bacon",
     "ingredients": ["Pasta", "Heavy cream", "Bacon", "Salt"],
