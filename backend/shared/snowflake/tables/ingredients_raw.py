@@ -1,0 +1,42 @@
+"""Snowflake table definitions for CLEANED_INGREDIENT table."""
+
+
+from shared.snowflake.tables.table import define_snowflake_table, Table
+
+
+@define_snowflake_table(
+    SNOWFLAKE_DATABASE="NUTRIRAG_PROJECT",
+    SCHEMA_NAME="RAW",
+    TABLE_NAME="CLEANED_INGREDIENTS",
+)
+class CleanedIngredients(Table):
+    NDB_NO = "NDB_NO"
+    CALCIUM_MG = "CALCIUM_MG"
+    CARB_G = "CARB_G"
+    COPPER_MCG = "COPPER_MCG"
+    DESCRIP = "DESCRIP"
+    ENERGY_KCAL = "ENERGY_KCAL"
+    FAT_G = "FAT_G"
+    FIBER_G = "FIBER_G"
+    FOLATE_MCG = "FOLATE_MCG"
+    IRON_MG = "IRON_MG"
+    MAGNESIUM_MG = "MAGNESIUM_MG"
+    MANGANESE_MG = "MANGANESE_MG"
+    NIACIN_MG = "NIACIN_MG"
+    PHOSPHORUS_MG = "PHOSPHORUS_MG"
+    POTASSIUM_MG = "POTASSIUM_MG"
+    PROTEIN_G = "PROTEIN_G"
+    RIBOFLAVIN_MG = "RIBOFLAVIN_MG"
+    SATURATED_FATS_G = "SATURATED_FATS_G"
+    SELENIUM_MCG = "SELENIUM_MCG"
+    SODIUM_MG = "SODIUM_MG"
+    SUGAR_G = "SUGAR_G"
+    THIAMIN_MG = "THIAMIN_MG"
+    VITA_MCG = "VITA_MCG"
+    VITB12_MCG = "VITB12_MCG"
+    VITB6_MG = "VITB6_MG"
+    VITC_MG = "VITC_MG"
+    ZINC_MG = "ZINC_MG"
+
+
+

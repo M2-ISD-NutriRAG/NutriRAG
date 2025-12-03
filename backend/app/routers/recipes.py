@@ -1,11 +1,46 @@
 from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
-
+import json
 from shared.snowflake.client import SnowflakeClient
-
+from shared.snowflake.tables.recipes_sample_table import RecipesSampleTable
 from app.models.recipe import Recipe, RecipeListResponse
 
 router = APIRouter()
+
+
+
+def parse_list_string(value: str):
+    """
+    Transforme un string comme :
+    '[\n  "tag1",\n  "tag2"\n]'
+    ou
+    '[\n  6.9e+01,\n  3\n]'
+    en vraie liste Python.
+    """
+    if value is None:
+        return None
+
+    value = value.strip()
+
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        pass
+
+    if value.startswith("[") and value.endswith("]"):
+        content = value[1:-1].strip()
+
+        parts = [p.strip().strip('"').strip("'") for p in content.split(",")]
+
+        out = []
+        for p in parts:
+            try:
+                out.append(float(p))
+            except:
+                out.append(p)
+        return out
+
+    return [value]
 
 
 @router.get("/{recipe_id}", response_model=Recipe)
@@ -13,22 +48,54 @@ async def get_recipe(recipe_id: int):
     # Get a single recipe by ID
     # Returns enriched recipe with:
     # - Parsed ingredients
-    # - Detailed nutrition
-    # - Health score
-
+    # - Health score    
     # TODO: Équipe 1 - Implémentation de la requête Snowflake
-    # client = SnowflakeClient()
-    # result = client.execute(f"""
-    #     SELECT *
-    #     FROM NutriRAG_Project.ENRICHED.recipes_detailed
-    #     WHERE id = {recipe_id}
-    # """, fetch='all')
+    client = SnowflakeClient()
+    result = client.execute(f"""
+        SELECT *
+        FROM {RecipesSampleTable.get_full_table_name()}
+        WHERE id = {recipe_id}
+     """, fetch="all")
+    if len(result) > 0:
+        row = result[0]
+    
+        recipe = Recipe(
+            id=row[1],
+            name=row[0],
+            description=row[9],
+            minutes=row[2],
+            n_steps=row[7],
+            n_ingredients=row[11],
+            tags=parse_list_string(row[5]),
+            ingredients_raw=parse_list_string(row[10]),
+            ingredients_parsed=None,  # pas encore calculé
+            steps=parse_list_string(row[8]),
+            nutrition_original=parse_list_string(row[6]),
+            nutrition_detailed=None,  # pas encore calculé
+            score_health=None,
+            rating_avg=None,
+            rating_count=None
+        )
+    else: 
+        recipe = Recipe(
+            id=-1,
+            name="",
+            description="",
+            minutes=-1,
+            n_steps=-1,
+            n_ingredients=-1,
+            tags=[],
+            ingredients_raw=[],
+            ingredients_parsed=None,  # pas encore calculé
+            steps=[],
+            nutrition_original=[],
+            nutrition_detailed=None,  # pas encore calculé
+            score_health=None,
+            rating_avg=None,
+            rating_count=None)
 
-    # Mock response for now
-    raise HTTPException(
-        status_code=501,
-        detail="Équipe 1: Implémentation nécessaire - Requête Snowflake ENRICHED.recipes_detailed",
-    )
+    return recipe
+
 
 
 @router.get("/", response_model=RecipeListResponse)
@@ -62,8 +129,37 @@ async def get_recipe_nutrition(recipe_id: int):
 async def get_random_recipes(count: int = Query(5, ge=1, le=20)):
     # Obtenir des recettes aléatoires pour l'exploration
     # TODO: Équipe 1 - Échantillonner des recettes aléatoires
+    client = SnowflakeClient()
+    # Ensure count is strictly an integer and within bounds before interpolation
+    safe_count = int(count)
+    results = client.execute(f"""
+        SELECT *
+        FROM {RecipesSampleTable}
+        SAMPLE ({safe_count} rows)
+    """, fetch="all")
 
-    raise HTTPException(
-        status_code=501,
-        detail="Équipe 1: Implémentation nécessaire - Échantillonnage des recettes aléatoires",
-    )
+    recipes = []
+    for row in results:
+        recipes.append(Recipe(
+        id=row[1],
+        name=row[0],
+        description=row[9],
+        minutes=row[2],
+        n_steps=row[7],
+        n_ingredients=row[11],
+        tags=parse_list_string(row[5]),
+        ingredients_raw=parse_list_string(row[10]),
+        ingredients_parsed=None,  # pas encore calculé
+        steps=parse_list_string(row[8]),
+        nutrition_original=parse_list_string(row[6]),
+        nutrition_detailed=None,  # pas encore calculé
+        score_health=None,
+        rating_avg=None,
+        rating_count=None
+    ))
+
+
+    return recipes
+
+
+
