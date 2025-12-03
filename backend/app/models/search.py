@@ -1,51 +1,61 @@
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
+from recipe import NutritionDetailed, Recipe
 from pydantic import BaseModel, Field
+
+class NumericFilter(BaseModel):
+    name: str                 # "minutes", "n_steps", "servings", ...
+    operator: str             # ">", ">=", "<", "<=", "="
+    value: float | int        # valeur numérique
 
 
 class SearchFilters(BaseModel):
-    # Nutrition filters for search
-    protein_min: Optional[float] = None
-    protein_max: Optional[float] = None
-    carbs_min: Optional[float] = None
-    carbs_max: Optional[float] = None
-    calories_min: Optional[float] = None
-    calories_max: Optional[float] = None
-    fat_max: Optional[float] = None
-    fiber_min: Optional[float] = None
-    sodium_max: Optional[float] = None
-    
-    # Tags filters
-    tags_include: Optional[list[str]] = None
-    tags_exclude: Optional[list[str]] = None
-    
-    # Score filters
-    score_health_min: Optional[float] = None
-    rating_min: Optional[float] = None
-
+    numeric_filters: Optional[List[NumericFilter]] = Field(
+        default_factory=list,
+        description="List of numeric filters applied to metadata fields"
+    )
+    tags: Optional[List[str]] = Field(
+        default_factory=list,
+        description="Required tags for filtering (must contain all)"
+    )
+    include_ingredients: Optional[List[str]] = Field(
+        default_factory=list,
+        description="Ingredients that must be included in the recipe"
+    )
+    exclude_ingredients: Optional[List[str]] = Field(
+        default_factory=list,
+        description="Ingredients that must NOT be in the recipe"
+    )
 
 class SearchRequest(BaseModel):
-    # Search request body
+    user: str
     query: str = Field(..., description="Natural language search query")
+    k: int = Field(default=10, ge=1, le=50, description="Number of top-k results to return")
     filters: Optional[SearchFilters] = None
-    limit: int = Field(default=10, ge=1, le=50)
 
-
-class SearchResult(BaseModel):
-    # Single search result
-    id: int
-    name: str
-    description: Optional[str] = None
-    similarity: float
-    nutrition: Optional[Dict[str, float]] = None
-    score_health: Optional[float] = None
-    rating_avg: Optional[float] = None
-    tags: list[str] = Field(default_factory=list)
+### OLD ResponseModel, use Recipe instead to synchronize with group 1
+# class SearchResult(BaseModel): 
+#     # Single search result
+#     id: int
+#     name: str
+#     description: Optional[str] = None
+#     similarity: float
+#     nutrition: Optional[NutritionDetailed] = None  ## OBJET NUTRITIONDETAIL GROUP 1
+#     score_health: Optional[float] = None
+#     rating: Optional[float] = None
+#     rating_avg: Optional[float] = None
+#     tags: list[str] = Field(default_factory=list)
+#     ingredients : list[str]
+#     steps : str
+#     minute: int
+#     nb_ingredients: int
+#     nb_steps : int
 
 
 class SearchResponse(BaseModel):
     # Search response
-    results: list[SearchResult]
+    results: list[Recipe]
     query: str
     total_found: int
     execution_time_ms: float
+    status: str
 

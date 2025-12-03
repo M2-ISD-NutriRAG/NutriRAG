@@ -40,12 +40,10 @@ class Recipe(BaseModel):
     
     # Arrays
     tags: List[str] = Field(default_factory=list)
-    ingredients_raw: List[str] = Field(default_factory=list)
-    ingredients_parsed: Optional[List[IngredientParsed]] = None
+    ingredients: List[str] = Field(default_factory=list)
     steps: List[str] = Field(default_factory=list)
     
     # Nutrition
-    nutrition_original: Optional[List[float]] = None  # Original from Food.com
     nutrition_detailed: Optional[NutritionDetailed] = None  # Calculated by Équipe 1
     
     # Scores

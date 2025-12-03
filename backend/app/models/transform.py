@@ -33,6 +33,7 @@ class Recipe(BaseModel):
 
 class TransformRequest(BaseModel):
     # Transform request body
+    user: str
     recipe: Recipe
     constraints: Optional[TransformConstraints] = None
 
