@@ -12,7 +12,7 @@ from typing import List, Dict, Any, Optional
 # Add backend directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from setup_snowflake import SnowflakeSetup
+from shared.snowflake.client import SnowflakeClient
 
 
 def load_sql_file(sql_file_path: Path) -> str:
@@ -80,12 +80,13 @@ def execute_sql_content(
         print(f"   {sql_content[:200]}...")
         print()
 
-    # Get connection using SnowflakeSetup
-    setup = SnowflakeSetup()
+    # Get connection using SnowflakeClient
+    client = None
     conn = None
 
     try:
-        conn = setup.get_connection(silent=True)
+        client = SnowflakeClient(autoconnect=True)
+        conn = client._conn
 
         if not silent:
             # Show connection info
@@ -149,8 +150,8 @@ def execute_sql_content(
             print(f"❌ Connection error: {e}")
         return False
     finally:
-        if conn is not None:
-            conn.close()
+        if client is not None:
+            client.close()
             if not silent:
                 print("🔌 Connection closed")
 
@@ -169,12 +170,13 @@ def execute_sql_query(
     Returns:
         Query results as list of dictionaries if fetch_results=True, None otherwise
     """
-    setup = SnowflakeSetup()
+    client = None
     conn = None
     cursor = None
 
     try:
-        conn = setup.get_connection(silent=True)
+        client = SnowflakeClient(autoconnect=True)
+        conn = client._conn
         cursor = conn.cursor()
 
         if not silent:
@@ -214,17 +216,30 @@ def execute_sql_query(
     finally:
         if cursor is not None:
             cursor.close()
-        if conn is not None:
-            conn.close()
+        if client is not None:
+            client.close()
 
 
 if __name__ == "__main__":
     """Test the SQL utilities when run directly."""
     print("🧪 Testing SQL utilities...")
 
-    # Use the SnowflakeSetup test_connection method instead of duplicating
-    setup = SnowflakeSetup()
-    if setup.test_connection(detailed=False):
+    # Test with SnowflakeClient
+    try:
+        with SnowflakeClient() as client:
+            result = client.execute(
+                "SELECT CURRENT_VERSION(), CURRENT_USER()", fetch="one"
+            )
+            if result:
+                print(f"✅ Connected as {result[1]} (Snowflake {result[0]})")
+                success = True
+            else:
+                success = False
+    except Exception as e:
+        print(f"❌ Connection test failed: {e}")
+        success = False
+
+    if success:
         print("\n✅ SQL utilities are working correctly!")
     else:
         print("\n❌ SQL utilities test failed!")

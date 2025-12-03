@@ -357,107 +357,6 @@ class SnowflakeSetup:
             self.print_error(f"Failed to install dependencies: {e}")
             return False
 
-    def get_connection(self, silent: bool = False):
-        """
-        Get a Snowflake connection using key pair authentication.
-
-        Args:
-            silent: If True, suppress print statements (for use in other scripts)
-
-        Returns:
-            snowflake.connector.SnowflakeConnection: Active connection
-
-        Raises:
-            ImportError: If required packages are not installed
-            ValueError: If required environment variables are missing
-            FileNotFoundError: If private key file not found
-            Exception: If connection fails
-        """
-        # Check if dependencies are installed
-        try:
-            import snowflake.connector
-        except ImportError:
-            raise ImportError("snowflake-connector-python is not installed!")
-
-        # Load environment variables
-        try:
-            from dotenv import load_dotenv
-
-            load_dotenv(self.env_file)
-        except ImportError:
-            if not silent:
-                self.print_warning(
-                    "python-dotenv not installed. Make sure env vars are set manually."
-                )
-
-        import os
-
-        # Get Snowflake credentials
-        account = os.getenv("SNOWFLAKE_ACCOUNT")
-        user = os.getenv("SNOWFLAKE_USER")
-        warehouse = os.getenv("SNOWFLAKE_WAREHOUSE")
-        database = os.getenv("SNOWFLAKE_DATABASE")
-        schema = os.getenv("SNOWFLAKE_SCHEMA")
-        private_key_path = os.getenv("SNOWFLAKE_PRIVATE_KEY_PATH")
-        role = os.getenv("SNOWFLAKE_ROLE")
-
-        # Check required variables
-        missing_vars = []
-        for var_name, var_value in [
-            ("SNOWFLAKE_ACCOUNT", account),
-            ("SNOWFLAKE_USER", user),
-            ("SNOWFLAKE_PRIVATE_KEY_PATH", private_key_path),
-        ]:
-            if not var_value:
-                missing_vars.append(var_name)
-
-        if missing_vars:
-            raise ValueError(
-                f"Missing environment variables: {', '.join(missing_vars)}"
-            )
-
-        # Check if private key file exists
-        key_file = Path(private_key_path)
-        if not key_file.is_absolute():
-            key_file = self.project_root / private_key_path
-
-        if not key_file.exists():
-            raise FileNotFoundError(f"Private key file not found: {key_file}")
-
-        # Load private key
-        from cryptography.hazmat.backends import default_backend
-        from cryptography.hazmat.primitives import serialization
-
-        with open(key_file, "rb") as key:
-            p_key = serialization.load_pem_private_key(
-                key.read(), password=None, backend=default_backend()
-            )
-
-        # Serialize private key
-        pkb = p_key.private_bytes(
-            encoding=serialization.Encoding.DER,
-            format=serialization.PrivateFormat.PKCS8,
-            encryption_algorithm=serialization.NoEncryption(),
-        )
-
-        # Create connection
-        conn_params = {
-            "user": user,
-            "account": account,
-            "private_key": pkb,
-            "ocsp_fail_open": True,
-        }
-
-        if warehouse:
-            conn_params["warehouse"] = warehouse
-        if database:
-            conn_params["database"] = database
-        if schema:
-            conn_params["schema"] = schema
-        if role:
-            conn_params["role"] = role
-
-        return snowflake.connector.connect(**conn_params)
     def update_env_file(self) -> bool:
         """
         Update the .env file with the private key path.
@@ -647,30 +546,29 @@ class SnowflakeSetup:
         print(f"  Auth:      Key Pair ({key_file})\n")
 
         try:
-            # Use the new get_connection method
+            # Use the SnowflakeClient class
+            from shared.snowflake.client import SnowflakeClient
+
             self.print_info("Connecting to Snowflake...")
-            conn = self.get_connection(silent=True)
-
-            self.print_success("Connection successful! No MFA prompt required!")
-
-            # Run a test query
-            if detailed:
-                self.print_info("Running test query...")
-                cursor = conn.cursor()
-                cursor.execute(
-                    "SELECT CURRENT_VERSION(), CURRENT_USER(), CURRENT_ROLE(), CURRENT_WAREHOUSE()"
+            with SnowflakeClient() as client:
+                self.print_success(
+                    "Connection successful! No MFA prompt required!"
                 )
-                result = cursor.fetchone()
 
-                print(f"\n{Colors.BOLD}Connection Info:{Colors.ENDC}")
-                print(f"  Version:   {result[0]}")
-                print(f"  User:      {result[1]}")
-                print(f"  Role:      {result[2]}")
-                print(f"  Warehouse: {result[3]}")
+                # Run a test query
+                if detailed:
+                    self.print_info("Running test query...")
+                    result = client.execute(
+                        "SELECT CURRENT_VERSION(), CURRENT_USER(), CURRENT_ROLE(), CURRENT_WAREHOUSE()",
+                        fetch="one",
+                    )
 
-                cursor.close()
+                    print(f"\n{Colors.BOLD}Connection Info:{Colors.ENDC}")
+                    print(f"  Version:   {result[0]}")
+                    print(f"  User:      {result[1]}")
+                    print(f"  Role:      {result[2]}")
+                    print(f"  Warehouse: {result[3]}")
 
-            conn.close()
             self.print_success("Connection test completed successfully!")
             return True
 
