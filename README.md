@@ -2,7 +2,7 @@
 
 **Système intelligent de recherche et transformation de recettes nutritionnelles**
 
-Projet Data & IA - Session 2025-2026 - Master ISD  
+Projet Data & IA - Session 2025-2026 - Master ISD
 Encadrant : M. Anthony Coutant
 
 ## Vue d'ensemble
@@ -82,6 +82,60 @@ cd frontend
 npm install
 ```
 
+4. **Configurer pre-commit (optionnel mais recommandé)**
+
+Pre-commit permet d'exécuter automatiquement des vérifications de code (linting, formatage) avant chaque commit.
+
+```bash
+# Depuis la racine du projet, avec venv activé
+pip install pre-commit
+pre-commit install
+
+# (Optionnel) Exécuter pre-commit sur tous les fichiers
+pre-commit run --all-files
+```
+
+Les hooks configurés dans `.pre-commit-config.yaml` incluent :
+
+**Hooks généraux :**
+
+- **trailing-whitespace** : Supprime les espaces en fin de ligne
+- **end-of-file-fixer** : Assure qu'il y a une ligne vide en fin de fichier
+- **check-yaml** : Valide la syntaxe des fichiers YAML
+- **check-json** : Valide la syntaxe des fichiers JSON
+- **check-added-large-files** : Empêche l'ajout de gros fichiers
+
+**Hooks Python :**
+
+- **Ruff** : Linting Python (détection d'erreurs, respect des conventions)
+- **Ruff Format** : Formatage automatique du code Python
+
+Une fois installé, pre-commit s'exécutera automatiquement avant chaque `git commit` et bloquera le commit si des problèmes sont détectés.
+
+**Corriger les erreurs détectées par pre-commit :**
+
+Si pre-commit bloque votre commit à cause d'erreurs, voici les commandes pour les corriger :
+
+```bash
+# Pour les erreurs de linting Python (ruff) - corrige automatiquement ce qui peut l'être
+ruff check --fix .
+
+# Pour vérifier les erreurs Python restantes sans les corriger
+ruff check .
+
+# Pour formater le code Python manuellement
+ruff format .
+
+# Pour les erreurs de fichiers (espaces, fin de ligne, etc.) - relancer pre-commit
+pre-commit run --all-files
+
+# Après correction, recommencer le commit
+git add .
+git commit -m "votre message"
+```
+
+**Note :** La plupart des hooks généraux (trailing-whitespace, end-of-file-fixer) corrigent automatiquement les problèmes. Vous devrez simplement re-ajouter les fichiers modifiés avec `git add .` avant de recommiter.
+
 ### Développement
 
 #### Option 1: Développement local
@@ -128,6 +182,16 @@ Accéder à :
 
 [Architecture.md](./docs/Architecture.md)
 
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+## Testing
+
+For information on how to write and run tests, see [Testing Guide](./backend/tests/README.md)
+
+=======
+>>>>>>> 555951e (fix: better architecture for create embeddings table)
+>>>>>>> e86ae7db66598f2c973f8d4efe1465845e4190e6
 ## Documentation Backend
 
 ### Modules Principaux
