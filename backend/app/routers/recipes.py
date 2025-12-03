@@ -55,26 +55,44 @@ async def get_recipe(recipe_id: int):
         SELECT *
         FROM NutriRAG_Project.DEV_SAMPLE.RECIPES_SAMPLE
         WHERE id = {recipe_id}
-     """, fetch="one")
-    row = result[0]
-
-    recipe = Recipe(
-        id=row[1],
-        name=row[0],
-        description=row[9],
-        minutes=row[2],
-        n_steps=row[7],
-        n_ingredients=row[11],
-        tags=parse_list_string(row[5]),
-        ingredients_raw=parse_list_string(row[10]),
-        ingredients_parsed=None,  # pas encore calculé
-        steps=parse_list_string(row[8]),
-        nutrition_original=parse_list_string(row[6]),
-        nutrition_detailed=None,  # pas encore calculé
-        score_health=None,
-        rating_avg=None,
-        rating_count=None
-    )
+     """, fetch="all")
+    if len(result) > 0:
+        row = result[0]
+    
+        recipe = Recipe(
+            id=row[1],
+            name=row[0],
+            description=row[9],
+            minutes=row[2],
+            n_steps=row[7],
+            n_ingredients=row[11],
+            tags=parse_list_string(row[5]),
+            ingredients_raw=parse_list_string(row[10]),
+            ingredients_parsed=None,  # pas encore calculé
+            steps=parse_list_string(row[8]),
+            nutrition_original=parse_list_string(row[6]),
+            nutrition_detailed=None,  # pas encore calculé
+            score_health=None,
+            rating_avg=None,
+            rating_count=None
+        )
+    else: 
+        recipe = Recipe(
+            id=-1,
+            name="",
+            description="",
+            minutes=-1,
+            n_steps=-1,
+            n_ingredients=-1,
+            tags=[],
+            ingredients_raw=[],
+            ingredients_parsed=None,  # pas encore calculé
+            steps=[],
+            nutrition_original=[],
+            nutrition_detailed=None,  # pas encore calculé
+            score_health=None,
+            rating_avg=None,
+            rating_count=None)
 
     return recipe
     # Mock response for now
@@ -115,36 +133,34 @@ async def get_recipe_nutrition(recipe_id: int):
 async def get_random_recipes(count: int = Query(5, ge=1, le=20)):
     # Obtenir des recettes aléatoires pour l'exploration
     # TODO: Équipe 1 - Échantillonner des recettes aléatoires
-    results = session.sql(f"""
+    results = client.execute(f"""
         SELECT *
         FROM NutriRAG_Project.DEV_SAMPLE.RECIPES_SAMPLE
         SAMPLE ({count} rows)
-    """).collect()
+    """, fetch="all")
 
     recipes = []
     for row in results:
-        recipes.append({
-            "id": row["ID"],
-            "name": row["NAME"],
-            "description": row["DESCRIPTION"],
-            "minutes": row["MINUTES"],
-            "n_steps": row["N_STEPS"],
-            "n_ingredients": row["N_INGREDIENTS"],
-            "tags": row["TAGS"],
-            "ingredients_raw": row["INGREDIENTS"],
-            "ingredients_parsed": None,
-            "steps": row["STEPS"],
-            "nutrition_original": row["NUTRITION"],
-            "nutrition_detailed": None,
-            "score_health": None,
-            "rating_avg": None,
-            "rating_count": None
-        })
+        recipes.append(Recipe(
+        id=row[1],
+        name=row[0],
+        description=row[9],
+        minutes=row[2],
+        n_steps=row[7],
+        n_ingredients=row[11],
+        tags=parse_list_string(row[5]),
+        ingredients_raw=parse_list_string(row[10]),
+        ingredients_parsed=None,  # pas encore calculé
+        steps=parse_list_string(row[8]),
+        nutrition_original=parse_list_string(row[6]),
+        nutrition_detailed=None,  # pas encore calculé
+        score_health=None,
+        rating_avg=None,
+        rating_count=None
+    ))
+
 
     return recipes
 
-    raise HTTPException(
-        status_code=501,
-        detail="Équipe 1: Implémentation nécessaire - Échantillonnage des recettes aléatoires"
-    )
+
 
