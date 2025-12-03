@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
 import json
 from shared.snowflake.client import SnowflakeClient
-from shared.snowflake.table.recipes_sample_table import RecipesSampleTable
+from shared.snowflake.tables.recipes_sample_table import RecipesSampleTable
 from app.models.recipe import Recipe, RecipeListResponse
 
 router = APIRouter()
