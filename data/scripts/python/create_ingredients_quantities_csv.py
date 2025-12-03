@@ -9,11 +9,55 @@ VULGAR_TO_ASCII = {
     '⅙':'1/6','⅚':'5/6','⅛':'1/8','⅜':'3/8','⅝':'5/8','⅞':'7/8'
 }
 
-CONV_VOLUME = {'teaspoon':4.93,'tablespoon':14.79,'cup':236.588,'pint':473.176,'quart':946.353,
-               'gallon':3785.41,'fluid ounce':29.5735,'dash':0.625,'splash':5.91,'pony':29.57,
-               'jigger':44.36,'shot':44.36,'snit':88.72,'wineglass':118.29,'split':177.44,
-               'gill':118.294,'fluid scruple':1.184,'drop':0.05,'smidgen':0.15,'scoop':56}
-CONV_WEIGHT = {'ounce':28.3495,'lb':453.59237,'pound':453.59237}
+CONV_VOLUME = {
+    'teaspoon': 4.93, 'tsp': 4.93, 
+    'tablespoon': 14.79, 'tbsp': 14.79, 
+    'cup': 236.5882365,
+    'pint': 473.176473, 
+    'quart': 946.352946, 
+    'gallon': 3785.41, 
+    'fluid ounce': 29.5735,
+    'dash': 0.625, 
+    'splash': 5.91, 
+    'pony': 29.57, 
+    'jigger': 44.36, 
+    'shot': 44.36,
+    'snit': 88.72, 
+    'wineglass': 118.29, 
+    'split': 177.44, 
+    'gill': 118.29411825,
+    'fluid scruple': 1.1838776, 
+    'drop': 0.05, 
+    'smidgen': 0.15, 
+    'pinch': 0.7399235026,
+    'scoop': 56
+}
+
+CONV_WEIGHT = {
+    'teaspoon': 4.93, 'tsp': 4.93, 
+    'tablespoon': 14.79, 'tbsp': 14.79, 
+    'cup': 236.5882365,
+    'pint': 473.176473, 
+    'quart': 946.352946, 
+    'gallon': 3785.41, 
+    'fluid ounce': 29.5735,
+    'dash': 0.625, 
+    'splash': 5.91, 
+    'pony': 29.57, 
+    'jigger': 44.36, 
+    'shot': 44.36,
+    'snit': 88.72, 
+    'wineglass': 118.29, 
+    'split': 177.44, 
+    'gill': 118.29411825,
+    'fluid scruple': 1.1838776, 
+    'drop': 0.05, 
+    'smidgen': 0.15, 
+    'pinch': 0.7399235026,
+    'scoop': 56,
+    'ounce': 28.3495, 'oz': 28.3495, 
+    'pound': 453.59237, 'lb': 453.59237
+}
 
 def normalize_fractions(s: str) -> str:
     if not isinstance(s, str): return s
@@ -55,20 +99,48 @@ def clean_list_column(col: pd.Series) -> pd.Series:
     return col.apply(_clean)
 
 def normalize_units(col: pd.Series) -> pd.Series:
-    units = {'cup','dash','drop','fluid ounce','gallon','gill','lb','ounce','pinch','pint',
-             'pound','quart','scoop','smidgen','tablespoon','teaspoon'}
+    all_units = set(CONV_VOLUME.keys()) | set(CONV_WEIGHT.keys())
+    units = {u for u in all_units if len(u.split()) == 1}
+    
     plural_to_singular = {u+'s':u for u in units}
-    plural_to_singular.update({'lbs':'lb','fluid ounces':'fluid ounce','gills':'gill'})
-    return col.str.strip().replace(plural_to_singular)
+    plural_to_singular.update({'lbs':'lb','fluid ounces':'fluid ounce','gills':'gill','tbsp':'tablespoon','tsps':'teaspoon', 'ozs':'ounce'})
+    
+    col_norm = col.str.strip().str.lower().replace(plural_to_singular, regex=False)
+    return col_norm
 
-def convert_units(df: pd.DataFrame) -> pd.DataFrame:
-    unit_norm = df['unit'].astype(str).str.lower().str.strip()
-    df['qty_ml'] = np.where(unit_norm.isin(CONV_VOLUME),
-                             df['quantity'].astype(float)*unit_norm.map(CONV_VOLUME),
-                             np.nan)
-    df['qty_g'] = np.where(unit_norm.isin(CONV_WEIGHT),
-                            df['quantity'].astype(float)*unit_norm.map(CONV_WEIGHT),
-                            np.nan)
+def convert_units_vectorized(df: pd.DataFrame) -> pd.DataFrame:
+    unit_norm = df['unit'].astype(str).str.strip().str.lower()
+    
+    df['qty_ml'] = np.nan
+    df['qty_g'] = np.nan
+    
+    mask_vol = unit_norm.isin(CONV_VOLUME.keys())
+    df.loc[mask_vol, 'qty_ml'] = (
+        df.loc[mask_vol, 'quantity'].astype(float) *
+        unit_norm[mask_vol].map(CONV_VOLUME).astype(float)
+    )
+    
+    mask_wt = unit_norm.isin(CONV_WEIGHT.keys())
+    df.loc[mask_wt, 'qty_g'] = (
+        df.loc[mask_wt, 'quantity'].astype(float) *
+        unit_norm[mask_wt].map(CONV_WEIGHT).astype(float)
+    )
+        
+    return df
+
+def replace_qty_for_ingredients(df: pd.DataFrame, ingredients_list: list, default_value: float) -> pd.DataFrame:
+    ingredients_list_clean = [ing.strip().lower() for ing in ingredients_list]
+    ing_clean = df['ingredients'].astype(str).str.strip().str.lower()
+    
+    mask = ing_clean.isin(ingredients_list_clean)
+    
+    df.loc[mask, 'qty_g'] = np.where(
+        df.loc[mask, 'quantity'].isna(),
+        default_value,
+        default_value * df.loc[mask, 'quantity']
+    )
+    df.loc[mask, 'qty_ml'] = np.where(df.loc[mask, 'unit'].isna(), np.nan, df.loc[mask, 'qty_ml'])
+    df.loc[mask, 'unit'] = 'g' 
     return df
 
 # --- Pipeline finale ---
@@ -89,15 +161,25 @@ def process_ingredients_with_enrich(raw_csv_path: str, enrich_csv_path: str, out
     df_ing = df_ing.explode(['ingredients','quantities'])
     df_ing.rename(columns={'quantities':'quantity_raw_str'}, inplace=True)
     
-    df_ing['unit'] = normalize_units(df_ing['quantity_raw_str'].str.extract(r'([A-Za-z]+(?:\s[A-Za-z]+)?)')[0])
+    df_ing['unit'] = df_ing['quantity_raw_str'].str.extract(r'([A-Za-z]+(?:\s[A-Za-z]+)?)', expand=False).fillna('').str.lower().str.strip()
+    df_ing['unit'] = normalize_units(df_ing['unit'])
+    
     df_ing['quantity'] = df_ing['quantity_raw_str'].str.replace(r'([A-Za-z]+(?:\s[A-Za-z]+)?)','',regex=True)
-    df_ing['quantity'] = df_ing['quantity'].apply(lambda x: round(parse_quantity_string(x),3) if parse_quantity_string(x) is not None else "")
+    df_ing['quantity'] = df_ing['quantity'].apply(lambda x: round(parse_quantity_string(x),3) if parse_quantity_string(x) is not None else np.nan)
     
-    df_ing.replace({'':None}, inplace=True)
+    df_ing.replace({'':np.nan}, inplace=True)
 
-    df_ing = convert_units(df_ing)
+    df_ing = convert_units_vectorized(df_ing)
     
-    df_ing.to_csv(output_csv_path, index=False)
+    df_ing = replace_qty_for_ingredients(df_ing, ['cinamon', 'garlic powder', 'salt', 'kosher salt', 'sea salt', 'pepper', 'white pepper', 'ground pepper', 'fresh ground pepper', 'ground black pepper','fresh ground black pepper', 'black pepper', 'cracked black pepper', 'salt and pepper', 'salt and black pepper', 'salt & pepper', 'salt and fresh pepper', 'salt & freshly ground black pepper', 'sugar', 'powdered sugar'], 4.93)
+    df_ing = replace_qty_for_ingredients(df_ing, ['honey', 'oil', 'vegetable oil', 'olive oil', 'extra virgin olive oil', 'butter', 'tomato paste'], 14.79)
+    df_ing = replace_qty_for_ingredients(df_ing, ['egg', 'eggs'], 60)
+    df_ing = replace_qty_for_ingredients(df_ing, ['onions', 'onion', 'red onions', 'yellow onions', 'parmesan cheese', 'cheese'], 100)
+
+    mask_unit_nan = df_ing['unit'].isna()
+    df_ing.loc[mask_unit_nan & df_ing['qty_g'].isna(), 'qty_ml'] = np.nan 
+    
+    df_ing.to_csv(output_csv_path)
     return df_ing
 
 if __name__ == "__main__":
