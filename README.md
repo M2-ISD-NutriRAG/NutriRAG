@@ -82,7 +82,30 @@ cd frontend
 npm install
 ```
 
-4. **Configurer pre-commit (optionnel mais recommandé)**
+4. **Configurer l'authentification Snowflake (clés RSA)**
+
+Pour se connecter à Snowflake de manière sécurisée, nous utilisons l'authentification par paire de clés RSA.
+
+Lancez le script de configuration interactif :
+
+```bash
+cd backend
+python setup_snowflake.py
+```
+
+**Options disponibles :**
+
+- **Option 1** : Configuration complète depuis zéro (recommandé pour la première installation)
+
+  - Génère automatiquement les clés RSA privée et publique
+  - Guide pas à pas pour configurer les clés dans Snowflake
+  - Teste la connexion à la base de données
+
+- **Option 2 & 3** : Tester la connexion
+
+**Note importante :** Pour toute question sur la configuration Snowflake ou les clés RSA, contactez **Mathusan**.
+
+1. **Configurer pre-commit (optionnel mais recommandé)**
 
 Pre-commit permet d'exécuter automatiquement des vérifications de code (linting, formatage) avant chaque commit.
 
