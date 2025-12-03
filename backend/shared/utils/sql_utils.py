@@ -125,9 +125,9 @@ def execute_sql_content(
         print(f"❌ Connection error: {type(e).__name__}: {e}")
         return False
 
-    # Connection automatically closed by context manager
-    if not silent:
-        print("🔌 Connection closed")
+    finally:
+        if not silent:
+            print("🔌 Connection closed")
 
 
 def execute_sql_query(
