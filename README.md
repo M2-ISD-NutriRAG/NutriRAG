@@ -18,7 +18,7 @@ NutriRAG est un assistant culinaire intelligent qui combine :
 
 - **Backend**: FastAPI + Python 3.11
 - **Frontend**: React 18 + TypeScript + Vite + Shadcn/UI
-- **Database**: Snowflake (Cortex AI, Vector Search)
+- **Database**: Snowflake (Cortex AI, Vector **Search**)
 - **Deployment**: Docker + Docker Compose
 
 ## Architecture
@@ -47,7 +47,7 @@ NutriRAG est un assistant culinaire intelligent qui combine :
 
 ### Prérequis
 
-- Python 3.11.x
+- **Python 3.11.x**
 - Node.js 20+
 - Docker & Docker Compose
 - Compte Snowflake
@@ -61,14 +61,7 @@ git clone <repository-url>
 cd NutriRAG
 ```
 
-2. **Configurer les variables d'environnement**
-
-```bash
-cp .env.example .env
-# Éditer .env avec vos credentials Snowflake
-```
-
-3. **Installer les dépendances**
+2. **Installer les dépendances**
 
 ```bash
 # Backend
@@ -82,7 +75,39 @@ cd frontend
 npm install
 ```
 
-4. **Configurer l'authentification Snowflake (clés RSA)**
+3. **Configurer les variables d'environnement**
+
+```bash
+# Dans la racine du projet
+cp .env.example .env
+```
+
+4. (Optionnel) Uniquement pour les personnes sur Windows
+
+Vérifiez que `choco` est installé :
+
+```Powershell
+# Affiche la version de Chocolatey (si installé)
+choco -v
+```
+
+(Optionnel) Si `choco` n'est pas installé, installez-le :
+
+```Powershell
+Set-ExecutionPolicy Bypass -Scope Process -Force; `
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; `
+iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+```
+
+Puis, installez :
+
+```Powershell
+choco install openssl -y
+```
+
+**Relancez VSCode (avant de passer à la prochaine étape)**
+
+5. **Configurer Snowflake avec authentification par clé RSA**
 
 Pour se connecter à Snowflake de manière sécurisée, nous utilisons l'authentification par paire de clés RSA.
 
@@ -93,15 +118,9 @@ cd backend
 python setup_snowflake.py
 ```
 
-**Options disponibles :**
+- Utilisez **l'option 1** pour générer une nouvelle paire de clés RSA et configurer votre compte Snowflake **en suivant bien les étapes**.
 
-- **Option 1** : Configuration complète depuis zéro (recommandé pour la première installation)
-
-  - Génère automatiquement les clés RSA privée et publique
-  - Guide pas à pas pour configurer les clés dans Snowflake
-  - Teste la connexion à la base de données
-
-- **Option 2 & 3** : Tester la connexion
+- Utilisez **l'option 2 ou 3** pour tester la connexion.
 
 **Note importante :** Pour toute question sur la configuration Snowflake ou les clés RSA, contactez **Mathusan**.
 
