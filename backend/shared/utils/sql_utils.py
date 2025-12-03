@@ -171,51 +171,42 @@ def execute_sql_query(
         Query results as list of dictionaries if fetch_results=True, None otherwise
     """
     client = None
-    conn = None
-    cursor = None
-
     try:
         client = SnowflakeClient(autoconnect=True)
-        conn = client._conn
-        cursor = conn.cursor()
-
         if not silent:
             print(
                 f"🔍 Executing query: {query[:100]}{'...' if len(query) > 100 else ''}"
             )
-
-        cursor.execute(query)
-
+        # Use the client's execute method
+        # Assume client.execute returns a list of tuples (rows) and optionally column names
+        # If fetch_results is False, just execute without fetching
         if fetch_results:
-            # Get column names
-            columns = (
-                [desc[0] for desc in cursor.description]
-                if cursor.description
-                else []
-            )
-
-            # Fetch all results
-            rows = cursor.fetchall()
-
+            # Use fetch="all" to get all rows
+            rows = client.execute(query, fetch="all")
+            # Try to get column names from client (if available)
+            # If client.execute returns list of tuples, get column names from client.get_columns or similar
+            # For now, assume client.execute returns list of tuples and client has get_columns method
+            columns = getattr(client, "get_columns", lambda q: [])(query)
+            # If columns is empty, try to infer from first row if possible
+            if not columns and rows and hasattr(rows[0], "_fields"):
+                columns = list(rows[0]._fields)
             # Convert to list of dictionaries
-            results = [dict(zip(columns, row)) for row in rows]
-
+            results = [
+                dict(zip(columns, row)) for row in rows
+            ] if columns else [row for row in rows]
             if not silent:
                 print(f"✅ Query returned {len(results)} rows")
-
             return results
         else:
+            client.execute(query, fetch=None)
             if not silent:
                 print("✅ Query executed successfully")
             return None
-
     except Exception as e:
         if not silent:
             print(f"❌ Query execution error: {e}")
         raise
     finally:
-        if cursor is not None:
-            cursor.close()
         if client is not None:
             client.close()
 
