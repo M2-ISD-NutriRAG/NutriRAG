@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: nutrirag-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - SNOWFLAKE_ACCOUNT=${SNOWFLAKE_ACCOUNT}
+      - SNOWFLAKE_USER=${SNOWFLAKE_USER}
+      - SNOWFLAKE_PASSWORD=${SNOWFLAKE_PASSWORD}
+      - SNOWFLAKE_ROLE=${SNOWFLAKE_ROLE:-student_role}
+      - SNOWFLAKE_WAREHOUSE=${SNOWFLAKE_WAREHOUSE}
+      - SNOWFLAKE_DATABASE=${SNOWFLAKE_DATABASE:-NutriRAG_Project}
+      - SNOWFLAKE_SCHEMA=${SNOWFLAKE_SCHEMA:-ENRICHED}
+      - DEBUG=${DEBUG:-true}
+    volumes:
+      - ./backend/app:/app/app
+    restart: unless-stopped
+    networks:
+      - nutrirag-network
+
+  frontend:
+    build:
+      context: .
+      dockerfile: ./frontend/Dockerfile
+    container_name: nutrirag-frontend
+    ports:
+      - "80:80"
+    environment:
+      - VITE_API_URL=http://backend:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - nutrirag-network
+
+networks:
+  nutrirag-network:
+    driver: bridge
+
+volumes:
+  snowflake-cache:
+
