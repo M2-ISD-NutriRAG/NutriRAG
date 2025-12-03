@@ -53,7 +53,7 @@ async def get_recipe(recipe_id: int):
     client = SnowflakeClient()
     result = client.execute(f"""
         SELECT *
-        FROM {RecipesSampleTable}
+        FROM {RecipesSampleTable.get_full_table_name()}
         WHERE id = {recipe_id}
      """, fetch="all")
     if len(result) > 0:
