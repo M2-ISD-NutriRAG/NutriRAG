@@ -35,7 +35,7 @@ class CleanedIngredients(Table):
     THIAMIN_MG = "THIAMIN_MG"
     VITA_MCG = "VITA_MCG"
     VITB12_MCG = "VITB12_MCG"
-    VITB6_MG ="VITB6_MG"
+    VITB6_MG = "VITB6_MG"
     VITC_MG = "VITC_MG"
     ZINC_MG = "ZINC_MG"
 
