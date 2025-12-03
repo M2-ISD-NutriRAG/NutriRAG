@@ -27,7 +27,7 @@ def run_remote_pipeline(session: Session,
     drop_sql = str(drop).upper()
 
     query = f"""
-    CALL RUN_EMBEDDING_PROCESS(
+    CALL RUN_EMBEDDING_PROCESS_SQL(
         '{model_name}',
         '{target_table}',
         {array_sql},
