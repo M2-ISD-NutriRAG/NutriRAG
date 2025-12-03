@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
 import json
 from shared.snowflake.client import SnowflakeClient
-from shared.snowflake.table.recipes_sample_table import RecipesSampleTable
+from shared.snowflake.tables.recipes_sample_table import RecipesSampleTable
 from app.models.recipe import Recipe, RecipeListResponse
 
 router = APIRouter()
@@ -53,7 +53,7 @@ async def get_recipe(recipe_id: int):
     client = SnowflakeClient()
     result = client.execute(f"""
         SELECT *
-        FROM {RecipesSampleTable}
+        FROM {RecipesSampleTable.get_full_table_name()}
         WHERE id = {recipe_id}
      """, fetch="all")
     if len(result) > 0:
@@ -131,7 +131,7 @@ async def get_random_recipes(count: int = Query(5, ge=1, le=20)):
     # TODO: Équipe 1 - Échantillonner des recettes aléatoires
     results = client.execute(f"""
         SELECT *
-        FROM {RecipesSampleTable}
+        FROM {RecipesSampleTable.get_full_table_name()}
         SAMPLE ({count} rows)
     """, fetch="all")
 
