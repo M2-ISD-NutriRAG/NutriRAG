@@ -10,43 +10,48 @@
   "output_per_query_file": "experiments/exp{experiment_id}/metrics/retrival_per_query.json",
   "output_retrival_plot_metrics_dir": "experiments/exp{experiment_id}/metrics/plots",
 
-  "query_file_path": "data/query/query_test.json",
+  "query_test_file_path": "data/query/query_test.json",
+  "query_llm_file_path": "experiments/exp{experiment_id}/llm_metrics/query_llm.json",
+
+  "eval_prompt_file": "config/eval_prompt.txt", 
+  "llm_model": "mistral-7b",
 
   "models": [
+    "intfloat/e5-small-v2",
     "intfloat/e5-base-v2",
     "sentence-transformers/all-MiniLM-L6-v2",
-    "BAAI/bge-base-en-v1.5",
+    "thenlper/gte-small",
+    "thenlper/gte-base",
+    "BAAI/bge-small-en",
+    "BAAI/bge-base-en",
+    "BAAI/llm-embedder",
     "Snowflake/snowflake-arctic-embed-m",
     "Snowflake/snowflake-arctic-embed-m-v1.5"
   ],
 
   "columns_embedding": {
-    "config_1": ["NAME", "TAGS", "INGREDIENTS", "STEPS", "DESCRIPTION"],
-    "config_2": ["TAGS", "INGREDIENTS", "DESCRIPTION"],
-    "config_3": ["TAGS", "STEPS", "DESCRIPTION"],
-    "config_4": ["TAGS", "INGREDIENTS"],
-    "config_5": ["TAGS", "STEPS"],
-    "config_6": ["TAGS", "DESCRIPTION"]
+    "config_1": ["NAME_CLEAND", "INGREDIENTS_CLEAND", "STEPS_CLEAND", "DESCRIPTION_CLEAND"],
+    "config_2": ["NAME_CLEAND", "INGREDIENTS_CLEAND", "DESCRIPTION_CLEAND"],
+    "config_3": ["NAME_CLEAND", "INGREDIENTS_CLEAND", "STEPS_CLEAND"],
+    "config_4": ["NAME_CLEAND", "STEPS_CLEAND", "DESCRIPTION_CLEAND"],
+    "config_5": ["NAME_CLEAND", "INGREDIENTS_CLEAND"],
+    "config_6": ["NAME_CLEAND", "STEPS_CLEAND"]
   },
   
   "columns_to_clean": {
-    "NAME" : {
+    "NAME_CLEAND" : {
       "column_name": "NAME_CLEAND",
       "start_text": "recipe name"
     },
-    "TAGS" : {
-      "column_name": "TAGS_CLEAND",
-      "start_text": "recipe tags"
-    },
-    "INGREDIENTS" : {
+    "INGREDIENTS_CLEAND" : {
       "column_name": "INGREDIENTS_CLEAND",
       "start_text": "recipe ingredients"
     },
-    "STEPS" : {
+    "STEPS_CLEAND" : {
       "column_name": "STEPS_CLEAND",
       "start_text": "recipe steps"
     },
-    "DESCRIPTION" : {
+    "DESCRIPTION_CLEAND" : {
       "column_name": "DESCRIPTION_CLEAND",
       "start_text": "recipe description"
     }
@@ -54,7 +59,9 @@
 
   "experiments_specifique_params": {
     "experiment_id": 1 ,
-    "top_k": [200]
+    "top_k": [50]
   }
 
 }
+
+
