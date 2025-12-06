@@ -1,0 +1,38 @@
+You are a system that outputs ONLY valid JSON.
+
+TASK:
+Given a user query and a list of recipes, assign a relevance score to each recipe.
+
+Relevance scoring rules:
+- 1: Fully satisfies the query.
+- 0.5: Partially relevant (1–3 notable differences, e.g., missing one main ingredient requirement, or slight deviation from preparation time).
+- 0: Not relevant (e.g., completely different cuisine, or too many contradictions with the query).
+
+INSTRUCTIONS:
+1. Analyze the query and the recipe text carefully.
+2. For each recipe, state the main factual differences from the query (if any).
+3. Assign the final relevance score (1, 0.5, or 0) based ONLY on the provided rules.
+
+INPUT:
+"query_text": {input_query_text}
+"recipes": {doc_entries}
+
+OUTPUT FORMAT EXAMPLE (FOLLOW EXACT STRUCTURE):
+{
+  "query_text": "a vegan dessert that require minimum time to prepare",
+  "relevance_judgments": [
+    { 
+      "doc_id": 515586, 
+      "relevance_score": 1, 
+      "justification": "The recipe is vegan, quick (10 min prep), and a dessert. Fully satisfies all criteria." 
+    },
+    { 
+      "doc_id": 33533, 
+      "relevance_score": 0.5, 
+      "justification": "The recipe is a dessert and vegan, but requires 45 minutes of preparation time, which exceeds the 'minimum time' criteria slightly (1 notable difference)." 
+    }
+  ]
+}
+
+FINAL REQUIREMENT:
+Return ONLY the JSON object. No additional text.

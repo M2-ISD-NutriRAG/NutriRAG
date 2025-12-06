@@ -14,7 +14,6 @@
   "query_llm_file_path": "experiments/exp{experiment_id}/llm_metrics/query_llm.json",
 
   "eval_prompt_file": "config/eval_prompt.txt", 
-  "llm_model": "mistral-7b",
 
   "models": [
     "intfloat/e5-small-v2",
@@ -56,6 +55,32 @@
       "start_text": "recipe description"
     }
   },
+
+  "llm_model": "mistral-7b",
+  "temperature": 0.98,
+  "max_tokens": 8192,
+  "context_window": 32000,
+  "llm_json_format":  {
+    "type": "object",
+    "properties": {
+        "query_text": {
+            "type": "string"
+        },
+        "relevance_judgments": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "doc_id": {"type": "integer"},
+                    "relevance_score": {"type": "number"},
+                    "justification": {"type": "string"}
+                },
+                "required": ["doc_id", "relevance_score", "justification"]
+            }
+        }
+    },
+    "required": ["query_text", "relevance_judgments"]
+},
 
   "experiments_specifique_params": {
     "experiment_id": 1 ,
