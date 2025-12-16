@@ -7,12 +7,10 @@ from typing import Dict, List, Any, Optional, Tuple
 from shared.snowflake.client import SnowflakeClient
 
 from app.models.transform import (
-    TransformConstraints, 
-    TransformationType, 
-    TransformRequest,
+    TransformConstraints,
     TransformResponse,
     NutritionDelta,
-    Recipe
+    Recipe,
 )
 from math import ceil
 
@@ -358,12 +356,14 @@ class TransformService:
     def load_pca_data(self):
         """Load PCA data from Snowflake or CSV as fallback"""
         try:
-            print(" Chargement des données PCA depuis CSV (ingredients_with_clusters.csv)...")
-            
+            print(
+                " Chargement des données PCA depuis CSV (ingredients_with_clusters.csv)..."
+            )
+
             # Charger le fichier CSV
             csv_path = "ingredients_with_clusters.csv"
             df_csv = pd.read_csv(csv_path)
-            
+
             # Adapter les noms de colonnes pour correspondre au format attendu
             self.pca_data = df_csv.rename(columns={
                 'Energy_kcal': 'ENERGY_KCAL',
@@ -376,44 +376,84 @@ class TransformService:
             })
             
             # Ajouter des colonnes de contraintes par défaut (pas disponibles dans le CSV)
-            self.pca_data['is_lactose'] = 0
-            self.pca_data['is_gluten'] = 0 
-            self.pca_data['contains_nuts'] = 0
-            self.pca_data['is_vegetarian'] = 0
-            self.pca_data['is_vegetable'] = 0
-            
+            self.pca_data["is_lactose"] = 0
+            self.pca_data["is_gluten"] = 0
+            self.pca_data["contains_nuts"] = 0
+            self.pca_data["is_vegetarian"] = 0
+            self.pca_data["is_vegetable"] = 0
+
             # Logique simple pour définir quelques contraintes basées sur le nom
             for idx, row in self.pca_data.iterrows():
-                descrip_lower = str(row['Descrip']).lower()
-                
+                descrip_lower = str(row["Descrip"]).lower()
+
                 # Détection lactose (produits laitiers)
-                if any(word in descrip_lower for word in ['milk', 'cheese', 'butter', 'cream', 'yogurt']):
-                    self.pca_data.at[idx, 'is_lactose'] = 1
-                
+                if any(
+                    word in descrip_lower
+                    for word in ["milk", "cheese", "butter", "cream", "yogurt"]
+                ):
+                    self.pca_data.at[idx, "is_lactose"] = 1
+
                 # Détection gluten (céréales, pain, etc.)
-                if any(word in descrip_lower for word in ['wheat', 'bread', 'flour', 'pasta', 'cereal']):
-                    self.pca_data.at[idx, 'is_gluten'] = 1
-                
+                if any(
+                    word in descrip_lower
+                    for word in ["wheat", "bread", "flour", "pasta", "cereal"]
+                ):
+                    self.pca_data.at[idx, "is_gluten"] = 1
+
                 # Détection noix
-                if any(word in descrip_lower for word in ['nut', 'almond', 'peanut', 'walnut', 'pecan']):
-                    self.pca_data.at[idx, 'contains_nuts'] = 1
-                
+                if any(
+                    word in descrip_lower
+                    for word in ["nut", "almond", "peanut", "walnut", "pecan"]
+                ):
+                    self.pca_data.at[idx, "contains_nuts"] = 1
+
                 # Détection végétarien (pas de viande/poisson)
-                if not any(word in descrip_lower for word in ['beef', 'pork', 'chicken', 'fish', 'meat', 'turkey', 'lamb']):
-                    self.pca_data.at[idx, 'is_vegetarian'] = 1
-                
+                if not any(
+                    word in descrip_lower
+                    for word in [
+                        "beef",
+                        "pork",
+                        "chicken",
+                        "fish",
+                        "meat",
+                        "turkey",
+                        "lamb",
+                    ]
+                ):
+                    self.pca_data.at[idx, "is_vegetarian"] = 1
+
                 # Détection végétal (fruits, légumes, etc.)
-                if any(word in descrip_lower for word in ['vegetable', 'fruit', 'bean', 'pea', 'lentil', 'spinach', 'carrot', 'tomato']):
-                    self.pca_data.at[idx, 'is_vegetable'] = 1
-            
-            print(f"[1.4-_load_pca_data] ✅ Données CSV chargées: {len(self.pca_data)} ingrédients")
-            
+                if any(
+                    word in descrip_lower
+                    for word in [
+                        "vegetable",
+                        "fruit",
+                        "bean",
+                        "pea",
+                        "lentil",
+                        "spinach",
+                        "carrot",
+                        "tomato",
+                    ]
+                ):
+                    self.pca_data.at[idx, "is_vegetable"] = 1
+
+            print(
+                f"[1.4-_load_pca_data] ✅ Données CSV chargées: {len(self.pca_data)} ingrédients"
+            )
+
         except Exception as e:
             print(f"[1.5-_load_pca_data] ❌ Erreur chargement CSV: {e}")
             self.pca_data = None
-    
-    def get_neighbors_pca(self, ingredient_name: str, constraints: TransformConstraints = None, 
-                         micro_weight: float = 0.3, macro_weight: float = 0.7, k: int = 5) -> Dict:
+
+    def get_neighbors_pca(
+        self,
+        ingredient_name: str,
+        constraints: TransformConstraints = None,
+        micro_weight: float = 0.3,
+        macro_weight: float = 0.7,
+        k: int = 5,
+    ) -> Dict:
         """
         Find the k best substitutes for an ingredient using PCA macro/micro
         
@@ -433,10 +473,14 @@ class TransformService:
             
         # Clean ingredient name
         ingredient_clean = ingredient_name.lower().strip()
-        
+
         # Search for ingredient in PCA Data 
-        matching_rows = self.pca_data[self.pca_data['Descrip'].str.lower().str.contains(ingredient_clean, na=False)]
-        
+        matching_rows = self.pca_data[
+            self.pca_data["Descrip"]
+            .str.lower()
+            .str.contains(ingredient_clean, na=False)
+        ]
+
         if matching_rows.empty:
             print(f"⚠️ Ingredient '{ingredient_name}' not found in PCA data")
             return None
@@ -448,12 +492,9 @@ class TransformService:
         # Copy data for filtering based on constraints
         df_filtered = self.pca_data.copy()
 
-        # Filter addition for category_llm
-        if 'Category_LLM' in df_filtered.columns:
-            df_filtered = df_filtered[df_filtered['Category_LLM'] == row['Category_LLM']]
-        else:
-            print("⚠️ Column 'Category_LLM' absent from PCA data, category filtering ignored")
-        
+        # 03/12 ajout filtrage sur category_llm
+        # df_filtered = df_filtered[df_filtered['Category_LLM'] == row['Category_LLM']]
+
         # Apply constraint filters
         if constraints:
             CONSTRAINT_TO_COLUMN = {
@@ -461,16 +502,22 @@ class TransformService:
                 "no_gluten": ("is_gluten", 0),
                 "no_nuts": ("contains_nuts", 0),
                 "vegetarian": ("is_vegetarian", 1),
-                "vegan": ("is_vegetable", 1)
+                "vegan": ("is_vegetable", 1),
             }
-            
-            for constraint_name, (col, allowed_val) in CONSTRAINT_TO_COLUMN.items():
+
+            for constraint_name, (
+                col,
+                allowed_val,
+            ) in CONSTRAINT_TO_COLUMN.items():
                 if getattr(constraints, constraint_name, False):
                     # Keep only ingredients that meet the constraint OR the original ingredient
                     if col in df_filtered.columns:
                         df_filtered = df_filtered[
-                            (df_filtered[col] == allowed_val) |
-                            (df_filtered['Descrip'].str.lower() == ingredient_clean)
+                            (df_filtered[col] == allowed_val)
+                            | (
+                                df_filtered["Descrip"].str.lower()
+                                == ingredient_clean
+                            )
                         ]
                         print(f"🔧 Constraint applied: {constraint_name}")
         
@@ -485,10 +532,18 @@ class TransformService:
         if not available_macro_cols and not available_micro_cols:
             print("❌ No PCA columns available for distance calculation")
             return None
-        
-        macro_vec = row[available_macro_cols].values if available_macro_cols else np.array([])
-        micro_vec = row[available_micro_cols].values if available_micro_cols else np.array([])
-        
+
+        macro_vec = (
+            row[available_macro_cols].values
+            if available_macro_cols
+            else np.array([])
+        )
+        micro_vec = (
+            row[available_micro_cols].values
+            if available_micro_cols
+            else np.array([])
+        )
+
         def euclidean_distance(a, b):
             return np.linalg.norm(a - b) if len(a) > 0 and len(b) > 0 else 0
         
@@ -504,15 +559,17 @@ class TransformService:
         
         # Calculate macro distance
         if available_macro_cols:
-            df_filtered['dist_macro'] = df_filtered[available_macro_cols].apply(
-                lambda x: euclidean_distance(macro_vec, x.values), axis=1)
+            df_filtered["dist_macro"] = df_filtered[available_macro_cols].apply(
+                lambda x: euclidean_distance(macro_vec, x.values), axis=1
+            )
         else:
             df_filtered['dist_macro'] = 0
         
         # Calculate micro distance  
         if available_micro_cols:
-            df_filtered['dist_micro'] = df_filtered[available_micro_cols].apply(
-                lambda x: euclidean_distance(micro_vec, x.values), axis=1)
+            df_filtered["dist_micro"] = df_filtered[available_micro_cols].apply(
+                lambda x: euclidean_distance(micro_vec, x.values), axis=1
+            )
         else:
             df_filtered['dist_micro'] = 0
         
@@ -548,20 +605,22 @@ class TransformService:
         }
         
         for _, substitute_row in best_substitutes.iterrows():
-            result["best_substitutes"].append({
-                "name": substitute_row['Descrip'],
-                "global_score": substitute_row['global_score'],
-                "macro_distance": substitute_row['dist_macro'],
-                "micro_distance": substitute_row['dist_micro'],
-                "nutrition": {
-                    "calories": substitute_row['ENERGY_KCAL'],
-                    "protein": substitute_row['PROTEIN_G'],
-                    "saturated_fat": substitute_row['SATURATED_FATS_G'],
-                    "sodium": substitute_row['SODIUM_MG'],
-                    "sugar": substitute_row['SUGAR_G']
+            result["best_substitutes"].append(
+                {
+                    "name": substitute_row["Descrip"],
+                    "global_score": substitute_row["global_score"],
+                    "macro_distance": substitute_row["dist_macro"],
+                    "micro_distance": substitute_row["dist_micro"],
+                    "nutrition": {
+                        "calories": substitute_row["ENERGY_KCAL"],
+                        "protein": substitute_row["PROTEIN_G"],
+                        "saturated_fat": substitute_row["SATURATED_FATS_G"],
+                        "sodium": substitute_row["SODIUM_MG"],
+                        "sugar": substitute_row["SUGAR_G"],
+                    },
                 }
-            })
-        
+            )
+
         return result
     
     def get_health_score(self, ingredient_name: str) -> float:
@@ -610,15 +669,17 @@ class TransformService:
         """
         # Try with PCA first
         pca_result = self.get_neighbors_pca(ingredient, contraintes, k=3)
-        
+
         if pca_result and pca_result["best_substitutes"]:
             # Take the best PCA substitute
             best_substitute = pca_result["best_substitutes"][0]
             substitute_name = best_substitute["name"]
-            
-            print(f"🎯 {ingredient} → {substitute_name} (PCA score: {best_substitute['global_score']:.3f})")
+
+            print(
+                f"🎯 {ingredient} → {substitute_name} (PCA score: {best_substitute['global_score']:.3f})"
+            )
             return substitute_name, True
-        
+
         return ingredient, False
     
     def adapt_recipe_with_llm(self, recipe: Recipe, substitutions: Dict) -> str:
@@ -627,7 +688,7 @@ class TransformService:
         """
         
         # Building the prompt for the LLM
-        base_prompt = f'''You are an expert chef specializing in recipe adaptation and ingredient substitution.
+        base_prompt = f"""You are an expert chef specializing in recipe adaptation and ingredient substitution.
 
         ORIGINAL RECIPE:
         Name: {recipe.name}
@@ -635,12 +696,12 @@ class TransformService:
         Steps: {recipe.steps}
 
         SUBSTITUTIONS TO APPLY:
-        '''
+        """
 
         for original, substitute in substitutions.items():
             base_prompt += f"- Replace '{original}' with '{substitute}'\n"
 
-        base_prompt += '''
+        base_prompt += """
         YOUR TASK:
         Adapt the recipe steps to incorporate these ingredient substitutions while maintaining the dish's quality and integrity.
 
@@ -660,10 +721,10 @@ class TransformService:
         - Do not add new steps; only modify existing ones
         - Do not change unaffected steps
 
-        OUTPUT FORMAT: 
+        OUTPUT FORMAT:
         Provide only the adapted recipe steps in numbered format.
 
-        ADAPTED RECIPE STEPS:'''
+        ADAPTED RECIPE STEPS:"""
 
         try:
             # Échapper les guillemets simples pour éviter les erreurs SQL
@@ -682,20 +743,24 @@ class TransformService:
             new_steps = []
             notes = []
             for step in parsed_steps:
-                if len(step)>0:
+                if len(step) > 0:
                     if step[0].isdigit():
                         new_steps.append(step)
                     elif str.startswith(step.lower(), "note"):
                         notes.append(step[6:].strip())
             return new_steps, notes
-            
+
         except Exception as e:
             print(f"⚠️ LLM error: {e}")
             # Fallback: simple manual adaptation
             adapted_steps = recipe.steps
-            adapted_steps = [step.replace(original, substitute) for original, substitute in substitutions.items() for step in adapted_steps]
+            adapted_steps = [
+                step.replace(original, substitute)
+                for original, substitute in substitutions.items()
+                for step in adapted_steps
+            ]
             return adapted_steps, []
-    
+
     async def transform(
             self,
             request: TransformRequest,
@@ -772,8 +837,11 @@ class TransformService:
                 ingredients=new_ingredients,
                 quantity_ingredients=new_quantity, # TODO fetch new quantity for recipe
                 minutes=recipe.minutes,
-                steps=recipe.steps
+                steps=recipe.steps,
             )
+            # Repeat step 3-5
+            # if original_nutrition.score>=new_nutrition.score:
+
             # Step 6: Adapt recipe step with LLM
             if transformations:
                 new_recipe.steps, notes = self.adapt_recipe_with_llm(new_recipe, transformations)
@@ -795,7 +863,7 @@ class TransformService:
                 nutrition_before=original_nutrition,
                 nutrition_after=new_recipe_nutrition,
                 success=success,
-                message="\n".join(notes)
+                message="\n".join(notes),
             )
             print("Step 7 completed")
             return response
@@ -804,7 +872,7 @@ class TransformService:
             print(f"Error in transformation process: {e}")
             print("\nTraceback complet:")
             traceback.print_exc()
-            success= False
+            success = False
             response = TransformResponse(
                 recipe=recipe,
                 original_name=recipe.name,
@@ -813,17 +881,16 @@ class TransformService:
                 nutrition_before=None,
                 nutrition_after=None,
                 success=success,
-                message=None
+                message=None,
             )
 
-            return response
+        return response
 
-        
         # return TransformResponse(
         #     recipe_id=recipe_id,
         #     original_name="Pâtes à la crème et au bacon",
         #     transformed_name="Pâtes protéinées au yaourt grec et dinde",
-            
+
         #     substitutions=[
         #         Substitution(
         #             original_ingredient="Crème fraîche",
@@ -881,4 +948,3 @@ class TransformService:
         #     success=True,
         #     message=f"Transformation réussie selon l'objectif '{goal}'"
         # )
-
