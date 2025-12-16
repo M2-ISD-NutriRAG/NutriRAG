@@ -1,4 +1,3 @@
-import pickle
 from fastapi import APIRouter, HTTPException
 from app.models.transform import TransformRequest, TransformResponse
 from app.services.transform_service import TransformService
@@ -28,15 +27,10 @@ async def transform_recipe(request: TransformRequest):
     ```
     """
     try:
-        # TODO: Équipe 3 - Implémentation de la logique de transformation
-        with open("request.pkl", "rb") as file:
-            request = pickle.load(file)
-
-        
         result = await transform_service.transform(
             recipe=request.recipe,
             ingredients_to_remove=request.ingredients_to_remove,
-            constraints=request.constraints
+            constraints=request.constraints,
         )
 
         return result
