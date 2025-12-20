@@ -1,6 +1,7 @@
 from typing import Dict, Any
 from backend.app.models.recipe import NutritionDetailed
 
+
 def compute_nutrition_for_ingredient(
     grams: float,
     nutrition_per_100g: Dict[str, Any],
@@ -140,9 +141,9 @@ def compute_risk_score(
     Returns float between -inf and 1.0
     """
 
-    Sugar_limit = 50.0     
-    SatFat_limit = 20.0   
-    Sodium_limit = 2000.0
+    sugar_limit = 50.0     
+    satfat_limit = 20.0   
+    sodium_limit = 2000.0
 
     def subscore(x, L, alpha):
         x = max(x, 0.0)
@@ -151,9 +152,9 @@ def compute_risk_score(
         else:
             return -alpha * ((x / L) - 1.0)
 
-    h_sugar   = subscore(sugar_g, Sugar_limit, alpha_sugar)
-    h_satfat  = subscore(saturated_fat_g, SatFat_limit, alpha_satfat)
-    h_sodium  = subscore(sodium_mg, Sodium_limit, alpha_sodium)
+    h_sugar   = subscore(sugar_g, sugar_limit, alpha_sugar)
+    h_satfat  = subscore(saturated_fat_g, satfat_limit, alpha_satfat)
+    h_sodium  = subscore(sodium_mg, sodium_limit, alpha_sodium)
 
     risk_control_score = (h_sugar + h_satfat + h_sodium) / 3.0
     return risk_control_score
@@ -212,7 +213,7 @@ def compute_rhi(nutrition: NutritionDetailed) -> float:
 
     rhi_raw = 0.4 * risk + 0.4 * benefit + 0.2 * micro
 
-    rhi_0_1 = max(0.0, min(1.0, rhi_raw))
+    rhi_0_1 = max(0.0, rhi_raw)
     rhi = rhi_0_1 * 100.0
 
     return rhi
