@@ -1,11 +1,8 @@
-from pydantic import BaseModel
 from typing import Dict, Any
 from backend.app.models.recipe import NutritionDetailed
 
 ingredients_amounts: Dict[str, float]
 nutrition_table: Dict[str, Dict[str, float]]
-
-ingredients_amounts_test = {"butter": 20.0, "milk": 200.0}
 
 def compute_nutrition_for_ingredient(
     grams: float,
@@ -37,12 +34,12 @@ def compute_nutrition_for_ingredient(
     NutritionDetailed
         Nutrition **for that amount** of this ingredient (not per 100 g).
     """
-    factor = grams / 100.0  # convert per 100g → per `grams`
+    factor = grams / 100.0 
 
-    def val(key: str, default: float = 0.0) -> float:
+    def val(key: str) -> float:
         v = nutrition_per_100g.get(key)
         if v is None:
-            return default
+            return 0.0
         return float(v) * factor
 
     return NutritionDetailed(
@@ -51,15 +48,15 @@ def compute_nutrition_for_ingredient(
         fat_g=val("FAT_G"),
         saturated_fat_g=val("SATURATED_FATS_G"),
         carbs_g=val("CARB_G"),
-        fiber_g=val("FIBER_G", 0.0),
-        sugar_g=val("SUGAR_G", 0.0),
+        fiber_g=val("FIBER_G"),
+        sugar_g=val("SUGAR_G"),
         sodium_mg=val("SODIUM_MG"),
 
-        calcium_mg=val("CALCIUM_MG", 0.0),
-        iron_mg=val("IRON_MG", 0.0),
-        magnesium_mg=val("MAGNESIUM_MG", 0.0),
-        potassium_mg=val("POTASSIUM_MG", 0.0),
-        vitamin_c_mg=val("VITC_MG", 0.0),
+        calcium_mg=val("CALCIUM_MG"),
+        iron_mg=val("IRON_MG"),
+        magnesium_mg=val("MAGNESIUM_MG"),
+        potassium_mg=val("POTASSIUM_MG"),
+        vitamin_c_mg=val("VITC_MG"),
     )
 
 def compute_recipe_nutrition_totals(
@@ -106,15 +103,15 @@ def compute_recipe_nutrition_totals(
         recipe_nutrition.fat_g += ing_nut.fat_g
         recipe_nutrition.saturated_fat_g += ing_nut.saturated_fat_g
         recipe_nutrition.carbs_g += ing_nut.carbs_g
-        recipe_nutrition.fiber_g = (recipe_nutrition.fiber_g or 0.0) + (ing_nut.fiber_g or 0.0)
-        recipe_nutrition.sugar_g = (recipe_nutrition.sugar_g or 0.0) + (ing_nut.sugar_g or 0.0)
+        recipe_nutrition.fiber_g += ing_nut.fiber_g
+        recipe_nutrition.sugar_g += ing_nut.sugar_g
         recipe_nutrition.sodium_mg += ing_nut.sodium_mg
 
-        recipe_nutrition.calcium_mg = (recipe_nutrition.calcium_mg or 0.0) + (ing_nut.calcium_mg or 0.0)
-        recipe_nutrition.iron_mg = (recipe_nutrition.iron_mg or 0.0) + (ing_nut.iron_mg or 0.0)
-        recipe_nutrition.magnesium_mg = (recipe_nutrition.magnesium_mg or 0.0) + (ing_nut.magnesium_mg or 0.0)
-        recipe_nutrition.potassium_mg = (recipe_nutrition.potassium_mg or 0.0) + (ing_nut.potassium_mg or 0.0)
-        recipe_nutrition.vitamin_c_mg = (recipe_nutrition.vitamin_c_mg or 0.0) + (ing_nut.vitamin_c_mg or 0.0)
+        recipe_nutrition.calcium_mg += ing_nut.calcium_mg
+        recipe_nutrition.iron_mg += ing_nut.iron_mg
+        recipe_nutrition.magnesium_mg += ing_nut.magnesium_mg
+        recipe_nutrition.potassium_mg += ing_nut.potassium_mg
+        recipe_nutrition.vitamin_c_mg += ing_nut.vitamin_c_mg
 
     return recipe_nutrition
 
@@ -202,30 +199,18 @@ def compute_rhi(nutrition: NutritionDetailed) -> float:
     RHI = max(0, 0.4 * risk + 0.4 * benefit + 0.2 * micro) * 100
     """
 
-    protein_g = float(nutrition.protein_g)
-    fiber_g = float(nutrition.fiber_g or 0.0)
-    sugar_g = float(nutrition.sugar_g or 0.0)
-    sat_fat_g = float(nutrition.saturated_fat_g)
-    sodium_mg = float(nutrition.sodium_mg)
-
-    calcium_mg = float(nutrition.calcium_mg or 0.0)
-    iron_mg = float(nutrition.iron_mg or 0.0)
-    magnesium_mg = float(nutrition.magnesium_mg or 0.0)
-    potassium_mg = float(nutrition.potassium_mg or 0.0)
-    vitamin_c_mg = float(nutrition.vitamin_c_mg or 0.0)
-
-    benefit = compute_benefit_score(protein_g=protein_g, fiber_g=fiber_g)
+    benefit = compute_benefit_score(protein_g=nutrition.protein_g, fiber_g=nutrition.fiber_g)
     risk = compute_risk_score(
-        sugar_g=sugar_g,
-        saturated_fat_g=sat_fat_g,
-        sodium_mg=sodium_mg,
+        sugar_g=nutrition.sugar_g,
+        saturated_fat_g=nutrition.sat_fat_g,
+        sodium_mg=nutrition.sodium_mg,
     )
     micro = compute_micronutrient_density_score(
-        calcium_mg=calcium_mg,
-        iron_mg=iron_mg,
-        magnesium_mg=magnesium_mg,
-        potassium_mg=potassium_mg,
-        vitamin_c_mg=vitamin_c_mg,
+        calcium_mg=nutrition.calcium_mg,
+        iron_mg=nutrition.iron_mg,
+        magnesium_mg=nutrition.magnesium_mg,
+        potassium_mg=nutrition.potassium_mg,
+        vitamin_c_mg=nutrition.vitamin_c_mg,
     )
 
     rhi_raw = 0.4 * risk + 0.4 * benefit + 0.2 * micro
@@ -234,9 +219,3 @@ def compute_rhi(nutrition: NutritionDetailed) -> float:
     rhi = rhi_0_1 * 100.0
 
     return rhi
-
-"""
-call order example : 
-recipe_nutrition = compute_recipe_nutrition_totals(ingredients_amounts, nutrition_table)
-rhi = compute_rhi(recipe_nutrition)
-"""
