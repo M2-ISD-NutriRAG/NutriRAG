@@ -1,9 +1,6 @@
 from typing import Dict, Any
 from backend.app.models.recipe import NutritionDetailed
 
-ingredients_amounts: Dict[str, float]
-nutrition_table: Dict[str, Dict[str, float]]
-
 def compute_nutrition_for_ingredient(
     grams: float,
     nutrition_per_100g: Dict[str, Any],
@@ -172,17 +169,17 @@ def compute_micronutrient_density_score(
     Compute a micronutrient density score in [0, 1] based on totals for the recipe.
     """
 
-    Calcium_ref   = 1000.0
-    Iron_ref      = 18.0
-    Magnesium_ref = 350.0
-    Potassium_ref = 3500.0
-    VitC_ref      = 90.0
+    calcium_ref   = 1000.0
+    iron_ref      = 18.0
+    magnesium_ref = 350.0
+    potassium_ref = 3500.0
+    vitamin_c_ref = 90.0
 
-    m_ca = min(max(calcium_mg, 0.0)   / Calcium_ref,   1.0)
-    m_fe = min(max(iron_mg, 0.0)      / Iron_ref,      1.0)
-    m_mg = min(max(magnesium_mg, 0.0) / Magnesium_ref, 1.0)
-    m_k  = min(max(potassium_mg, 0.0) / Potassium_ref, 1.0)
-    m_c  = min(max(vitamin_c_mg, 0.0) / VitC_ref,      1.0)
+    m_ca = min(max(calcium_mg, 0.0)   / calcium_ref,   1.0)
+    m_fe = min(max(iron_mg, 0.0)      / iron_ref,      1.0)
+    m_mg = min(max(magnesium_mg, 0.0) / magnesium_ref, 1.0)
+    m_k  = min(max(potassium_mg, 0.0) / potassium_ref, 1.0)
+    m_c  = min(max(vitamin_c_mg, 0.0) / vitamin_c_ref,      1.0)
 
     micronutrient_score = (m_ca + m_fe + m_mg + m_k + m_c) / 5.0
 
@@ -202,7 +199,7 @@ def compute_rhi(nutrition: NutritionDetailed) -> float:
     benefit = compute_benefit_score(protein_g=nutrition.protein_g, fiber_g=nutrition.fiber_g)
     risk = compute_risk_score(
         sugar_g=nutrition.sugar_g,
-        saturated_fat_g=nutrition.sat_fat_g,
+        saturated_fat_g=nutrition.saturated_fat_g,
         sodium_mg=nutrition.sodium_mg,
     )
     micro = compute_micronutrient_density_score(
