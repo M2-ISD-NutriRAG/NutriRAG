@@ -84,7 +84,7 @@ async def health_check():
     return {
         "status": "healthy",
         "database": db_status,
-}
+    }
 
 
 if __name__ == "__main__":
