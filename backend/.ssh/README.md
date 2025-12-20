@@ -26,11 +26,6 @@ This guide walks you through setting up secure key pair authentication for Snowf
 
 ---
 
-## Files Generated
-
-- `rsa_key.p8` - Private key (🔒 KEEP SECRET)
-- `rsa_key.pub` - Public key (safe to share with Snowflake)
-
 ## Complete Setup Guide
 
 ### Step 1: Generate Your RSA Key Pair
@@ -44,6 +39,11 @@ openssl genrsa 2048 | openssl pkcs8 -topk8 -inform PEM -out backend/.ssh/rsa_key
 # Generate the public key from the private key
 openssl rsa -in backend/.ssh/rsa_key.p8 -pubout -out backend/.ssh/rsa_key.pub
 ```
+
+**Files created:**
+
+- `rsa_key.p8` - Your private key (🔒 KEEP SECRET)
+- `rsa_key.pub` - Your public key (safe to share)
 
 **Set appropriate permissions (Linux/Mac):**
 
@@ -127,7 +127,7 @@ SNOWFLAKE_PRIVATE_KEY_PATH=backend/.ssh/rsa_key.p8
 **Option B: Absolute path** (recommended for reliability)
 
 ```bash
-SNOWFLAKE_PRIVATE_KEY_PATH=/absolute/path/to/your/project/backend/.ssh/rsa_key.p8
+SNOWFLAKE_PRIVATE_KEY_PATH=path_to_your_project/backend/.ssh/rsa_key.p8
 ```
 
 **Optional:** Comment out the password line if you have one:
@@ -136,8 +136,6 @@ SNOWFLAKE_PRIVATE_KEY_PATH=/absolute/path/to/your/project/backend/.ssh/rsa_key.p
 # SNOWFLAKE_PASSWORD=your_old_password
 ```
 
-**Note:** The relative path is resolved from your current working directory when running the script. If you run your script from different locations, consider using an absolute path for reliability.
-
 ---
 
 ### Step 6: Test Your Connection
@@ -145,7 +143,6 @@ SNOWFLAKE_PRIVATE_KEY_PATH=/absolute/path/to/your/project/backend/.ssh/rsa_key.p
 Run a test script from the backend directory:
 
 ```bash
-# From your project root directory
 cd backend
 python -m data.embeddings.create_table
 ```
@@ -261,3 +258,7 @@ SNOWFLAKE_PRIVATE_KEY_PATH=backend/.ssh/rsa_key.p8
 ```sql
 ALTER USER YOUR_USERNAME SET RSA_PUBLIC_KEY='<public_key_content>';
 ```
+
+---
+
+**Need help?** Check the Troubleshooting section or contact your team lead.
