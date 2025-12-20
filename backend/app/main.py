@@ -83,16 +83,8 @@ async def health_check():
 
     return {
         "status": "healthy",
-<<<<<<< HEAD
         "database": db_status,
-=======
-        "database": f"{'connected' if SnowflakeClient().is_connected() else 'not connected'}",
-<<<<<<< HEAD
-=======
->>>>>>> 555951e (fix: better architecture for create embeddings table)
->>>>>>> e86ae7db66598f2c973f8d4efe1465845e4190e6
-        "timestamp": "2025-11-18T00:00:00Z",
-    }
+}
 
 
 if __name__ == "__main__":
