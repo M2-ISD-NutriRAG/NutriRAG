@@ -182,16 +182,9 @@ Accéder à :
 
 [Architecture.md](./docs/Architecture.md)
 
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
 ## Testing
 
 For information on how to write and run tests, see [Testing Guide](./backend/tests/README.md)
-
-=======
->>>>>>> e86ae7db66598f2c973f8d4efe1465845e4190e6
-## Documentation Backend
 
 ### Modules Principaux
 
