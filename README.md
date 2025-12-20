@@ -246,7 +246,7 @@ Projet académique - Master ISD - Université Paris-Saclay
 
 ---
 
-**Bon projet ! **
+**Bon projet !**
 
 # CI / CD 
 Pour lancer le CI localement :
