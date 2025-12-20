@@ -190,7 +190,6 @@ Accéder à :
 For information on how to write and run tests, see [Testing Guide](./backend/tests/README.md)
 
 =======
->>>>>>> 555951e (fix: better architecture for create embeddings table)
 >>>>>>> e86ae7db66598f2c973f8d4efe1465845e4190e6
 ## Documentation Backend
 
