@@ -29,13 +29,7 @@ wheels/
 .pytest_cache/
 .coverage
 htmlcov/
-<<<<<<< HEAD
 .venv/
-=======
-./backend/.*
-.*
-
->>>>>>> 02a9aade252eece44b814e436de7d1c4695cdf96
 # Node
 node_modules/
 npm-debug.log*
