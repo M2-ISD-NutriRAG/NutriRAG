@@ -1,10 +1,10 @@
 import ast
 import logging
-import os
 import pandas as pd
 import numpy as np
+from snowflake.snowpark.functions import col
 
-from config import CACHE_DIR, DATA_PARAMS, OUTPUT_FILES, SNOWFLAKE_CONFIG
+from config import DATA_PARAMS, SNOWFLAKE_CONFIG
 from DataTransformer import DataTransformer
 from SnowflakeConnector import SnowflakeConnector
 
@@ -17,157 +17,187 @@ class SnowflakeIngestor:
         self.logger = logging.getLogger(self.__class__.__name__)
 
     def run_ingestion(self):
-        # ==================================================================================
-        # 1. READ BASE TABLE (RAW_RECIPES)
-        # ==================================================================================
-        self.logger.info("Reading BASE RAW table (raw_recipes) into pandas...")
-        table_path = f"{SNOWFLAKE_CONFIG['database']}.{SNOWFLAKE_CONFIG['raw_schema']}.{SNOWFLAKE_CONFIG['raw_table']}"
-        df = self.connector.session.table(table_path)
-        recipes = df.to_pandas()
-        
-        # SÉCURITÉ : On force tout en MAJUSCULES pour éviter les erreurs de casse
-        recipes.columns = [c.upper() for c in recipes.columns]
+        self.logger.info("🚀 Starting Ingestion Process with DETAILED DEBUGGING...")
 
-        # NETTOYAGE PRÉALABLE : Si HAS_IMAGE ou IMAGE_URL existent déjà (pollution), on les vire
-        # pour éviter la création de colonnes HAS_IMAGE_x / HAS_IMAGE_y lors du merge
-        cols_to_drop = [c for c in ["HAS_IMAGE", "IMAGE_URL"] if c in recipes.columns]
-        if cols_to_drop:
-            self.logger.info(f"Dropping existing columns in base table to avoid merge conflicts: {cols_to_drop}")
-            recipes = recipes.drop(columns=cols_to_drop)
-        
         # ==================================================================================
-        # 2. LOAD & PROCESS IMAGES (FROM RECIPES_ENHANCED_V2)
+        # 1. LOAD DATA & JOINS
         # ==================================================================================
-        self.logger.info("Reading IMAGES table (recipes_enhanced_v2)...")
-        img_table_path = f"{SNOWFLAKE_CONFIG['database']}.{SNOWFLAKE_CONFIG['raw_schema']}.{SNOWFLAKE_CONFIG['recipes_enhanced_v2_table']}"
-        df_img_snowflake = self.connector.session.table(img_table_path)
         
-        pdf_img = df_img_snowflake.to_pandas()
-        pdf_img.columns = [c.lower() for c in pdf_img.columns]
+        # --- A. Load Base Recipes ---
+        self.logger.info("--- [STEP 1.A] Loading Base Recipes ---")
+        table_path = f"{SNOWFLAKE_CONFIG['database']}.{SNOWFLAKE_CONFIG['raw_schema']}.{SNOWFLAKE_CONFIG['raw_table']}"
         
-        # Initialisation du DataFrame image propre
-        df_img = pd.DataFrame()
-        df_img["id"] = pdf_img["id"]
+        df_base_snow = self.connector.session.table(table_path)
         
-        if "images" in pdf_img.columns:
-            # Nettoyage: String "['url']" -> List ['url'] -> String "url"
-            # 1. Parse la liste
-            pdf_img["images_parsed"] = pdf_img["images"].apply(self.transformer.safe_parse_list)
+        # Cast SUBMITTED to string to handle date formatting issues later in Pandas
+        submitted_col = next((c for c in df_base_snow.columns if c.upper() == 'SUBMITTED'), None)
+        if submitted_col:
+            df_base_snow = df_base_snow.with_column(submitted_col, df_base_snow[submitted_col].cast("string"))
+
+        recipes = df_base_snow.to_pandas()
+        recipes.columns = [c.upper() for c in recipes.columns]
+        
+        self.logger.info(f"📊 [BASE] Rows loaded: {len(recipes)}") # LOG
+        
+        if "HAS_IMAGE" in recipes.columns: recipes = recipes.drop(columns=["HAS_IMAGE", "IMAGE_URL"])
+
+        # --- B. Load & Prep Images ---
+        self.logger.info("--- [STEP 1.B] Loading Images ---")
+        img_path = f"{SNOWFLAKE_CONFIG['database']}.{SNOWFLAKE_CONFIG['raw_schema']}.{SNOWFLAKE_CONFIG['recipes_enhanced_v2_table']}"
+        
+        df_img_snow = self.connector.session.table(img_path)
+        cols_map = {c.lower(): c for c in df_img_snow.columns}
+        id_col = cols_map.get('id', 'ID')
+        img_col = cols_map.get('images', cols_map.get('image_url', 'IMAGES'))
+        
+        if img_col:
+            pdf_img = df_img_snow.select(col(id_col), col(img_col)).to_pandas()
+            pdf_img.columns = [c.lower() for c in pdf_img.columns]
             
-            # 2. Extraction de la première URL
-            df_img["IMAGE_URL"] = pdf_img["images_parsed"].apply(
-                lambda x: x[0] if isinstance(x, list) and len(x) > 0 else None
-            )
-            # 3. Calcul HAS_IMAGE (1 ou 0)
+            df_img = pd.DataFrame({"ID": pdf_img["id"]})
+            target_col = "images" if "images" in pdf_img.columns else "image_url"
+            
+            parsed = pdf_img[target_col].apply(self.transformer.safe_parse_list)
+            df_img["IMAGE_URL"] = parsed.apply(lambda x: x[0] if isinstance(x, list) and len(x) > 0 else None)
             df_img["HAS_IMAGE"] = df_img["IMAGE_URL"].apply(lambda x: 1 if x is not None else 0)
         else:
-            self.logger.warning("Colonne 'images' absente. Images ignorées.")
+            pdf_ids = df_img_snow.select(col(id_col)).to_pandas()
+            df_img = pd.DataFrame({"ID": pdf_ids[id_col.lower()]})
             df_img["HAS_IMAGE"] = 0
             df_img["IMAGE_URL"] = None
+            
+        self.logger.info(f"📊 [IMAGES] Rows loaded: {len(df_img)}") # LOG
 
-        # On ne garde que l'essentiel et on renomme pour le merge
-        df_img = df_img[["id", "HAS_IMAGE", "IMAGE_URL"]].rename(columns={"id": "ID"})
+        # --- C. Load & Prep Quantities ---
+        self.logger.info("--- [STEP 1.C] Loading Quantities ---")
+        qty_path = f"{SNOWFLAKE_CONFIG['database']}.{SNOWFLAKE_CONFIG['raw_schema']}.{SNOWFLAKE_CONFIG['recipes_w_search_terms_table']}"
+        pdf_qty = self.connector.session.table(qty_path).to_pandas()
+        pdf_qty.columns = [c.lower() for c in pdf_qty.columns]
+        
+        df_qty = pd.DataFrame({"ID": pdf_qty["id"]})
+        if "serving_size" in pdf_qty.columns:
+            df_qty["SERVING_SIZE"] = pdf_qty["serving_size"].astype(str).apply(lambda x: x[3:-3] if len(x) > 6 else None)
+            df_qty["SERVING_SIZE"] = pd.to_numeric(df_qty["SERVING_SIZE"], errors='coerce')
+        if "search_terms" in pdf_qty.columns:
+             df_qty["SEARCH_TERMS"] = pdf_qty["search_terms"].astype(str).apply(lambda x: x.replace("{", "[").replace("}", "]"))
+        if "ingredients_raw_str" in pdf_qty.columns:
+            df_qty["INGREDIENTS_RAW_STR"] = pdf_qty["ingredients_raw_str"]
+        if "servings" in pdf_qty.columns:
+            df_qty["SERVINGS"] = pd.to_numeric(pdf_qty["servings"], errors='coerce')
+            
+        self.logger.info(f"📊 [QUANTITIES] Rows loaded: {len(df_qty)}") # LOG
 
-        # ==================================================================================
-        # 3. LOAD QUANTITY/SEARCH TERMS (RECIPES_W_SEARCH_TERMS)
-        # ==================================================================================
-        self.logger.info("Reading Quantity/Search Terms table...")
-        recipes_w_search_terms_table = f"{SNOWFLAKE_CONFIG['database']}.{SNOWFLAKE_CONFIG['raw_schema']}.{SNOWFLAKE_CONFIG['recipes_w_search_terms_table']}"
-        df_quantity_snowflake = self.connector.session.table(recipes_w_search_terms_table)
+        # --- D. Merging ---
+        self.logger.info("--- [STEP 1.D] Merging Tables ---")
         
-        pdf_quantity = df_quantity_snowflake.to_pandas()
-        pdf_quantity.columns = [c.lower() for c in pdf_quantity.columns]
-        
-        df_quantity = pdf_quantity[["id", "ingredients_raw_str", "serving_size", 'servings', 'search_terms']].copy()
-        
-        # Nettoyage serving_size: "1 (155 g)" -> "155"
-        df_quantity["serving_size"] = df_quantity["serving_size"].astype(str).apply(
-            lambda x: x[3:-3] if len(x) > 6 else None
-        )
-        # Nettoyage search_terms
-        df_quantity["search_terms"] = df_quantity["search_terms"].astype(str).apply(
-            lambda x: x.replace("{", "[").replace("}", "]")
-        )
-
-        # Majuscules pour le merge
-        df_quantity.columns = [c.upper() for c in df_quantity.columns]
-
-        # ==================================================================================
-        # 4. MERGE ALL TABLES
-        # ==================================================================================
-        self.logger.info("Merging BASE + IMAGES + QUANTITY tables...")
-        
-        # Merge 1: Base + Images (Left Join)
+        # Merge 1: Images (Left Join)
         recipes = recipes.merge(df_img, how="left", on="ID")
+        recipes["HAS_IMAGE"] = recipes["HAS_IMAGE"].fillna(0)
+        self.logger.info(f"📊 Rows after Image Join (Left): {len(recipes)}") # LOG
         
-        # DEBUG : Vérification post-merge 1
-        if "HAS_IMAGE" not in recipes.columns:
-            self.logger.error(f"COLONNE HAS_IMAGE MANQUANTE APRÈS MERGE 1. Colonnes présentes : {list(recipes.columns)}")
-            # Fallback d'urgence pour éviter le crash
-            recipes["HAS_IMAGE"] = 0
-            recipes["IMAGE_URL"] = None
+        # Merge 2: Quantities (Inner Join) -> C'est souvent ici que ça casse !
+        recipes = recipes.merge(df_qty, how="inner", on="ID")
+        self.logger.info(f"📊 Rows after Quantity Join (Inner): {len(recipes)}") # LOG
 
-        # Merge 2: + Quantity (Inner Join)
-        recipes = recipes.merge(df_quantity, how="inner", on="ID")
+        if len(recipes) == 0:
+            self.logger.error("❌ CRITICAL: Rows dropped to 0 after Inner Join. Check ID matching between Base and Quantity tables.")
+            return
 
         # ==================================================================================
-        # 5. NORMALIZE & CLEAN
+        # 2. TRANSFORMATIONS
         # ==================================================================================
-        # Parse nutrition
+        self.logger.info("--- [STEP 2] Transformations ---")
+
+        # Dates
+        # if "SUBMITTED" in recipes.columns:
+        #     recipes["SUBMITTED"] = recipes["SUBMITTED"].astype(str)
+        #     recipes["SUBMITTED"] = pd.to_datetime(recipes["SUBMITTED"], format='%m/%d/%y', errors='coerce').dt.date
+        #     # Check how many dates failed parsing
+        #     valid_dates = recipes["SUBMITTED"].notna().sum()
+        #     self.logger.info(f"📅 Valid Dates parsed: {valid_dates} / {len(recipes)}")
+
+        # Minutes
+        if "MINUTES" in recipes.columns:
+            recipes["MINUTES"] = pd.to_numeric(recipes["MINUTES"], errors='coerce')
+
+        # Nutrition
         recipes["NUTRITION"] = recipes["NUTRITION"].apply(
             lambda x: x if isinstance(x, list) else (ast.literal_eval(x) if (x is not None and x != "") else [])
         )
-
-        # Parse other list columns
-        list_columns = ["TAGS", "STEPS", "INGREDIENTS", "SEARCH_TERMS", "INGREDIENTS_RAW_STR"]
-        for col in list_columns:
-            if col in recipes.columns:
-                recipes[col] = recipes[col].apply(self.transformer.safe_parse_list)
-
-        # Convert SERVING_SIZE to numeric
-        if "SERVING_SIZE" in recipes.columns:
-            recipes["SERVING_SIZE"] = pd.to_numeric(recipes["SERVING_SIZE"], errors='coerce')
-            
-        # Remplir les valeurs manquantes pour les images (fillna safe)
-        if "HAS_IMAGE" in recipes.columns:
-            recipes["HAS_IMAGE"] = recipes["HAS_IMAGE"].fillna(0)
         
+        # Lists parsing
+        list_cols = ["TAGS", "STEPS", "INGREDIENTS", "SEARCH_TERMS", "INGREDIENTS_RAW_STR"]
+        for col_name in list_cols:
+            if col_name in recipes.columns:
+                recipes[col_name] = recipes[col_name].apply(self.transformer.safe_parse_list)
+
         # ==================================================================================
-        # 6. APPLY FILTERS
+        # 3. FILTRAGE (DEBUGGING GRANULAIRE)
         # ==================================================================================
-        self.logger.info("Applying filters...")
+        self.logger.info("--- [STEP 3] Filtering Analysis ---")
+        
+        total_rows = len(recipes)
+        
+        # Calcul des masques individuels pour voir qui tue les données
+        mask_name = (recipes["NAME"].notna()) & (recipes["NAME"].apply(lambda x: len(str(x)) > 0))
+        self.logger.info(f"🔎 Filter [NAME valid]: {mask_name.sum()} / {total_rows}")
+        
+        mask_minutes = recipes["MINUTES"] > 5
+        self.logger.info(f"🔎 Filter [MINUTES > 5]: {mask_minutes.sum()} / {total_rows}")
+        
+        mask_id = recipes["ID"].notna()
+        self.logger.info(f"🔎 Filter [ID valid]: {mask_id.sum()} / {total_rows}")
+        
+        mask_submitted = recipes["SUBMITTED"].notna()
+        self.logger.info(f"🔎 Filter [SUBMITTED valid]: {mask_submitted.sum()} / {total_rows}")
+        
+        mask_tags = recipes["TAGS"].apply(lambda x: len(x) > 0)
+        self.logger.info(f"🔎 Filter [TAGS > 0]: {mask_tags.sum()} / {total_rows}")
+        
+        mask_nutrition = recipes["NUTRITION"].apply(lambda x: len(x) == 7)
+        self.logger.info(f"🔎 Filter [NUTRITION == 7]: {mask_nutrition.sum()} / {total_rows}")
+        
+        mask_desc = recipes["DESCRIPTION"].notna()
+        self.logger.info(f"🔎 Filter [DESCRIPTION valid]: {mask_desc.sum()} / {total_rows}")
+        
+        mask_steps = recipes["STEPS"].apply(lambda x: len(x) > 0)
+        self.logger.info(f"🔎 Filter [STEPS > 0]: {mask_steps.sum()} / {total_rows}")
+        
+        mask_ingredients = recipes["INGREDIENTS"].apply(lambda x:  len(x) > 0)
+        self.logger.info(f"🔎 Filter [INGREDIENTS > 0]: {mask_ingredients.sum()} / {total_rows}")
+
+        # Combinaison finale
         clean_data = recipes[
-            (recipes["NAME"].notna()) &
-            (recipes["NAME"].apply(lambda x: len(str(x)) > 0)) &
-            (recipes["MINUTES"] > DATA_PARAMS["min_minutes"]) &
-            (recipes["ID"].notna()) &
-            (recipes["SUBMITTED"].notna()) &
-            (recipes["TAGS"].apply(lambda x: len(x) > 0)) &
-            (recipes["NUTRITION"].apply(lambda x: len(x) == 7)) &
-            (recipes["DESCRIPTION"].notna()) &
-            (recipes["STEPS"].apply(lambda x: len(x) > 0)) &
-            (recipes["INGREDIENTS"].apply(lambda x: len(x) > 0))
+            mask_name &
+            mask_minutes &
+            mask_id &
+            mask_submitted &
+            mask_tags &
+            mask_nutrition &
+            mask_desc &
+            mask_steps &
+            mask_ingredients
         ].copy()
+        
+        self.logger.info(f"📊 [FINAL] Rows remaining after ALL filters: {len(clean_data)}")
 
-        row_count = len(clean_data)
-        if row_count == 0:
-            raise ValueError("No rows remain after filtering; cannot sample or ingest.")
-
-        # ==================================================================================
-        # 7. SAMPLING & SCHEMA DEFINITION
-        # ==================================================================================
-        sample_size = min(DATA_PARAMS["sample_size"], row_count)
-        clean_data = clean_data.sample(n=sample_size, random_state=DATA_PARAMS["random_seed"]).reset_index(drop=True)
+        if len(clean_data) == 0:
+            self.logger.error("❌ No rows remain after filtering. Aborting.")
+            return
 
         clean_data["FILTERS"] = clean_data["TAGS"].apply(lambda x: [])
 
-        # Define table schema
+        # ==================================================================================
+        # 4. SAMPLING & SCHEMA
+        # ==================================================================================
+        self.logger.info("--- [STEP 4] Sampling & Schema ---")
+
         columns_spec = {
             "NAME": "VARCHAR(16777216)",
             "ID": "NUMBER(38,0)",
             "MINUTES": "NUMBER(38,0)",
             "CONTRIBUTOR_ID": "NUMBER(38,0)",
-            "SUBMITTED": "TIMESTAMP_NTZ",
+            "SUBMITTED": "DATE",
             "TAGS": "ARRAY",
             "NUTRITION": "ARRAY",
             "N_STEPS": "NUMBER(38,0)",
@@ -181,25 +211,29 @@ class SnowflakeIngestor:
             "SERVING_SIZE": "NUMBER(38,0)",
             "SERVINGS": "NUMBER(38,0)",
             "SEARCH_TERMS": "ARRAY",
-            "FILTERS": "ARRAY",
+            "FILTERS": "ARRAY"
         }
+
+        sample_size_50k = min(50000, len(clean_data))
+        clean_data_50k = clean_data.sample(n=sample_size_50k, random_state=42).reset_index(drop=True)
         
-        cols_to_keep = [c for c in columns_spec.keys() if c in clean_data.columns]
-        clean_data = clean_data[cols_to_keep]
+        sample_size_1k = min(1000, len(clean_data_50k))
+        dev_data_1k = clean_data_50k.sample(n=sample_size_1k, random_state=42).reset_index(drop=True)
+
+        cols_to_keep = [c for c in columns_spec.keys() if c in clean_data_50k.columns]
+        clean_data_50k = clean_data_50k[cols_to_keep]
+        dev_data_1k = dev_data_1k[cols_to_keep]
 
         # ==================================================================================
-        # 8. WRITE TO SNOWFLAKE
+        # 5. WRITING
         # ==================================================================================
-        self.logger.info(f"Writing {len(clean_data)} rows to CLEANED table...")
+        
+        self.logger.info(f"Writing {len(clean_data_50k)} rows to CLEANED...")
         self.connector.ensure_table(SNOWFLAKE_CONFIG["database"], SNOWFLAKE_CONFIG["cleaned_schema"], SNOWFLAKE_CONFIG["cleaned_table"], columns_spec)
-        self.connector.write_pandas(clean_data, SNOWFLAKE_CONFIG["database"], SNOWFLAKE_CONFIG["cleaned_schema"], SNOWFLAKE_CONFIG["cleaned_table"], overwrite=True)
+        self.connector.write_pandas(clean_data_50k, SNOWFLAKE_CONFIG["database"], SNOWFLAKE_CONFIG["cleaned_schema"], SNOWFLAKE_CONFIG["cleaned_table"], overwrite=True)
 
-        # Write dev sample
-        dev_sample_size = min(DATA_PARAMS["dev_sample_size"], len(clean_data))
-        dev_data = clean_data.sample(n=dev_sample_size, random_state=DATA_PARAMS["random_seed"]).reset_index(drop=True)
-        
-        self.logger.info(f"Writing {len(dev_data)} rows to DEV table...")
+        self.logger.info(f"Writing {len(dev_data_1k)} rows to DEV_SAMPLE...")
         self.connector.ensure_table(SNOWFLAKE_CONFIG["database"], SNOWFLAKE_CONFIG["dev_schema"], SNOWFLAKE_CONFIG["cleaned_table"], columns_spec)
-        self.connector.write_pandas(dev_data, SNOWFLAKE_CONFIG["database"], SNOWFLAKE_CONFIG["dev_schema"], SNOWFLAKE_CONFIG["cleaned_table"], overwrite=True)
+        self.connector.write_pandas(dev_data_1k, SNOWFLAKE_CONFIG["database"], SNOWFLAKE_CONFIG["dev_schema"], SNOWFLAKE_CONFIG["cleaned_table"], overwrite=True)
 
-        self.logger.info("Ingestion finished.")
+        self.logger.info("✅ Ingestion Finished Successfully.")

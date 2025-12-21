@@ -173,13 +173,14 @@ class SnowflakeConnector:
         database: str,
         schema: str,
         table: str,
-        overwrite: bool = True
-    ) -> None:
+        overwrite: bool = True,
+        auto_create_table=False
+    ):
         """Write a Pandas DataFrame to Snowflake."""
         minimal_schema = {col.upper(): "VARCHAR" for col in df.columns}
         self.ensure_table(database, schema, table, minimal_schema)
         self.logger.info(f"Writing {len(df)} rows to {database}.{schema}.{table}")
-        self.session.write_pandas(
+        result = self.session.write_pandas(
             df,
             table_name=table,
             schema=schema,
@@ -187,6 +188,7 @@ class SnowflakeConnector:
             overwrite=overwrite
         )
         self.logger.info("✅ DataFrame write completed")
+        return result
 
     def close(self) -> None:
         """Close the Snowflake session."""

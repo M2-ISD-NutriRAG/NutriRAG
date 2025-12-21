@@ -382,6 +382,81 @@ def execute_raw_inserts(logger):
         raise
 
 
+import pandas as pd
+import os
+from config import CACHE_DIR, OUTPUT_FILES, SNOWFLAKE_CONFIG
+
+def load_raw_data_directly(logger):
+    """
+    Charge les CSV bruts directement dans Snowflake via write_pandas.
+    Gère les erreurs de types (ingrédients) et de format JSON (search terms).
+    """
+    logger.info("=" * 60)
+    logger.info("PHASE 1C: FAST LOAD RAW DATA (WRITE_PANDAS)")
+    logger.info("=" * 60)
+
+    connector = SnowflakeConnector()
+
+    load_tasks = [
+        ("raw_recipes", SNOWFLAKE_CONFIG['raw_schema'], SNOWFLAKE_CONFIG['raw_table']), 
+        ("raw_interactions", SNOWFLAKE_CONFIG['raw_schema'], "RAW_INTERACTION_10K"),
+        ("cleaned_ingredients", SNOWFLAKE_CONFIG['raw_schema'], "CLEANED_INGREDIENTS"),
+        ("recipes_images", SNOWFLAKE_CONFIG['raw_schema'], "RECIPES_ENHANCED_V2"),
+        ("recipes_w_search_terms", SNOWFLAKE_CONFIG['raw_schema'], "RECIPES_W_SEARCH_TERMS"),
+    ]
+
+    try:
+        for file_key, schema, table_name in load_tasks:
+            csv_filename = OUTPUT_FILES.get(file_key)
+            if not csv_filename: continue
+
+            csv_path = os.path.join(CACHE_DIR, csv_filename)
+            if not os.path.exists(csv_path): continue
+
+            logger.info(f"🚀 Chargement rapide de {csv_filename} vers {schema}.{table_name}...")
+
+            df = pd.read_csv(csv_path)
+            
+            # --- NETTOYAGE 1: CLEANED_INGREDIENTS (Erreurs numériques) ---
+            if file_key == "cleaned_ingredients":
+                logger.info(f"🧹 Nettoyage des nombres pour {file_key}...")
+                for col in df.columns:
+                    if col.lower() not in ['descrip', 'ndb_no']:
+                        df[col] = pd.to_numeric(df[col], errors='coerce')
+
+            # --- NETTOYAGE 2: RECIPES_W_SEARCH_TERMS (Erreurs JSON/Set) ---
+            if file_key == "recipes_w_search_terms":
+                logger.info(f"🧹 Correction format JSON pour {file_key}...")
+                # La colonne search_terms est souvent sous format {'a', 'b'} (Set Python)
+                # Snowflake veut du JSON Array ['a', 'b']
+                if "search_terms" in df.columns:
+                    df["search_terms"] = df["search_terms"].astype(str).str.replace('{', '[').str.replace('}', ']')
+                
+                # Idem si il y a une colonne tags mal formatée ici
+                if "tags" in df.columns:
+                    df["tags"] = df["tags"].astype(str).str.replace('{', '[').str.replace('}', ']')
+
+            # Mise en majuscule des colonnes
+            df.columns = [c.upper() for c in df.columns]
+
+            # Chargement
+            result = connector.write_pandas(
+                df=df,
+                database=SNOWFLAKE_CONFIG['database'],
+                schema=schema,
+                table=table_name,
+                overwrite=True,
+                auto_create_table=True 
+            )
+
+            logger.info(f"✅ Succès : Données insérées dans {table_name}.")
+
+    except Exception as e:
+        logger.error(f"Fast load failed: {e}", exc_info=True)
+        raise
+    finally:
+        connector.close()
+
 def main():
     """Main pipeline orchestrator."""
     parser = argparse.ArgumentParser(
@@ -427,51 +502,51 @@ def main():
 
         loader = None
 
-        # Phase 0: Setup Snowflake schema
-        if not args.load_only and not args.clean_only and not args.ingest_only and not args.sql_inserts:
-            setup_snowflake_schema(logger)
-        elif args.setup_only:
-            setup_snowflake_schema(logger)
-            logger.info("🎉 SETUP COMPLETED SUCCESSFULLY!")
-            return
+        # # Phase 0: Setup Snowflake schema
+        # if not args.load_only and not args.clean_only and not args.ingest_only and not args.sql_inserts:
+        #     setup_snowflake_schema(logger)
+        # elif args.setup_only:
+        #     setup_snowflake_schema(logger)
+        #     logger.info("🎉 SETUP COMPLETED SUCCESSFULLY!")
+        #     return
 
-        # Phase 1: Load
-        if not args.clean_only and not args.ingest_only:
-            loader = load_data(logger)
-        elif args.load_only:
-            loader = load_data(logger)
-            logger.info("🎉 DATA LOADING COMPLETED SUCCESSFULLY!")
-            return
+        # # Phase 1: Load
+        # if not args.clean_only and not args.ingest_only:
+        #     loader = load_data(logger)
+        # elif args.load_only:
+        #     loader = load_data(logger)
+        #     logger.info("🎉 DATA LOADING COMPLETED SUCCESSFULLY!")
+        #     return
 
-        # Phase 1B: Generate and execute raw inserts
-        if not args.clean_only and not args.ingest_only:
-            generate_raw_inserts(logger, args.nrows)
-            if not args.sql_inserts:
-                execute_raw_inserts(logger)
+        # # Phase 1B: Generate and execute raw inserts
+        # if not args.clean_only and not args.ingest_only:
+        #     generate_raw_inserts(logger, args.nrows)
+        #     if not args.sql_inserts:
+        #         load_raw_data_directly(logger)
 
-        # Phase 2: Clean
-        if not args.ingest_only:
-            if loader is None:
-                loader = DataLoader(cache_dir=CACHE_DIR)
-            clean_data(logger, loader)
-            generate_sql_inserts(logger, args.nrows)
-        elif args.clean_only:
-            if loader is None:
-                loader = DataLoader(cache_dir=CACHE_DIR)
-            clean_data(logger, loader)
-            generate_sql_inserts(logger, args.nrows)
-            logger.info("🎉 DATA CLEANING COMPLETED SUCCESSFULLY!")
-            return
+        # # Phase 2: Clean
+        # if not args.ingest_only:
+        #     if loader is None:
+        #         loader = DataLoader(cache_dir=CACHE_DIR)
+        #     clean_data(logger, loader)
+        #     generate_sql_inserts(logger, args.nrows)
+        # elif args.clean_only:
+        #     if loader is None:
+        #         loader = DataLoader(cache_dir=CACHE_DIR)
+        #     clean_data(logger, loader)
+        #     generate_sql_inserts(logger, args.nrows)
+        #     logger.info("🎉 DATA CLEANING COMPLETED SUCCESSFULLY!")
+        #     return
 
-        if args.sql_inserts:
-            logger.info("🎉 SQL INSERTS GENERATION COMPLETED SUCCESSFULLY!")
-            return
+        # if args.sql_inserts:
+        #     logger.info("🎉 SQL INSERTS GENERATION COMPLETED SUCCESSFULLY!")
+        #     return
 
-        # Phase 2C: Execute SQL inserts
-        if not args.load_only and not args.clean_only and not args.sql_inserts:
-            execute_raw_inserts(logger)
-        elif args.ingest_only:
-            execute_raw_inserts(logger)
+        # # Phase 2C: Execute SQL inserts
+        # if not args.load_only and not args.clean_only and not args.sql_inserts:
+        #     load_raw_data_directly(logger)
+        # elif args.ingest_only:
+        #     load_raw_data_directly(logger)
 
         # Phase 3: Ingest
         if not args.load_only and not args.clean_only and not args.sql_inserts:
