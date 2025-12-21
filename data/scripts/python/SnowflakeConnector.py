@@ -152,7 +152,7 @@ class SnowflakeConnector:
         """Create a table if it doesn't exist, or add missing columns."""
         if not self.table_exists(database, schema, table):
             cols = ",\n    ".join([f"{c} {t}" for c, t in columns_sql.items()])
-            sql = f"CREATE TABLE {database}.{schema}.{table} (\n    {cols}\n);"
+            sql = f"CREATE TABLE IF NOT EXISTS {database}.{schema}.{table} (\n    {cols}\n);"
             self.logger.info(f"Creating table {database}.{schema}.{table}...")
             self.safe_execute(sql)
         else:

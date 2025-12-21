@@ -126,7 +126,7 @@ def load_data(logger):
     loader = DataLoader(cache_dir=CACHE_DIR)
 
     # Load from local dataset folder
-    dataset_folder = "data/scripts/python/"  # Adjust this path as needed
+    dataset_folder = "./dataset"  # Adjust this path as needed
     logger.info(f"Loading data from local folder: {dataset_folder}")
 
     raw_recipes_path = loader.load_from_local(
@@ -202,7 +202,7 @@ def ingest_data(logger):
         raise
 
 
-def generate_sql_inserts(logger):
+def generate_sql_inserts(logger, nrows=None):
     """Generate SQL insert file from cleaned recipes CSV."""
 
     sql_inserts = os.path.join(SQL_DIR, OUTPUT_FILES["db_inserts"])
@@ -216,31 +216,92 @@ def generate_sql_inserts(logger):
     logger.info("=" * 60)
 
     generator = SqlInsertGenerator()
-    sql_path = generator.generate()
+    sql_path = generator.generate(nrows=nrows)
     logger.info(f"✅ SQL insert file generated: {sql_path}")
     logger.info("=" * 60)
 
 
-def execute_sql_inserts(logger):
-    """Execute the SQL insert file in Snowflake."""
+def generate_raw_inserts(logger, nrows=None):
+    """Generate SQL insert files for raw data CSVs."""
     logger.info("=" * 60)
-    logger.info("PHASE 2C: EXECUTE SQL INSERTS")
+    logger.info("PHASE 1B: GENERATE RAW SQL INSERTS")
     logger.info("=" * 60)
 
-    sql_inserts_path = os.path.join(SQL_DIR, OUTPUT_FILES["db_inserts"])
-    
-    if not os.path.exists(sql_inserts_path):
-        raise FileNotFoundError(f"SQL inserts file not found: {sql_inserts_path}")
-    
-    logger.info(f"Reading SQL inserts from: {sql_inserts_path}")
-    
+    generator = SqlInsertGenerator()
+
+    # Generate for RAW_recipes
+    raw_recipes_sql = os.path.join(SQL_DIR, "raw_recipes_inserts.sql")
+    if not os.path.exists(raw_recipes_sql):
+        csv_path = os.path.join(CACHE_DIR, OUTPUT_FILES["raw_recipes"])
+        table_fqn = f"{SNOWFLAKE_CONFIG['database']}.{SNOWFLAKE_CONFIG['raw_schema']}.{SNOWFLAKE_CONFIG['raw_table']}"
+        sql_path = generator.generate_raw(csv_path, table_fqn, raw_recipes_sql, nrows=nrows)
+        logger.info(f"✅ Raw recipes SQL generated: {sql_path}")
+    else:
+        logger.info(f"Raw recipes SQL already exists: {raw_recipes_sql}")
+
+    # Generate for RAW_INTERACTIONS
+    raw_interactions_sql = os.path.join(SQL_DIR, "raw_interactions_inserts.sql")
+    if not os.path.exists(raw_interactions_sql):
+        csv_path = os.path.join(CACHE_DIR, OUTPUT_FILES["raw_interactions"])
+        table_fqn = f"{SNOWFLAKE_CONFIG['database']}.{SNOWFLAKE_CONFIG['raw_schema']}.RAW_INTERACTION_10K"
+        sql_path = generator.generate_raw(csv_path, table_fqn, raw_interactions_sql, nrows=nrows)
+        logger.info(f"✅ Raw interactions SQL generated: {sql_path}")
+    else:
+        logger.info(f"Raw interactions SQL already exists: {raw_interactions_sql}")
+
+    # Generate for CLEANED_INGREDIENTS
+    cleaned_ingredients_sql = os.path.join(SQL_DIR, "cleaned_ingredients_inserts.sql")
+    if not os.path.exists(cleaned_ingredients_sql):
+        csv_path = os.path.join(CACHE_DIR, OUTPUT_FILES["cleaned_ingredients"])
+        table_fqn = f"{SNOWFLAKE_CONFIG['database']}.{SNOWFLAKE_CONFIG['raw_schema']}.CLEANED_INGREDIENTS"
+        sql_path = generator.generate_raw(csv_path, table_fqn, cleaned_ingredients_sql, nrows=nrows)
+        logger.info(f"✅ Cleaned ingredients SQL generated: {sql_path}")
+    else:
+        logger.info(f"Cleaned ingredients SQL already exists: {cleaned_ingredients_sql}")
+
+    # Generate for RECIPES_ENHANCED_V2
+    recipes_enhanced_v2_sql = os.path.join(SQL_DIR, "recipes_enhanced_v2_inserts.sql")
+    if not os.path.exists(recipes_enhanced_v2_sql):
+        csv_path = os.path.join(CACHE_DIR, OUTPUT_FILES["recipes_images"])
+        table_fqn = f"{SNOWFLAKE_CONFIG['database']}.{SNOWFLAKE_CONFIG['raw_schema']}.{SNOWFLAKE_CONFIG['recipes_enhanced_v2_table']}"
+        sql_path = generator.generate_raw(csv_path, table_fqn, recipes_enhanced_v2_sql, nrows=nrows)
+        logger.info(f"✅ Recipes enhanced v2 SQL generated: {sql_path}")
+    else:
+        logger.info(f"Recipes enhanced v2 SQL already exists: {recipes_enhanced_v2_sql}")
+
+    # Generate for RECIPES_W_SEARCH_TERMS
+    recipes_w_search_terms_sql = os.path.join(SQL_DIR, "recipes_w_search_terms_inserts.sql")
+    if not os.path.exists(recipes_w_search_terms_sql):
+        csv_path = os.path.join(CACHE_DIR, OUTPUT_FILES["recipes_w_search_terms"])
+        table_fqn = f"{SNOWFLAKE_CONFIG['database']}.{SNOWFLAKE_CONFIG['raw_schema']}.{SNOWFLAKE_CONFIG['recipes_w_search_terms_table']}"
+        sql_path = generator.generate_raw(csv_path, table_fqn, recipes_w_search_terms_sql, nrows=nrows)
+        logger.info(f"✅ Recipes w search terms SQL generated: {sql_path}")
+    else:
+        logger.info(f"Recipes w search terms SQL already exists: {recipes_w_search_terms_sql}")
+
+    logger.info("=" * 60)
+
+
+def execute_raw_inserts(logger):
+    """Execute the raw SQL insert files in Snowflake."""
+    logger.info("=" * 60)
+    logger.info("PHASE 1C: EXECUTE RAW SQL INSERTS")
+    logger.info("=" * 60)
+
+    raw_files = [
+        ("raw_recipes_inserts.sql", SNOWFLAKE_CONFIG['raw_schema']),
+        ("raw_interactions_inserts.sql", SNOWFLAKE_CONFIG['raw_schema']),
+        ("cleaned_ingredients_inserts.sql", SNOWFLAKE_CONFIG['raw_schema']),
+        ("recipes_enhanced_v2_inserts.sql", SNOWFLAKE_CONFIG['raw_schema']),
+        ("recipes_w_search_terms_inserts.sql", SNOWFLAKE_CONFIG['raw_schema']),
+    ]
+
     try:
         connector = SnowflakeConnector()
 
-        # Ensure warehouse/database/schema are active for this session
+        # Ensure warehouse/database are active
         wh = os.environ.get("SNOWFLAKE_WAREHOUSE")
         db = os.environ.get("SNOWFLAKE_DATABASE") or SNOWFLAKE_CONFIG.get("database")
-        sch = os.environ.get("SNOWFLAKE_SCHEMA") or SNOWFLAKE_CONFIG.get("cleaned_schema")
 
         if wh:
             logger.info(f"Using warehouse: {wh}")
@@ -248,34 +309,76 @@ def execute_sql_inserts(logger):
         if db:
             logger.info(f"Using database: {db}")
             connector.safe_execute(f"USE DATABASE {db}")
-        if sch:
-            logger.info(f"Using schema: {sch}")
-            connector.safe_execute(f"USE SCHEMA {sch}")
-        
-        with open(sql_inserts_path, "r", encoding="utf-8") as f:
-            sql_content = f.read()
-        
-        # Split by semicolon and execute each statement
-        statements = [s.strip() for s in sql_content.split(";") if s.strip()]
-        logger.info(f"Found {len(statements)} INSERT statements to execute")
-        
-        for idx, statement in enumerate(statements, 1):
-            try:
-                if idx % 1000 == 0:
-                    logger.info(f"Executing statement {idx}/{len(statements)}...")
+
+        for sql_file, schema in raw_files:
+            sql_path = os.path.join(SQL_DIR, sql_file)
+            if not os.path.exists(sql_path):
+                logger.warning(f"SQL file not found: {sql_path}, skipping")
+                continue
+
+            logger.info(f"Executing inserts from: {sql_file}")
+
+            # Use schema
+            connector.safe_execute(f"USE SCHEMA {schema}")
+
+            with open(sql_path, "r", encoding="utf-8") as f:
+                sql_content = f.read()
+
+            # Split by semicolon and execute each statement
+            # Be more careful with splitting to handle semicolons inside strings
+            statements = []
+            current_statement = ""
+            in_string = False
+            string_char = None
+            
+            for char in sql_content:
+                if not in_string:
+                    if char in ("'", '"'):
+                        in_string = True
+                        string_char = char
+                    elif char == ';':
+                        if current_statement.strip():
+                            statements.append(current_statement.strip())
+                        current_statement = ""
+                        continue
+                else:
+                    if char == string_char:
+                        # Check if it's escaped
+                        if current_statement and current_statement[-1] == '\\':
+                            # Escaped quote, continue
+                            pass
+                        else:
+                            # End of string
+                            in_string = False
+                            string_char = None
                 
-                connector.safe_execute(statement)
-            except Exception as e:
-                logger.error(f"❌ Error on statement {idx}: {e}")
-                logger.error(f"Statement: {statement[:200]}")
-                raise
-        
+                if char != ';':
+                    current_statement += char
+            
+            # Add the last statement if any
+            if current_statement.strip():
+                statements.append(current_statement.strip())
+                
+            logger.info(f"Found {len(statements)} INSERT statements in {sql_file}")
+
+            for idx, statement in enumerate(statements, 1):
+                try:
+                    if idx % 1000 == 0:
+                        logger.info(f"Executing statement {idx}/{len(statements)} in {sql_file}...")
+                    
+                    connector.safe_execute(statement)
+                except Exception as e:
+                    logger.error(f"❌ Error on statement {idx} in {sql_file}: {e}")
+                    logger.error(f"Statement: {statement[:200]}")
+                    raise
+
+            logger.info(f"✅ Successfully executed {len(statements)} INSERT statements from {sql_file}")
+
         connector.close()
-        logger.info(f"✅ Successfully executed {len(statements)} INSERT statements")
         logger.info("=" * 60)
         
     except Exception as e:
-        logger.error(f"SQL inserts execution failed: {e}", exc_info=True)
+        logger.error(f"Raw SQL inserts execution failed: {e}", exc_info=True)
         raise
 
 
@@ -304,6 +407,17 @@ def main():
         action="store_true",
         help="Only ingest data, skip all other phases"
     )
+    parser.add_argument(
+        "--sql-inserts",
+        action="store_true",
+        help="Generate SQL inserts only"
+    )
+    parser.add_argument(
+        "--nrows",
+        type=int,
+        default=None,
+        help="Limit number of rows to process"
+    )
 
     args = parser.parse_args()
     logger = setup_logging()
@@ -314,7 +428,7 @@ def main():
         loader = None
 
         # Phase 0: Setup Snowflake schema
-        if not args.load_only and not args.clean_only and not args.ingest_only:
+        if not args.load_only and not args.clean_only and not args.ingest_only and not args.sql_inserts:
             setup_snowflake_schema(logger)
         elif args.setup_only:
             setup_snowflake_schema(logger)
@@ -329,28 +443,38 @@ def main():
             logger.info("🎉 DATA LOADING COMPLETED SUCCESSFULLY!")
             return
 
+        # Phase 1B: Generate and execute raw inserts
+        if not args.clean_only and not args.ingest_only:
+            generate_raw_inserts(logger, args.nrows)
+            if not args.sql_inserts:
+                execute_raw_inserts(logger)
+
         # Phase 2: Clean
         if not args.ingest_only:
             if loader is None:
                 loader = DataLoader(cache_dir=CACHE_DIR)
             clean_data(logger, loader)
-            generate_sql_inserts(logger)
+            generate_sql_inserts(logger, args.nrows)
         elif args.clean_only:
             if loader is None:
                 loader = DataLoader(cache_dir=CACHE_DIR)
             clean_data(logger, loader)
-            generate_sql_inserts(logger)
+            generate_sql_inserts(logger, args.nrows)
             logger.info("🎉 DATA CLEANING COMPLETED SUCCESSFULLY!")
             return
 
+        if args.sql_inserts:
+            logger.info("🎉 SQL INSERTS GENERATION COMPLETED SUCCESSFULLY!")
+            return
+
         # Phase 2C: Execute SQL inserts
-        if not args.load_only and not args.clean_only:
-            execute_sql_inserts(logger)
+        if not args.load_only and not args.clean_only and not args.sql_inserts:
+            execute_raw_inserts(logger)
         elif args.ingest_only:
-            execute_sql_inserts(logger)
+            execute_raw_inserts(logger)
 
         # Phase 3: Ingest
-        if not args.load_only and not args.clean_only:
+        if not args.load_only and not args.clean_only and not args.sql_inserts:
             ingest_data(logger)
         elif args.ingest_only:
             ingest_data(logger)

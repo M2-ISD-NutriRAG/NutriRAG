@@ -35,6 +35,8 @@ SNOWFLAKE_CONFIG = {
     "dev_schema": "DEV_SAMPLE",
     "raw_table": "RAW_RECIPES_110K",
     "cleaned_table": "RECIPES_SAMPLE_50K",
+    "recipes_enhanced_v2_table": "RECIPES_ENHANCED_V2",
+    "recipes_w_search_terms_table": "RECIPES_W_SEARCH_TERMS",
 }
 
 # Data processing parameters
@@ -46,7 +48,7 @@ DATA_PARAMS = {
 }
 
 # Cache directory
-CACHE_DIR = "./data_cache"
+CACHE_DIR = "./dataset"
 TEMP_KAGGLE_CACHE_DIR = "./temp_kaggle_cache"
 
 # SQL DIR
