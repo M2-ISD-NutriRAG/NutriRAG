@@ -1,6 +1,5 @@
-"""Snowflake table definitions for INGREDIENTS_QUANTITY, Ingredients Tagged and INGREDIENTS_MATCHING tables."""
+"""Snowflake table definitions for INGREDIENTS_QUANTITY, INGREDIENTS_TAGGED and INGREDIENTS_MATCHING tables."""
 
-from typing import List
 
 from shared.snowflake.tables.table import define_snowflake_table, Table
 
@@ -40,7 +39,7 @@ class IngredientsTagged(Table):
     DESCRIP = "DESCRIP"
     FOODON_LABEL = "FOODON_LABEL"
     IS_DAIRY = "IS_DAIRY"
-    IS_GLUTEN ="IS_GLUTEN"
+    IS_GLUTEN = "IS_GLUTEN"
     IS_GRAIN = "IS_GRAIN"
     IS_SEAFOOD = "IS_SEAFOOD"
     IS_SWEETENER = "IS_SWEETENER"
