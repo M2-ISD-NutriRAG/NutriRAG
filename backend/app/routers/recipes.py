@@ -3,6 +3,7 @@ from typing import Optional
 import json
 from shared.snowflake.client import SnowflakeClient
 from shared.snowflake.tables.recipes_sample_table import RecipesSampleTable
+from shared.snowflake.tables.recipes_final_table import RecipesFullTable
 from app.models.recipe import Recipe, RecipeListResponse
 
 router = APIRouter()
@@ -49,16 +50,35 @@ async def get_recipe(recipe_id: int):
     # Returns enriched recipe with:
     # - Parsed ingredients
     # - Health score    
-    # TODO: Équipe 1 - Implémentation de la requête Snowflake
     client = SnowflakeClient()
     result = client.execute(f"""
         SELECT *
-        FROM {RecipesSampleTable.get_full_table_name()}
+        FROM {RecipesFullTable.get_full_table_name()}
         WHERE id = {recipe_id}
      """, fetch="all")
     if len(result) > 0:
         row = result[0]
+
+        nutrition = NutritionDetailed(
+            # Detailed nutrition information
+        calories = row[20],
+        protein_g = row[21],
+        fat_g = row[23],
+        saturated_fat_g = row[22],
+        carbs_g = row[24],
+        fiber_g = row[25],
+        sugar_g = row[26],
+        sodium_mg = row[27],
+        
+        # Optional micronutrients
+        calcium_mg = row[28],
+        iron_mg = row[29],
+        magnesium_mg = row[32],
+        potassium_mg = row[30],
+        vitamin_c_mg = row[31]
+        )
     
+        
         recipe = Recipe(
             id=row[1],
             name=row[0],
@@ -68,11 +88,11 @@ async def get_recipe(recipe_id: int):
             n_ingredients=row[11],
             tags=parse_list_string(row[5]),
             ingredients_raw=parse_list_string(row[10]),
-            ingredients_parsed=None,  # pas encore calculé
+            ingredients_parsed=None, 
             steps=parse_list_string(row[8]),
             nutrition_original=parse_list_string(row[6]),
-            nutrition_detailed=None,  # pas encore calculé
-            score_health=None,
+            nutrition_detailed=nutrition
+            score_health=row[19]
             rating_avg=None,
             rating_count=None
         )
@@ -117,12 +137,52 @@ async def list_recipes(
 @router.get("/{recipe_id}/nutrition")
 async def get_recipe_nutrition(recipe_id: int):
     # Obtenir la décomposition nutritionnelle détaillée pour une recette
-    # TODO: Équipe 1 - Retourner la décomposition nutritionnelle détaillée par ingrédient
+    
+    client = SnowflakeClient()
+    result = client.execute(f"""
+        SELECT *
+        FROM {RecipesFullTable.get_full_table_name()}
+        WHERE id = {recipe_id}
+     """, fetch="all")
+    if len(result) > 0:
+        row = result[0]
 
-    raise HTTPException(
-        status_code=501,
-        detail="Équipe 1: Implémentation nécessaire - Retourner la décomposition nutritionnelle détaillée par ingrédient",
-    )
+        nutrition = NutritionDetailed(
+            calories = row[20],
+            protein_g = row[21],
+            fat_g = row[23],
+            saturated_fat_g = row[22],
+            carbs_g = row[24],
+            fiber_g = row[25],
+            sugar_g = row[26],
+            sodium_mg = row[27],
+            
+            calcium_mg = row[28],
+            iron_mg = row[29],
+            magnesium_mg = row[32],
+            potassium_mg = row[30],
+            vitamin_c_mg = row[31]
+        )
+    else:
+        nutrition = NutritionDetailed(
+            calories = -1,
+            protein_g = -1,
+            fat_g = -1,
+            saturated_fat_g = -1,
+            carbs_g = -1,
+            fiber_g = -1,
+            sugar_g = -1,
+            sodium_mg = -1,
+        
+            calcium_mg = -1,
+            iron_mg = -1,
+            magnesium_mg = -1,
+            potassium_mg = -1,
+            vitamin_c_mg = -1
+        )
+    return nutrition
+
+        
 
 
 @router.get("/random")
