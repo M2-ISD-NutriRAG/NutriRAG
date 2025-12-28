@@ -181,11 +181,11 @@ class PipelineOrchestrator:
 
         load_tasks = [
             # ("ingredients_parsing", SNOWFLAKE_CONFIG['raw_schema'], SNOWFLAKE_CONFIG['ingredients_parsing_table']),
-            # ("raw_recipes", SNOWFLAKE_CONFIG['raw_schema'], SNOWFLAKE_CONFIG['raw_table']),
-            # ("raw_interactions", SNOWFLAKE_CONFIG['raw_schema'], "RAW_INTERACTION_10K"),
-            # ("cleaned_ingredients", SNOWFLAKE_CONFIG['raw_schema'], "CLEANED_INGREDIENTS"),
-            # ("recipes_images", SNOWFLAKE_CONFIG['raw_schema'], "RECIPES_ENHANCED_V2"),
-            # ("recipes_w_search_terms", SNOWFLAKE_CONFIG['raw_schema'], "RECIPES_W_SEARCH_TERMS"),
+            ("raw_recipes", SNOWFLAKE_CONFIG['raw_schema'], SNOWFLAKE_CONFIG['raw_table']),
+            ("raw_interactions", SNOWFLAKE_CONFIG['raw_schema'], "RAW_INTERACTION_10K"),
+            ("cleaned_ingredients", SNOWFLAKE_CONFIG['raw_schema'], "CLEANED_INGREDIENTS"),
+            ("recipes_images", SNOWFLAKE_CONFIG['raw_schema'], "RECIPES_ENHANCED_V2"),
+            ("recipes_w_search_terms", SNOWFLAKE_CONFIG['raw_schema'], "RECIPES_W_SEARCH_TERMS"),
         ]
 
         try:
@@ -305,10 +305,10 @@ class PipelineOrchestrator:
 
     def phase_3_ingest_data(self) -> None:
         """
-        PHASE 3: Ingest data into Snowflake.
+        PHASE 3: Ingest data into Snowflake (server-side SQL).
         """
         self.logger.info("=" * 60)
-        self.logger.info("PHASE 3: SNOWFLAKE INGESTION")
+        self.logger.info("PHASE 3: SNOWFLAKE INGESTION (SERVER-SIDE)")
         self.logger.info("=" * 60)
 
         try:
@@ -316,7 +316,8 @@ class PipelineOrchestrator:
             transformer = DataTransformer()
             ingestor = SnowflakeIngestor(connector, transformer)
 
-            ingestor.run_ingestion()
+            # Use server-side SQL ingestion for better performance
+            ingestor.run_ingestion_sql()
 
             connector.close()
             self.logger.info("✅ Data ingestion complete")
@@ -514,11 +515,11 @@ LEFT JOIN rules r ON LOWER(TRIM(c.INGREDIENT)) = r.INGREDIENT_RULE
             nrows: Optional limit on number of rows to process
         """
         try:
-            self.process_ingredients()
             self.phase_0_setup_schema() # create snowflake schema
             # self.phase_1_load_data() # load csv files
             # self.phase_1b_generate_raw_inserts(nrows)
             self.phase_1c_load_raw_data(nrows) # fast load to snowflake
+            self.process_ingredients_sql() # process ingredients: add parsing table
             # self.phase_2_clean_data() 
             # self.phase_2b_generate_sql_inserts(nrows)
             self.phase_3_ingest_data() # generate clean data to save to snowflake
