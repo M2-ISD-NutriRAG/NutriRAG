@@ -184,7 +184,7 @@ def process_ingredients_with_enrich(raw_csv_path: str, enrich_csv_path: str, out
 
 if __name__ == "__main__":
     df_final = process_ingredients_with_enrich(
-        './data/RAW_recipes.csv',
-        './data/enrich/recipe_enhanced_v2.csv',
-        './output/ingredients_exploded.csv'
+        './dataset/RAW_recipes.csv',
+        './dataset/enrich/recipes_enhanced_v2.csv',
+        './dataset/ingredients_exploded.csv'
     )
