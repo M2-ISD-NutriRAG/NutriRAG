@@ -107,40 +107,21 @@ class SnowflakeConnector:
         self.logger.info("✅ Successfully connected to Snowflake")
         return session
 
-    def table_exists(self, database: str, schema: str, table: str) -> bool:
-        """Check if a table exists in Snowflake."""
-        sql = f"SHOW TABLES IN {database}.{schema} LIKE '{table}'"
-        try:
-            res = self.session.sql(sql).collect()
-            return len(res) > 0
-        except Exception as e:
-            self.logger.error(f"Error checking table existence: {e}")
-            return False
-
     def get_table_columns(self, database: str, schema: str, table: str) -> List[str]:
         """Get list of column names from a Snowflake table."""
-        sql = f"SHOW COLUMNS IN TABLE {database}.{schema}.{table}"
+        sql = f"""
+        SELECT COLUMN_NAME 
+        FROM {database}.INFORMATION_SCHEMA.COLUMNS 
+        WHERE TABLE_SCHEMA = '{schema}' 
+        AND TABLE_NAME = '{table.upper()}'
+        ORDER BY ORDINAL_POSITION
+        """
         try:
             rows = self.session.sql(sql).collect()
-            return [r['column_name'] for r in rows]
+            return [r['COLUMN_NAME'] for r in rows]
         except Exception as e:
             self.logger.error(f"Error getting table columns: {e}")
             return []
-
-    def add_missing_columns(
-        self,
-        database: str,
-        schema: str,
-        table: str,
-        columns: Dict[str, str]
-    ) -> None:
-        """Add missing columns to an existing table."""
-        existing = [c.upper() for c in self.get_table_columns(database, schema, table)]
-        for col, col_type in columns.items():
-            if col.upper() not in existing:
-                sql = f"ALTER TABLE {database}.{schema}.{table} ADD COLUMN {col} {col_type}"
-                self.logger.info(f"Adding missing column: {col} {col_type}")
-                self.safe_execute(sql)
 
     def ensure_table(
         self,
@@ -150,14 +131,18 @@ class SnowflakeConnector:
         columns_sql: Dict[str, str]
     ) -> None:
         """Create a table if it doesn't exist, or add missing columns."""
-        if not self.table_exists(database, schema, table):
-            cols = ",\n    ".join([f"{c} {t}" for c, t in columns_sql.items()])
-            sql = f"CREATE TABLE IF NOT EXISTS {database}.{schema}.{table} (\n    {cols}\n);"
-            self.logger.info(f"Creating table {database}.{schema}.{table}...")
-            self.safe_execute(sql)
-        else:
-            self.logger.info(f"Table {database}.{schema}.{table} already exists")
-            self.add_missing_columns(database, schema, table, columns_sql)
+        cols = ",\n    ".join([f"{c} {t}" for c, t in columns_sql.items()])
+        sql = f"CREATE TABLE IF NOT EXISTS {database}.{schema}.{table} (\n    {cols}\n);"
+        self.logger.info(f"Creating table {database}.{schema}.{table} (if not exists)...")
+        self.safe_execute(sql)
+        
+        # Add any missing columns
+        existing = [c.upper() for c in self.get_table_columns(database, schema, table)]
+        for col, col_type in columns_sql.items():
+            if col.upper() not in existing:
+                alter_sql = f"ALTER TABLE {database}.{schema}.{table} ADD COLUMN {col} {col_type}"
+                self.logger.info(f"Adding missing column: {col} {col_type}")
+                self.safe_execute(alter_sql)
 
     def safe_execute(self, sql: str):
         """Execute SQL statement safely with error handling."""

@@ -32,7 +32,7 @@ class SnowflakeIngestor:
         # Cast SUBMITTED to string to handle date formatting issues later in Pandas
         submitted_col = next((c for c in df_base_snow.columns if c.upper() == 'SUBMITTED'), None)
         if submitted_col:
-            df_base_snow = df_base_snow.with_column(submitted_col, df_base_snow[submitted_col].cast("string"))
+            df_base_snow = df_base_snow.with_column(submitted_col, df_base_snow[submitted_col].astype("string"))
 
         recipes = df_base_snow.to_pandas()
         recipes.columns = [c.upper() for c in recipes.columns]
