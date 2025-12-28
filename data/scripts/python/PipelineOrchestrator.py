@@ -180,12 +180,12 @@ class PipelineOrchestrator:
         connector = SnowflakeConnector()
 
         load_tasks = [
-            ("ingredients_parsing", SNOWFLAKE_CONFIG['raw_schema'], SNOWFLAKE_CONFIG['ingredients_parsing_table']),
-            ("raw_recipes", SNOWFLAKE_CONFIG['raw_schema'], SNOWFLAKE_CONFIG['raw_table']),
-            ("raw_interactions", SNOWFLAKE_CONFIG['raw_schema'], "RAW_INTERACTION_10K"),
-            ("cleaned_ingredients", SNOWFLAKE_CONFIG['raw_schema'], "CLEANED_INGREDIENTS"),
-            ("recipes_images", SNOWFLAKE_CONFIG['raw_schema'], "RECIPES_ENHANCED_V2"),
-            ("recipes_w_search_terms", SNOWFLAKE_CONFIG['raw_schema'], "RECIPES_W_SEARCH_TERMS"),
+            # ("ingredients_parsing", SNOWFLAKE_CONFIG['raw_schema'], SNOWFLAKE_CONFIG['ingredients_parsing_table']),
+            # ("raw_recipes", SNOWFLAKE_CONFIG['raw_schema'], SNOWFLAKE_CONFIG['raw_table']),
+            # ("raw_interactions", SNOWFLAKE_CONFIG['raw_schema'], "RAW_INTERACTION_10K"),
+            # ("cleaned_ingredients", SNOWFLAKE_CONFIG['raw_schema'], "CLEANED_INGREDIENTS"),
+            # ("recipes_images", SNOWFLAKE_CONFIG['raw_schema'], "RECIPES_ENHANCED_V2"),
+            # ("recipes_w_search_terms", SNOWFLAKE_CONFIG['raw_schema'], "RECIPES_W_SEARCH_TERMS"),
         ]
 
         try:
@@ -347,6 +347,164 @@ class PipelineOrchestrator:
         except Exception as e:
             self.logger.error(f"Ingredient processing failed: {e}", exc_info=True)
             raise
+
+    def process_ingredients_sql(self) -> None:
+        """
+        Server-side processing of ingredients using Snowflake SQL + Python UDF.
+
+        - Registers a Python UDF to parse quantity strings
+        - Explodes `ingredients` and `quantities` arrays via `FLATTEN`
+        - Normalizes units and converts to `qty_ml` / `qty_g`
+        - Creates/overwrites table `{database}.{raw_schema}.{ingredients_parsing_table}`
+        """
+        self.logger.info("=" * 60)
+        self.logger.info("PROCESSING INGREDIENTS IN SNOWFLAKE (SQL/UDF)")
+        self.logger.info("=" * 60)
+
+        connector = SnowflakeConnector()
+        try:
+            db = SNOWFLAKE_CONFIG['database']
+            schema = SNOWFLAKE_CONFIG['raw_schema']
+            raw_table = SNOWFLAKE_CONFIG['raw_table']
+            enhanced_table = SNOWFLAKE_CONFIG['recipes_enhanced_v2_table']
+            out_table = SNOWFLAKE_CONFIG['ingredients_parsing_table']
+
+            connector.safe_execute(f"USE DATABASE {db}")
+            connector.safe_execute(f"USE SCHEMA {schema}")
+
+            udf_path = os.path.join(SQL_DIR, "parse_quantity_udf.sql")
+            if not os.path.exists(udf_path):
+                raise FileNotFoundError(f"UDF script not found: {udf_path}")
+            with open(udf_path, "r", encoding="utf-8") as f:
+                udf_sql = f.read()
+            connector.safe_execute(udf_sql)
+
+            ctas_sql = f"""
+CREATE OR REPLACE TABLE {db}.{schema}.{out_table} AS
+WITH src AS (
+  SELECT r.ID,
+         e.INGREDIENTS,
+         e.QUANTITIES
+  FROM {db}.{schema}.{raw_table} r
+  JOIN {db}.{schema}.{enhanced_table} e ON e.ID = r.ID
+  WHERE e.INGREDIENTS IS NOT NULL AND e.QUANTITIES IS NOT NULL
+),
+pairs AS (
+  SELECT s.ID,
+         i.value::string AS INGREDIENT,
+         q.value::string AS QUANTITY_RAW_STR
+  FROM src s,
+      LATERAL FLATTEN(input => s.INGREDIENTS) i,
+      LATERAL FLATTEN(input => s.QUANTITIES) q
+  WHERE i.index = q.index
+),
+parsed AS (
+  SELECT ID,
+         INGREDIENT,
+         QUANTITY_RAW_STR,
+                 LOWER(TRIM(REGEXP_SUBSTR(QUANTITY_RAW_STR, '[A-Za-z]+'))) AS UNIT,
+                 PARSE_QUANTITY_STRING(
+                     REGEXP_REPLACE(QUANTITY_RAW_STR, '[A-Za-z]+', '')
+                 ) AS QUANTITY
+  FROM pairs
+),
+unit_norm AS (
+  SELECT *, CASE
+    WHEN UNIT IN ('lbs') THEN 'lb'
+    WHEN UNIT IN ('fluid ounces') THEN 'fluid ounce'
+    WHEN UNIT IN ('gills') THEN 'gill'
+    WHEN UNIT IN ('tsps') THEN 'teaspoon'
+    WHEN UNIT IN ('tbsp') THEN 'tablespoon'
+    WHEN UNIT IN ('ozs') THEN 'ounce'
+    WHEN UNIT IN ('teaspoons') THEN 'teaspoon'
+    WHEN UNIT IN ('tablespoons') THEN 'tablespoon'
+    WHEN UNIT IN ('cups') THEN 'cup'
+    WHEN UNIT IN ('pints') THEN 'pint'
+    WHEN UNIT IN ('quarts') THEN 'quart'
+    WHEN UNIT IN ('gallons') THEN 'gallon'
+    ELSE UNIT END AS UNIT_NORM
+  FROM parsed
+),
+vol_map AS (
+    SELECT * FROM VALUES
+    ('teaspoon', 4.93), ('tsp', 4.93),
+    ('tablespoon', 14.79), ('tbsp', 14.79),
+    ('cup', 236.5882365),
+    ('pint', 473.176473),
+    ('quart', 946.352946),
+    ('gallon', 3785.41),
+    ('fluid ounce', 29.5735),
+    ('dash', 0.625),
+    ('splash', 5.91),
+    ('pony', 29.57),
+    ('jigger', 44.36),
+    ('shot', 44.36),
+    ('snit', 88.72),
+    ('wineglass', 118.29),
+    ('split', 177.44),
+    ('gill', 118.29411825),
+    ('fluid scruple', 1.1838776),
+    ('drop', 0.05),
+    ('smidgen', 0.15),
+    ('pinch', 0.7399235026),
+    ('scoop', 56)
+    AS vm(UNIT, ML_PER_UNIT)
+),
+wt_map AS (
+    SELECT * FROM VALUES
+    ('ounce', 28.3495), ('oz', 28.3495),
+    ('pound', 453.59237), ('lb', 453.59237)
+    AS wm(UNIT, G_PER_UNIT)
+),
+converted AS (
+  SELECT u.ID,
+         u.INGREDIENT,
+         u.QUANTITY_RAW_STR,
+         u.UNIT_NORM AS UNIT,
+         u.QUANTITY,
+         (u.QUANTITY * v.ML_PER_UNIT) AS QTY_ML,
+         (u.QUANTITY * w.G_PER_UNIT) AS QTY_G
+  FROM unit_norm u
+  LEFT JOIN vol_map v ON u.UNIT_NORM = v.UNIT
+  LEFT JOIN wt_map w ON u.UNIT_NORM = w.UNIT
+),
+rules AS (
+    SELECT * FROM VALUES
+    ('cinamon', 4.93), ('garlic powder', 4.93), ('salt', 4.93), ('kosher salt', 4.93), ('sea salt', 4.93),
+    ('pepper', 4.93), ('white pepper', 4.93), ('ground pepper', 4.93), ('fresh ground pepper', 4.93),
+    ('ground black pepper', 4.93), ('fresh ground black pepper', 4.93), ('black pepper', 4.93),
+    ('cracked black pepper', 4.93), ('salt and pepper', 4.93), ('salt and black pepper', 4.93),
+    ('salt & pepper', 4.93), ('salt and fresh pepper', 4.93), ('salt & freshly ground black pepper', 4.93),
+    ('sugar', 4.93), ('powdered sugar', 4.93),
+    ('honey', 14.79), ('oil', 14.79), ('vegetable oil', 14.79), ('olive oil', 14.79), ('extra virgin olive oil', 14.79),
+    ('butter', 14.79), ('tomato paste', 14.79),
+    ('egg', 60), ('eggs', 60),
+    ('onions', 100), ('onion', 100), ('red onions', 100), ('yellow onions', 100), ('parmesan cheese', 100), ('cheese', 100)
+    AS r(INGREDIENT_RULE, DEFAULT_G)
+)
+SELECT c.ID,
+       c.INGREDIENT,
+       c.QUANTITY_RAW_STR,
+       c.UNIT,
+       c.QUANTITY,
+       IFF(c.UNIT IS NULL AND c.QTY_G IS NULL, NULL, c.QTY_ML) AS QTY_ML,
+       COALESCE(
+         IFF(LOWER(TRIM(c.INGREDIENT)) = r.INGREDIENT_RULE,
+             IFF(c.QUANTITY IS NULL, r.DEFAULT_G, r.DEFAULT_G * c.QUANTITY),
+             c.QTY_G),
+         c.QTY_G
+       ) AS QTY_G
+FROM converted c
+LEFT JOIN rules r ON LOWER(TRIM(c.INGREDIENT)) = r.INGREDIENT_RULE
+;"""
+            connector.safe_execute(ctas_sql)
+
+            self.logger.info(f"✅ Created/updated {db}.{schema}.{out_table} with parsed ingredient quantities")
+        except Exception as e:
+            self.logger.error(f"Ingredient SQL processing failed: {e}", exc_info=True)
+            raise
+        finally:
+            connector.close()
 
     def run_full_pipeline(self, nrows: Optional[int] = None) -> None:
         """

@@ -78,6 +78,11 @@ def main():
         help="Process and parse ingredients with unit conversion"
     )
     parser.add_argument(
+        "--ingredients-sql",
+        action="store_true",
+        help="Process ingredients server-side in Snowflake (SQL/UDF)"
+    )
+    parser.add_argument(
         "--nrows",
         type=int,
         default=None,
@@ -92,10 +97,16 @@ def main():
 
         orchestrator = PipelineOrchestrator()
 
-        # Process ingredients if requested
+        # Process ingredients locally (Python) if requested
         if args.process_ingredients:
             orchestrator.process_ingredients()
             logger.info("🎉 INGREDIENT PROCESSING COMPLETED SUCCESSFULLY!")
+            return
+
+        # Process ingredients server-side (Snowflake SQL/UDF)
+        if args.ingredients_sql:
+            orchestrator.process_ingredients_sql()
+            logger.info("🎉 INGREDIENT SQL PROCESSING COMPLETED SUCCESSFULLY!")
             return
 
         # Process individual phases if requested
