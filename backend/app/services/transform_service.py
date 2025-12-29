@@ -26,6 +26,7 @@ class TransformService:
         self.client = client if client else SnowflakeClient()
         self.ingredients_cache: Dict[str, Optional[Dict]] = {}
         self.pca_data = None  # ingredient coordinates for clustering 
+        self._load_pca_data()
 
     def _get_ingredient_nutrition(self, ingredient_name: str) -> Optional[Dict]:
         """
