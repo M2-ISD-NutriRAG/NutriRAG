@@ -483,7 +483,10 @@ class SnowflakeSetup:
 
         # Check if dependencies are installed
         try:
-            import snowflake.connector
+            import importlib.util
+
+            if importlib.util.find_spec("snowflake.connector") is None:
+                raise ImportError("snowflake-connector-python not found")
         except ImportError:
             self.print_error("snowflake-connector-python is not installed!")
             self.print_info("Install it using: pip install -r requirements.txt")
@@ -543,60 +546,29 @@ class SnowflakeSetup:
         print(f"  Auth:      Key Pair ({key_file})\n")
 
         try:
-            # Load private key
-            from cryptography.hazmat.backends import default_backend
-            from cryptography.hazmat.primitives import serialization
+            # Use the SnowflakeClient class
+            from shared.snowflake.client import SnowflakeClient
 
-            with open(key_file, "rb") as key:
-                p_key = serialization.load_pem_private_key(
-                    key.read(), password=None, backend=default_backend()
-                )
-
-            # Serialize private key
-            pkb = p_key.private_bytes(
-                encoding=serialization.Encoding.DER,
-                format=serialization.PrivateFormat.PKCS8,
-                encryption_algorithm=serialization.NoEncryption(),
-            )
-
-            # Create connection
             self.print_info("Connecting to Snowflake...")
-            conn_params = {
-                "user": user,
-                "account": account,
-                "private_key": pkb,
-                "ocsp_fail_open": True,
-            }
-
-            if warehouse:
-                conn_params["warehouse"] = warehouse
-            if database:
-                conn_params["database"] = database
-            if schema:
-                conn_params["schema"] = schema
-
-            conn = snowflake.connector.connect(**conn_params)
-
-            self.print_success("Connection successful! No MFA prompt required!")
-
-            # Run a test query
-            if detailed:
-                self.print_info("Running test query...")
-                cursor = conn.cursor()
-                cursor.execute(
-                    "SELECT CURRENT_VERSION(), CURRENT_USER(), CURRENT_ROLE(), CURRENT_WAREHOUSE()"
+            with SnowflakeClient() as client:
+                self.print_success(
+                    "Connection successful! No MFA prompt required!"
                 )
-                result = cursor.fetchone()
 
-                print(f"\n{Colors.BOLD}Connection Info:{Colors.ENDC}")
-                print(f"  Version:   {result[0]}")
-                print(f"  User:      {result[1]}")
-                print(f"  Role:      {result[2]}")
-                print(f"  Warehouse: {result[3]}")
+                # Run a test query
+                if detailed:
+                    self.print_info("Running test query...")
+                    result = client.execute(
+                        "SELECT CURRENT_VERSION(), CURRENT_USER(), CURRENT_ROLE(), CURRENT_WAREHOUSE()",
+                        fetch="one",
+                    )
 
-                cursor.close()
+                    print(f"\n{Colors.BOLD}Connection Info:{Colors.ENDC}")
+                    print(f"  Version:   {result[0]}")
+                    print(f"  User:      {result[1]}")
+                    print(f"  Role:      {result[2]}")
+                    print(f"  Warehouse: {result[3]}")
 
-            conn.close()
             self.print_success("Connection test completed successfully!")
             return True
 

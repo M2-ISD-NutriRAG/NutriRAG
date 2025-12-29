@@ -6,6 +6,7 @@ from shared.snowflake.tables.recipes_sample_table import RecipesSampleTable
 from shared.snowflake.tables.recipes_final_table import RecipesFullTable
 from app.models.recipe import Recipe, RecipeListResponse, NutritionDetailed
 
+
 router = APIRouter()
 
 
