@@ -39,6 +39,7 @@ class TransformRequest(BaseModel):
     # Transform request body
     recipe: Recipe
     ingredients_to_remove: Optional[List[str]] = None
+    ingredients_to_remove: Optional[List[str]] = None
     constraints: Optional[TransformConstraints] = None
 
 
