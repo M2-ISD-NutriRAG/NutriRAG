@@ -56,12 +56,12 @@ class NutritionDelta(BaseModel):
     calories: float = 0.0
     protein_g: float = 0.0
     saturated_fats_g: float = 0.0
-    fat_g: float = 0.0
-    carb_g: float = 0.0
-    fiber_g: float = 0.0
-    sodium_mg: float = 0.0
-    sugar_g: float = 0.0
-    score_health: float = 0.0
+    fat_g: float = 0.0 
+    carb_g: float = 0.0 
+    fiber_g: float = 0.0 
+    sodium_mg: float = 0.0 
+    sugar_g: float = 0.0 
+    score_health: float = 0.0 
 
 
 class TransformResponse(BaseModel):
@@ -69,11 +69,11 @@ class TransformResponse(BaseModel):
     recipe: Recipe
     original_name: str
     transformed_name: str
-
+    
     substitutions: Optional[List[Substitution]]
-
-    nutrition_before: Optional[NutritionDelta]  ## nutri score before
-    nutrition_after: Optional[NutritionDelta]  ## nutri score after
-
+    
+    nutrition_before: Optional[NutritionDelta] ## nutri score before
+    nutrition_after: Optional[NutritionDelta] ## nutri score after 
+    
     success: bool
     message: Optional[str] = None
