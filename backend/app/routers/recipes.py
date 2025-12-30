@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Query
-from typing import Optional
+from typing import Optional, List
 import json
 from shared.snowflake.client import SnowflakeClient
 from shared.snowflake.tables.recipes_sample_table import RecipesSampleTable
@@ -10,112 +10,212 @@ from app.models.recipe import Recipe, RecipeListResponse, NutritionDetailed
 router = APIRouter()
 
 
-
-def parse_list_string(value: str):
+def parse_list_string(value: str) -> Optional[List]:
     """
-    Transforme un string comme :
+    Parse a string representation of a list into an actual Python list.
+    Handles formats like:
     '[\n  "tag1",\n  "tag2"\n]'
-    ou
     '[\n  6.9e+01,\n  3\n]'
-    en vraie liste Python.
     """
-    if value is None:
+    if value is None or value == "":
         return None
 
     value = value.strip()
-
+    
+    # Try JSON parsing first
     try:
-        return json.loads(value)
-    except json.JSONDecodeError:
+        parsed = json.loads(value)
+        if isinstance(parsed, list):
+            return parsed
+    except (json.JSONDecodeError, ValueError):
         pass
 
+    # Manual parsing for malformed JSON
     if value.startswith("[") and value.endswith("]"):
         content = value[1:-1].strip()
-
+        
+        if not content:
+            return []
+        
         parts = [p.strip().strip('"').strip("'") for p in content.split(",")]
-
-        out = []
+        
+        result = []
         for p in parts:
+            if not p:
+                continue
             try:
-                out.append(float(p))
-            except:
-                out.append(p)
-        return out
+                # Try to parse as float first
+                result.append(float(p))
+            except ValueError:
+                result.append(p)
+        return result
 
+    # Single value fallback
     return [value]
 
-def v(x):
-    return -1 if x is None else x
+
+def safe_int(value, default: int = -1) -> int:
+    """Safely convert value to int, return default if None or invalid."""
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return default
+
+
+def safe_float(value, default: Optional[float] = None) -> Optional[float]:
+    """Safely convert value to float, return default if None or invalid."""
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return default
+
+
+def safe_str(value, default: str = "") -> str:
+    """Safely convert value to string, return default if None."""
+    if value is None:
+        return default
+    return str(value)
+
+
+def parse_nutrition_from_row(row) -> Optional[NutritionDetailed]:
+    """Parse nutrition data from database row."""
+    try:
+        return NutritionDetailed(
+            calories=safe_float(row[20]),
+            protein_g=safe_float(row[21]),
+            fat_g=safe_float(row[23]),
+            saturated_fat_g=safe_float(row[22]),
+            carbs_g=safe_float(row[24]),
+            fiber_g=safe_float(row[25]),
+            sugar_g=safe_float(row[26]),
+            sodium_mg=safe_float(row[27]),
+            calcium_mg=safe_float(row[28]),
+            iron_mg=safe_float(row[29]),
+            magnesium_mg=safe_float(row[32]),
+            potassium_mg=safe_float(row[30]),
+            vitamin_c_mg=safe_float(row[31]),
+        )
+    except:
+        return None
+
+
+def parse_recipe_from_row(row) -> Recipe:
+    """Parse a complete Recipe object from a database row."""
+    # Parse tags, ingredients, and steps
+    tags = parse_list_string(row[5]) or []
+    ingredients_raw = parse_list_string(row[10]) or []
+    steps = parse_list_string(row[8]) or []
+    nutrition_original = parse_list_string(row[6])
     
+    # Ensure they are lists of strings
+    tags = [safe_str(t) for t in tags]
+    ingredients_raw = [safe_str(i) for i in ingredients_raw]
+    steps = [safe_str(s) for s in steps]
+    
+    # Parse nutrition
+    nutrition_detailed = parse_nutrition_from_row(row)
+    
+    return Recipe(
+        id=safe_int(row[1], -1),
+        name=safe_str(row[0], "Unknown Recipe"),
+        description=safe_str(row[9]),
+        minutes=safe_int(row[2]),
+        n_steps=safe_int(row[7]),
+        n_ingredients=safe_int(row[11]),
+        tags=tags,
+        ingredients_raw=ingredients_raw,
+        ingredients_parsed=None,
+        steps=steps,
+        nutrition_original=nutrition_original,
+        nutrition_detailed=nutrition_detailed,
+        score_health=safe_float(row[19]),
+        rating_avg=None,
+        rating_count=None
+    )
+
+
 @router.get("/{recipe_id}", response_model=Recipe)
 async def get_recipe(recipe_id: int):
-    # Get a single recipe by ID
-    # Returns enriched recipe with:
-    # - Parsed ingredients
-    # - Health score    
+    """
+    Get a single recipe by ID.
+    Returns enriched recipe with parsed ingredients and health score.
+    """
     client = SnowflakeClient()
-    result = client.execute(f"""
+    
+    result = client.execute(
+        f"""
         SELECT *
         FROM {RecipesFullTable.get_full_table_name()}
         WHERE id = {recipe_id}
-     """, fetch="all")
-    if len(result) > 0:
-        row = result[0]
-
-        nutrition = NutritionDetailed(
-            calories=v(row[20]),
-            protein_g=v(row[21]),
-            fat_g=v(row[23]),
-            saturated_fat_g=v(row[22]),
-            carbs_g=v(row[24]),
-            fiber_g=v(row[25]),
-            sugar_g=v(row[26]),
-            sodium_mg=v(row[27]),
-            calcium_mg=v(row[28]),
-            iron_mg=v(row[29]),
-            magnesium_mg=v(row[32]),
-            potassium_mg=v(row[30]),
-            vitamin_c_mg=v(row[31]),
-        )
+        """,
+        fetch="all"
+    )
     
-        
-        recipe = Recipe(
-            id=row[1],
-            name=row[0],
-            description=row[9],
-            minutes=row[2],
-            n_steps=row[7],
-            n_ingredients=row[11],
-            tags=parse_list_string(row[5]),
-            ingredients_raw=parse_list_string(row[10]),
-            ingredients_parsed=None, 
-            steps=parse_list_string(row[8]),
-            nutrition_original=parse_list_string(row[6]),
-            nutrition_detailed=nutrition,
-            score_health=row[19],
-            rating_avg=None,
-            rating_count=None
-        )
-    else: 
-        recipe = Recipe(
-            id=-1,
-            name="",
-            description="",
-            minutes=-1,
-            n_steps=-1,
-            n_ingredients=-1,
-            tags=[],
-            ingredients_raw=[],
-            ingredients_parsed=None,  # pas encore calculé
-            steps=[],
-            nutrition_original=[],
-            nutrition_detailed=None,  # pas encore calculé
-            score_health=None,
-            rating_avg=None,
-            rating_count=None)
+    if not result:
+        raise HTTPException(status_code=404, detail=f"Recipe with id {recipe_id} not found")
+    
+    return parse_recipe_from_row(result[0])
 
-    return recipe
 
+@router.get("/{recipe_id}/nutrition", response_model=NutritionDetailed)
+async def get_recipe_nutrition(recipe_id: int):
+    """
+    Get detailed nutritional breakdown for a recipe.
+    """
+    client = SnowflakeClient()
+    
+    result = client.execute(
+        f"""
+        SELECT *
+        FROM {RecipesFullTable.get_full_table_name()}
+        WHERE id = {recipe_id}
+        """,
+        fetch="all"
+    )
+    
+    if not result:
+        raise HTTPException(status_code=404, detail=f"Recipe with id {recipe_id} not found")
+    
+    nutrition = parse_nutrition_from_row(result[0])
+    
+    if nutrition is None:
+        raise HTTPException(status_code=404, detail=f"Nutrition data not available for recipe {recipe_id}")
+    
+    return nutrition
+
+
+@router.get("/random", response_model=List[Recipe])
+async def get_random_recipes(count: int = Query(5, ge=1, le=20)):
+    """
+    Get random recipes for exploration.
+    """
+    client = SnowflakeClient()
+    
+    # Validate count
+    safe_count = max(1, min(int(count), 20))
+    
+    results = client.execute(
+        f"""
+        SELECT *
+        FROM {RecipesSampleTable.get_full_table_name()}
+        SAMPLE ({safe_count} ROWS)
+        """,
+        fetch="all"
+    )
+    
+    recipes = []
+    for row in results:
+        try:
+            recipe = parse_recipe_from_row(row)
+            recipes.append(recipe)
+        except Exception as e:
+            continue
+    
+    return recipes
 
 
 @router.get("/", response_model=RecipeListResponse)
@@ -125,100 +225,11 @@ async def list_recipes(
     tag: Optional[str] = None,
     min_rating: Optional[float] = None,
 ):
-    # List recipes with pagination and filters
-    # TODO: Équipe 1 - Implémentation de la requête Snowflake avec filtres
-
+    """
+    List recipes with pagination and filters.
+    TODO: Équipe 1 - Implementation of Snowflake query with filters
+    """
     raise HTTPException(
         status_code=501,
-        detail="Équipe 1: Implémentation nécessaire - Requête des recettes avec filtres",
+        detail="Équipe 1: Implementation required - Recipe query with filters",
     )
-
-
-@router.get("/{recipe_id}/nutrition")
-async def get_recipe_nutrition(recipe_id: int):
-    # Obtenir la décomposition nutritionnelle détaillée pour une recette
-    
-    client = SnowflakeClient()
-    result = client.execute(f"""
-        SELECT *
-        FROM {RecipesFullTable.get_full_table_name()}
-        WHERE id = {recipe_id}
-     """, fetch="all")
-    if len(result) > 0:
-        row = result[0]
-
-        nutrition = NutritionDetailed(
-            calories=v(row[20]),
-            protein_g=v(row[21]),
-            fat_g=v(row[23]),
-            saturated_fat_g=v(row[22]),
-            carbs_g=v(row[24]),
-            fiber_g=v(row[25]),
-            sugar_g=v(row[26]),
-            sodium_mg=v(row[27]),
-            calcium_mg=v(row[28]),
-            iron_mg=v(row[29]),
-            magnesium_mg=v(row[32]),
-            potassium_mg=v(row[30]),
-            vitamin_c_mg=v(row[31]),
-        )
-    else:
-        nutrition = NutritionDetailed(
-            calories = -1,
-            protein_g = -1,
-            fat_g = -1,
-            saturated_fat_g = -1,
-            carbs_g = -1,
-            fiber_g = -1,
-            sugar_g = -1,
-            sodium_mg = -1,
-        
-            calcium_mg = -1,
-            iron_mg = -1,
-            magnesium_mg = -1,
-            potassium_mg = -1,
-            vitamin_c_mg = -1
-        )
-    return nutrition
-
-        
-
-
-@router.get("/random")
-async def get_random_recipes(count: int = Query(5, ge=1, le=20)):
-    # Obtenir des recettes aléatoires pour l'exploration
-    # TODO: Équipe 1 - Échantillonner des recettes aléatoires
-    client = SnowflakeClient()
-    # Ensure count is strictly an integer and within bounds before interpolation
-    safe_count = int(count)
-    results = client.execute(f"""
-        SELECT *
-        FROM {RecipesSampleTable.get_full_table_name()}
-        SAMPLE ({safe_count} rows)
-    """, fetch="all")
-
-    recipes = []
-    for row in results:
-        recipes.append(Recipe(
-        id=row[1],
-        name=row[0],
-        description=row[9],
-        minutes=row[2],
-        n_steps=row[7],
-        n_ingredients=row[11],
-        tags=parse_list_string(row[5]),
-        ingredients_raw=parse_list_string(row[10]),
-        ingredients_parsed=None,  # pas encore calculé
-        steps=parse_list_string(row[8]),
-        nutrition_original=parse_list_string(row[6]),
-        nutrition_detailed=None,  # pas encore calculé
-        score_health=None,
-        rating_avg=None,
-        rating_count=None
-    ))
-
-
-    return recipes
-
-
-
