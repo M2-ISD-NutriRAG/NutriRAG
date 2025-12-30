@@ -1,9 +1,10 @@
-import re
-from typing import List, Dict, Tuple, Any, Set
-import pickle
 import base64
-from rank_bm25 import BM25Okapi
+import pickle
+import re
+from typing import Any, Dict, List, Set, Tuple
+
 import numpy as np
+from rank_bm25 import BM25Okapi
 
 # English stop words (hardcoded list)
 ENGLISH_STOP_WORDS = {
@@ -205,21 +206,26 @@ def tokenize(
     Returns:
         List of filtered tokens with length > 1.
     """
-    if not text:
+
+    # Check if text is empty or only whitespace
+    if not text.strip():
         return []
 
-    text = str(text).lower()
-    tokens = re.findall(r"\b\w+\b", text)
+    lower_text = text.lower()
+
+    # Extract word tokens using regex: \b\w+\b matches word boundaries and word characters
+    tokens = re.findall(r"\b\w+\b", lower_text)
 
     # Build the set of words to filter (stop words + field names)
     words_to_filter = set()
-
     words_to_filter.update(ENGLISH_STOP_WORDS)
 
     if text_fields_to_remove:
-        # Add field names to filter set (converted to lowercase)
+        # Add field names to filter set
         words_to_filter.update(field.lower() for field in text_fields_to_remove)
 
+    # Filter out stop words and field names; exclude single-character tokens as they are typically
+    # uninformative for search indexing (e.g., "a", "I", "x")
     return [t for t in tokens if t not in words_to_filter and len(t) > 1]
 
 
@@ -240,7 +246,9 @@ def build_bm25_index(
         documents: List of documents (dictionaries).
         text_fields: List of field names to index.
         id_field: Field name containing unique document identifiers (default: "ID").
-        field_weights: Dictionary mapping field names to weight values (default: 1.0 for all).
+        field_weights: Dictionary mapping field names to integer weight values.
+            Weights must be integers (default: 1 for all fields).
+            Example: {"title": 2, "description": 1} doubles token importance for title.
 
     Returns:
         Tuple containing:
@@ -249,10 +257,7 @@ def build_bm25_index(
         - tokenized_corpus: List of tokenized documents.
     """
     if field_weights is None:
-        field_weights = {field: 1.0 for field in text_fields}
-
-    # Convert field names to lowercase for consistent comparison
-    text_fields_lower = {field.lower() for field in text_fields}
+        field_weights = {field: 1 for field in text_fields}
 
     doc_ids = []
     tokenized_corpus = []
@@ -266,14 +271,13 @@ def build_bm25_index(
 
         for field in text_fields:
             text = str(doc.get(field, ""))
-            tokens = tokenize(text, text_fields_to_remove=text_fields_lower)
+            tokens = tokenize(text, text_fields_to_remove=text_fields)
 
-            # Obtenir le poids pour ce champ
-            weight = field_weights.get(field, 1.0)
+            # Get weight for the field
+            weight = field_weights.get(field, 1)
 
-            # Dupliquer les tokens selon le poids
-            repetitions = int(weight)
-            for _ in range(repetitions):
+            # Replicate tokens based on field weight for importance in BM25 scoring
+            for _ in range(weight):
                 all_tokens.extend(tokens)
 
         if all_tokens:
