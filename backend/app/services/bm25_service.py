@@ -30,17 +30,16 @@ class BM25Service:
     """
 
     def __init__(
-        self, snowflake_client: Optional[Any] = None, setup: bool = False
+        self, snowflake_client: SnowflakeClient, setup: bool = False
     ):
         """
         Initialize the BM25 Service.
 
         Args:
-            snowflake_client: Optional Snowflake client instance. If None, creates
-                a new SnowflakeClient.
+            snowflake_client: SnowflakeClient instance.
             setup: If True, uploads utility files and registers stored procedures.
         """
-        self.client = snowflake_client or SnowflakeClient()
+        self.client = snowflake_client
         if setup:
             self._upload_utils_to_stage()
             self._setup_procedures()
