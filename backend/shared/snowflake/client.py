@@ -93,6 +93,9 @@ class SnowflakeClient:
 
         # Add OCSP fail open for certificate issues
         self.config["ocsp_fail_open"] = True
+        
+        # Enable insecure mode inorder to upload local files to snowflake stage
+        self.config["insecure_mode"] = True
 
         # Verify required fields
         required_fields = ["user", "account", "role", "warehouse", "database", "schema"]
