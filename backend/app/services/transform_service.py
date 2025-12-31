@@ -173,10 +173,10 @@ class TransformService:
         
         total_nutrition.score_health = self.calculate_health_score(total_nutrition)
         return total_nutrition
-    # Recipe transformaiton service
+
     def _load_pca_data(self):
-        """Charge les données PCA depuis Snowflake ou CSV en fallback"""
-        # TODO: Chargement depuis Snowflake des coordonnées de chaque ingrédients
+        """Load PCA data from Snowflake or CSV as fallback"""
+        # TODO: Load PCA coordinates for each ingredient from Snowflake
         # try:
         #     # D'abord, essayer de voir quelles colonnes existent réellement
         #     schema_query = """
@@ -329,20 +329,20 @@ class TransformService:
     def get_neighbors_pca(self, ingredient_name: str, constraints: TransformConstraints = None, 
                          micro_weight: float = 0.3, macro_weight: float = 0.7, k: int = 5) -> Dict:
         """
-        Trouve les k meilleurs substituts d'un ingrédient selon PCA macro/micro
+        Find the k best substitutes for an ingredient using PCA macro/micro
         
         Args:
-            ingredient_name: Nom de l'ingrédient à substituer
-            constraints: Contraintes de transformation
-            micro_weight: Poids des micronutriments 
-            macro_weight: Poids des macronutriments
-            k: Nombre de substituts à retourner
+            ingredient_name: ingredient to substitute
+            constraints: transformation constraints
+            micro_weight: weight of micronutrients 
+            macro_weight: weight of macronutrients
+            k: number of substitutes to return
             
         Returns:
-            Dict avec les meilleurs substituts
+            Dict with the best substitutes 
         """
         if self.pca_data is None:
-            print("❌ Données PCA non disponibles")
+            print("❌ PCA Data not available")
             return None
             
         # Nettoyer le nom de l'ingrédient
@@ -352,18 +352,21 @@ class TransformService:
         matching_rows = self.pca_data[self.pca_data['Descrip'].str.lower().str.contains(ingredient_clean, na=False)]
         
         if matching_rows.empty:
-            print(f"⚠️ Ingrédient '{ingredient_name}' non trouvé dans les données PCA")
+            print(f"⚠️ Ingredient '{ingredient_name}' not found in PCA data")
             return None
             
         # Prendre la première correspondance
         row = matching_rows.iloc[0]
-        print(f"🔍 Ingrédient trouvé: {ingredient_name} → {row['Descrip']}")
+        print(f"🔍 Ingredient found: {ingredient_name} → {row['Descrip']}")
         
         # Copier les données pour filtrage selon contraintes
         df_filtered = self.pca_data.copy()
 
-        # 03/12 ajout filtrage sur category_llm 
-        df_filtered = df_filtered[df_filtered['Category_LLM'] == row['Category_LLM']]
+        # Filter addition for category_llm
+        if 'Category_LLM' in df_filtered.columns:
+            df_filtered = df_filtered[df_filtered['Category_LLM'] == row['Category_LLM']]
+        else:
+            print("⚠️ Column 'Category_LLM' absent from PCA data, category filtering ignored")
         
         # Appliquer les filtres de contraintes
         if constraints:
@@ -383,18 +386,18 @@ class TransformService:
                             (df_filtered[col] == allowed_val) |
                             (df_filtered['Descrip'].str.lower() == ingredient_clean)
                         ]
-                        print(f"🔧 Contrainte appliquée: {constraint_name}")
+                        print(f"🔧 Constraint applied: {constraint_name}")
         
-        # Colonnes PCA
+        # PCA columns
         macro_cols = ['PCA_macro_1', 'PCA_macro_2', 'PCA_macro_3']
         micro_cols = ['PCA_micro_1', 'PCA_micro_2']
         
-        # Vérifier que les colonnes existent
+        # Check that columns exist
         available_macro_cols = [col for col in macro_cols if col in df_filtered.columns]
         available_micro_cols = [col for col in micro_cols if col in df_filtered.columns]
         
         if not available_macro_cols and not available_micro_cols:
-            print("❌ Aucune colonne PCA disponible pour le calcul de distance")
+            print("❌ No PCA columns available for distance calculation")
             return None
         
         macro_vec = row[available_macro_cols].values if available_macro_cols else np.array([])
@@ -403,17 +406,17 @@ class TransformService:
         def euclidean_distance(a, b):
             return np.linalg.norm(a - b) if len(a) > 0 and len(b) > 0 else 0
         
-        # Exclure l'ingrédient original
+        # Exclude the original ingredient
         df_filtered = df_filtered[df_filtered['Descrip'] != row['Descrip']]
         
         if df_filtered.empty:
-            print("⚠️ Aucun substitut trouvé après application des contraintes")
+            print("⚠️ No substitute found after applying constraints")
             return None
         
-        # Calculer les distances globales (combinaison macro + micro)
+        # Calculate global distances (macro + micro combination)
         df_filtered = df_filtered.copy()
         
-        # Calculer distance macro
+        # Calculate macro distance
         if available_macro_cols:
             df_filtered['dist_macro'] = df_filtered[available_macro_cols].apply(
                 lambda x: euclidean_distance(macro_vec, x.values), axis=1)
@@ -459,12 +462,13 @@ class TransformService:
         return result
     
 
-    def juge_substitut(self, candidats):
+    def judge_substitute(self, candidats):
         """
-        Fonction qui fait le choix final de l'ingrédient qui sera substitué parmis la liste des candidats
+        TODO
+        Final ingredient choice between list of candidats
 
         Args:
-            candidats: Liste des ingrédients candidats (extraits de get_neighbors_pca() )
+            candidats: list of possible ingredients to substitute with (extracted from get_neighbors_pca() )
 
         Returns:
             ingredient_id
@@ -472,22 +476,22 @@ class TransformService:
         pass
 
     
-    def substituer_ledit_ingr(self, ingredient: str, contraintes: TransformConstraints) -> tuple[str, bool]:
+    def substitute_ingr(self, ingredient: str, contraintes: TransformConstraints) -> tuple[str, bool]:
         """
-        Trouve un substitut pour l'ingrédient donné en utilisant PCA en priorité
+        Finds a substitute for the given ingredient using PCA in priority
         
         Args:
-            ingredient: Ingrédient à substituer
-            contraintes: Contraintes nutritionnelles
+            ingredient: ingredient to substitute
+            contraintes: nutritional constraints
         
         Returns:
-            Tuple (ingrédient_substitué, substitution_effectuée)
+            Tuple (substituted_ingredient, substitution_performed)
         """
-        # Essayer d'abord avec PCA
+        # Try with PCA first
         pca_result = self.get_neighbors_pca(ingredient, contraintes, k=3)
         
         if pca_result and pca_result["best_substitutes"]:
-            # Prendre le meilleur substitut PCA
+            # Take the best PCA substitute
             best_substitute = pca_result["best_substitutes"][0]
             substitute_name = best_substitute["name"]
             
@@ -595,33 +599,25 @@ class TransformService:
             # Getting ingredient replacement list
             if ingredients_to_remove is not None:
                 ingredients_to_substitute = ingredients_to_remove
-            # else:
-                # ingredients_to_substitute = self._extract_ingredients_from_text(recipe.ingredients)
+            else:
+                ingredients_to_substitute = self._extract_ingredients_from_text(recipe.ingredients)
                 # TODO : choose ingredient with an LLM ?
 
             print("Step 3 completed")
             # Step 4: Getting new ingredient and substitute them
-            ingredients_to_substitute_matched = []
-            orig_ings = []  # keep the original ingredient corresponding
-
-            for ing in ingredients_to_substitute:
-                cached = self.ingredients_cache.get(ing)
-                if isinstance(cached, dict):
-                    name = cached.get("name")
-                    if name:  # keep if ok
-                        ingredients_to_substitute_matched.append(name)
-                        orig_ings.append(ing)
-
+            print(self.ingredients_cache)
+            ingredients_to_substitute_matched = [self.ingredients_cache[ing]["name"] for ing in ingredients_to_substitute]
+            print("dict problem")
             substitutions = {}
             substitution_count = 0
             new_quantity = recipe.quantity_ingredients
-            for original, matched in zip(orig_ings, ingredients_to_substitute_matched):
-                substitute, was_substituted = "uncomment later", False  # self.substituer_ledit_ingr(matched, constraints)
-
+            for i, ingredient in enumerate(ingredients_to_substitute_matched):
+                substitute, was_substituted = self.substituer_ledit_ingr(ingredient, constraints)
+                
                 if was_substituted:
-                    substitutions[original] = substitute
+                    substitutions[ingredients_to_substitute[i]] = substitute
+                    ingredient = substitute
                     substitution_count += 1
-
             new_ingredients = [substitutions.get(ingredient, ingredient) for ingredient in recipe.ingredients]
 
             print("Step 4 completed")
