@@ -1,0 +1,155 @@
+{
+  "config_file_path": "config/config.json",
+
+  "input_embedding_cache_file_path": "data/embedding_cache/recipies_samples_embeddings.csv",
+
+  "input_recipies_file": "data/recipes_samples.csv",
+
+  "experiments_dir": "experiments/exp{experiment_id}/",
+  "config_dir": "config/",
+  "data_dir": "data/",
+  "raw_data_dir": "data/raw/",
+  "embedding_data_dir": "data/embedding/",
+  "temp_data_dir": "data/temp/",
+  "eval_data_dir": "data/eval/",
+  "prompts_dir": "prompts/",
+  "metrics_dir": "metrics/",
+  "llm_metrics_dir": "metrics/llm/",
+  "embedding_metrics_dir": "metrics/embedding/",
+
+  "eval_prompt_with_justification_file_path": "prompts/eval_prompt_with_justification.txt",
+  "eval_prompt_without_justification_file_path": "prompts/eval_prompt_without_justification.txt", 
+
+  "ground_truth_file_path": "data/eval/ground_truth.json",
+  "query_test_file_path": "data/eval/queries_test.json",
+
+  "eval_llm_ground_truth_file_path": "eval_llm_ground_truth.json",
+
+
+
+  "output_recipies_embedding_file": "recipies_samples_embeddings.csv",
+
+  "output_retrieved_documents_file": "retrieved_documents.json",
+  "output_retrived_documents_relevence_file": "retrieved_documents_relevance.json",
+
+
+
+
+
+
+
+
+
+
+
+
+  "data_columns": [
+    "ID",
+    "NAME_CLEAND",
+    "INGREDIENTS_CLEAND",
+    "STEPS_CLEAND",
+    "DESCRIPTION_CLEAND"
+  ],
+
+  "embedding_models": [
+    "intfloat/e5-small-v2",
+    "intfloat/e5-base-v2",
+    "sentence-transformers/all-MiniLM-L6-v2",
+    "thenlper/gte-small",
+    "thenlper/gte-base",
+    "BAAI/bge-small-en",
+    "BAAI/bge-base-en",
+    "BAAI/llm-embedder",
+    "Snowflake/snowflake-arctic-embed-m",
+    "Snowflake/snowflake-arctic-embed-m-v1.5"
+  ],
+
+  "columns_embedding": {
+    "config_1": ["NAME_CLEAND", "INGREDIENTS_CLEAND", "STEPS_CLEAND", "DESCRIPTION_CLEAND"],
+    "config_2": ["NAME_CLEAND", "INGREDIENTS_CLEAND", "DESCRIPTION_CLEAND"],
+    "config_3": ["NAME_CLEAND", "INGREDIENTS_CLEAND", "STEPS_CLEAND"],
+    "config_4": ["NAME_CLEAND", "STEPS_CLEAND", "DESCRIPTION_CLEAND"],
+    "config_5": ["NAME_CLEAND", "INGREDIENTS_CLEAND"],
+    "config_6": ["NAME_CLEAND", "STEPS_CLEAND"]
+  },
+  
+  "columns_to_clean": {
+    "NAME_CLEAND" : {
+      "column_name": "NAME_CLEAND",
+      "start_text": "recipe name"
+    },
+    "INGREDIENTS_CLEAND" : {
+      "column_name": "INGREDIENTS_CLEAND",
+      "start_text": "recipe ingredients"
+    },
+    "STEPS_CLEAND" : {
+      "column_name": "STEPS_CLEAND",
+      "start_text": "recipe steps"
+    },
+    "DESCRIPTION_CLEAND" : {
+      "column_name": "DESCRIPTION_CLEAND",
+      "start_text": "recipe description"
+    }
+  },
+
+  "llm_model": "mistral-large2",
+  "temperature": 0,
+  "max_tokens": 8192,
+  "context_window": 64000,
+  "number_doc_per_call": 20,
+  "max_retries_llm_calls": 3,
+
+  "llm_json_format_with_justification":  {
+    "type": "object",
+    "properties": {
+        "query_text": {
+            "type": "string"
+        },
+        "relevance_judgments": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "doc_id": {"type": "integer"},
+                    "relevance_score": {"type": "number"},
+                    "justification": {"type": "string"}
+                },
+                "required": ["doc_id", "relevance_score", "justification"]
+            }
+        }
+    },
+    "required": ["query_text", "relevance_judgments"]
+  },
+
+  "llm_json_format_without_justification":  {
+    "type": "object",
+    "properties": {
+        "query_text": {
+            "type": "string"
+        },
+        "relevance_judgments": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "doc_id": {"type": "integer"},
+                    "relevance_score": {"type": "number"}
+                },
+                "required": ["doc_id", "relevance_score"]
+            }
+        }
+    },
+    "required": ["query_text", "relevance_judgments"]
+  },
+
+  "experiment_id": 1 ,
+  "top_k": [1, 2, 5, 10],
+
+  "override_raw_data": false,
+  "override_embeddings": false,
+  "override_llm_eval": false,
+  "override_documents_retrival": false
+
+}
+
+

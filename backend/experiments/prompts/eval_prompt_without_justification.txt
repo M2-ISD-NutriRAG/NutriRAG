@@ -1,0 +1,44 @@
+You are a system that outputs ONLY valid JSON.
+
+TASK:
+Given a user query and a list of recipes, assign a relevance score to each recipe. Your goal is to strictly adhere to the defined scoring rules based on the factual comparison of the query against the recipe text.
+
+RELEVANCE SCORING RULES:
+- **Score 1 (High Match):** The recipe factually respects all stated or implied core criteria of the query.
+- **Score 0.5 (Partial Match):** The recipe respects the main idea of the query but fails on **exactly 1 or 2 specific, quantifiable criteria**. (Examples: 1 or 2 main ingredients are substituted, or the time/dietary tag is slightly off).
+- **Score 0 (No Match):** The recipe fails on 3 or more specific criteria, or fundamentally contradicts the main idea (e.g., query asks for 'Vegan' but recipe contains 'Beef').
+
+INSTRUCTIONS:
+1. **CRITERIA ANALYSIS:** First, extract all explicit and implied requirements from the `query_text` into a bulleted list (Dietary, Time, Dish Type, Main Ingredient, etc.).
+2. **COMPARISON:** For each recipe, systematically compare the recipe text against the analyzed criteria.
+3. **DIFFERENCES COUNT:** Determine the exact number of failed criteria (0, 1, 2, 3+).
+4. **SCORE ASSIGNMENT:** Assign the final relevance score (1, 0.5, or 0) based **ONLY** on the differences count and the provided rules.
+5. **FINAL CHECK:** Map the 'Differences' count directly to the 'relevance_score' according to the rules (0 -> 1; 1 or 2 -> 0.5; 3+ -> 0).
+
+INPUT:
+"query_text": {input_query_text}
+"recipes": {doc_entries}
+
+OUTPUT FORMAT EXAMPLE (FOLLOW EXACT STRUCTURE):
+{
+  "query_text": "a quick vegetarian pasta dish with tomatoes and cheese",
+  "relevance_judgments": [
+    { 
+      "doc_id": 515586, 
+      "relevance_score": 1
+    },
+    { 
+      "doc_id": 33533, 
+      "relevance_score": 0.5
+    },
+    { 
+      "doc_id": 12345, 
+      "relevance_score": 0
+    }
+  ]
+}
+
+FINAL REQUIREMENT:
+You MUST return exactly one relevance_judgment for EACH document.
+Do NOT skip any document.
+Return ONLY the JSON object. No additional text.
