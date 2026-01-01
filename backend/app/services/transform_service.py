@@ -435,9 +435,26 @@ class TransformService:
             macro_weight * df_filtered['dist_macro'] + 
             micro_weight * df_filtered['dist_micro']
         )
+
+        # -------------------------
+        # Filtrer les ressemblances (pas regex au final), 30/12/25
+        # -------------------------
+        main_word = ingredient_clean.split()[0] # que le 1er mot pour l'instant
+
+        def filter_similar_df(df, k):
+            filtered_rows = []
+            for _, row_ in df.iterrows():
+                name_lower = row_['Descrip'].lower()
+                if not name_lower.startswith(main_word):
+                    filtered_rows.append(row_)
+                if len(filtered_rows) >= k:
+                    break
+            return pd.DataFrame(filtered_rows)
         
         # Trier par score global et prendre les k meilleurs
         best_substitutes = df_filtered.nsmallest(k, 'global_score')
+        # filtre des ingredients avec le même nom de base
+        best_substitutes = filter_similar_df(best_substitutes, k)
         
         result = {
             "input_ingredient": row['Descrip'],
@@ -461,6 +478,12 @@ class TransformService:
         
         return result
     
+    def get_score_sante(self, ingredient_name: str) -> float:
+        """
+        TODO
+        """
+        return 1
+    
 
     def judge_substitute(self, candidats):
         """
@@ -473,7 +496,19 @@ class TransformService:
         Returns:
             ingredient_id
         """
-        pass
+        best_ingr = None
+
+        if not candidats:
+            print("Pas de candidats pour le susbstitut")
+            return None
+        for candidat in candidats:
+            if best_ingr is None:
+                best_ingr = candidat
+            else:
+                if self.get_score_sante(candidat) > self.get_score_sante(best_ingr): # CHANGER AVEC LE VRAI NOM DE FCT
+                    best_ingr = candidat
+                    
+        return best_ingr
 
     
     def substitute_ingr(self, ingredient: str, contraintes: TransformConstraints) -> tuple[str, bool]:
