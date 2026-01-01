@@ -1,7 +1,8 @@
 import traceback
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Any, Optional
+import threading
+from typing import Dict, List, Any, Optional, Tuple
 
 from shared.snowflake.client import SnowflakeClient
 
@@ -18,12 +19,13 @@ from math import ceil
 NUTRIENT_BASIS_GRAMS = 100
 
 class TransformService:
+    _pca_data_cache = None
+    _pca_lock = threading.Lock()
     # check if async necessary for the constructor
     def __init__(self, client: Optional[SnowflakeClient] = None):
         self.client = client if client else SnowflakeClient()
         self.ingredients_cache: Dict[str, Optional[Dict]] = {}
         self.pca_data = None  # ingredient coordinates for clustering 
-        self._load_pca_data()
 
     def _get_ingredient_nutrition(self, ingredient_name: str) -> Optional[Dict]:
         """
@@ -174,94 +176,15 @@ class TransformService:
         total_nutrition.score_health = self.calculate_health_score(total_nutrition)
         return total_nutrition
 
-    def _load_pca_data(self):
+    def ensure_pca_loaded(self):
+        if TransformService._pca_data_cache is None:
+            with TransformService._pca_lock:
+                if TransformService._pca_data_cache is None:
+                    TransformService._pca_data_cache = self.load_pca_data_from_snowflake()
+        self.pca_data = TransformService._pca_data_cache
+    
+    def load_pca_data(self):
         """Load PCA data from Snowflake or CSV as fallback"""
-        # TODO: Load PCA coordinates for each ingredient from Snowflake
-        # try:
-        #     # D'abord, essayer de voir quelles colonnes existent réellement
-        #     schema_query = """
-        #         SELECT COLUMN_NAME 
-        #         FROM INFORMATION_SCHEMA.COLUMNS 
-        #         WHERE TABLE_SCHEMA = 'RAW' 
-        #           AND TABLE_NAME = 'CLEANED_INGREDIENTS'
-        #           AND COLUMN_NAME LIKE '%PCA%'
-        #         ORDER BY COLUMN_NAME
-        #     """
-            
-        #     schema_result = self.session.sql(schema_query).collect()
-        #     available_pca_columns = [row['COLUMN_NAME'] for row in schema_result]
-        #     print(f"🔍 Colonnes PCA disponibles: {available_pca_columns}")
-            
-        #     # Adapter la requête en fonction des colonnes disponibles
-        #     if available_pca_columns:
-        #         # Construire dynamiquement la requête avec les colonnes existantes
-        #         pca_columns_str = ', '.join([f'ci."{col}"' for col in available_pca_columns])
-                
-        #         pca_query = f"""
-        #             SELECT 
-        #                 ci."DESCRIP",
-        #                 ci."NDB_NO",
-        #                 ci."PROTEIN_G", 
-        #                 ci."SATURATED_FATS_G",
-        #                 ci."FAT_G",
-        #                 ci."CARB_G", 
-        #                 ci."SODIUM_MG",
-        #                 ci."SUGAR_G",
-        #                 ci."ENERGY_KCAL",
-        #                 {pca_columns_str}
-        #             FROM NUTRIRAG_PROJECT.RAW.CLEANED_INGREDIENTS ci
-        #             WHERE ci."{available_pca_columns[0]}" IS NOT NULL
-        #             LIMIT 10
-        #         """
-                
-        #         result = self.session.sql(pca_query).collect()
-                
-        #         if result:
-        #             # Convertir en DataFrame pandas pour faciliter les calculs
-        #             pca_data_list = []
-        #             for row in result:
-        #                 row_data = {
-        #                     'Descrip': row['DESCRIP'],
-        #                     'NDB_No': row['NDB_NO'],
-        #                     'PROTEIN_G': self.safe_float(row['PROTEIN_G']),
-        #                     'SATURATED_FATS_G': self.safe_float(row['SATURATED_FATS_G']),
-        #                     'FAT_G': self.safe_float(row['FAT_G']),
-        #                     'CARB_G': self.safe_float(row['CARB_G']),
-        #                     'SODIUM_MG': self.safe_float(row['SODIUM_MG']),
-        #                     'SUGAR_G': self.safe_float(row['SUGAR_G']),
-        #                     'ENERGY_KCAL': self.safe_float(row['ENERGY_KCAL'])
-        #                 }
-                        
-        #                 # Ajouter les colonnes PCA disponibles
-        #                 for col in available_pca_columns:
-        #                     if 'macro' in col.lower():
-        #                         key = f"PCA_macro_{col.split('_')[-1]}"
-        #                     elif 'micro' in col.lower():
-        #                         key = f"PCA_micro_{col.split('_')[-1]}"
-        #                     else:
-        #                         key = col.lower()
-        #                     row_data[key] = self.safe_float(row[col])
-                        
-        #                 # Colonnes par défaut
-        #                 row_data.update({
-        #                     'is_lactose': 0,
-        #                     'is_gluten': 0,
-        #                     'contains_nuts': 0,
-        #                     'is_vegetarian': 0,
-        #                     'is_vegetable': 0
-        #                 })
-                        
-        #                 pca_data_list.append(row_data)
-                    
-        #             self.pca_data = pd.DataFrame(pca_data_list)
-        #             print(f" Données PCA chargées depuis Snowflake: {len(self.pca_data)} ingrédients")
-        #             return
-        #     else:
-        #         print("⚠️ Aucune colonne PCA trouvée dans la structure Snowflake")
-        # except Exception as e:
-        #     print(f"--> Erreur chargement PCA Snowflake: {e}")
-
-        # Chargement depuis CSV local
         try:
             print(" Chargement des données PCA depuis CSV (ingredients_with_clusters.csv)...")
             
@@ -271,22 +194,13 @@ class TransformService:
             
             # Adapter les noms de colonnes pour correspondre au format attendu
             self.pca_data = df_csv.rename(columns={
-                'NDB_No': 'NDB_No',
-                'Descrip': 'Descrip',
                 'Energy_kcal': 'ENERGY_KCAL',
                 'Protein_g': 'PROTEIN_G',
                 'Saturated_fats_g': 'SATURATED_FATS_G', 
                 'Fat_g': 'FAT_G',
                 'Carb_g': 'CARB_G',
                 'Sodium_mg': 'SODIUM_MG',
-                'Sugar_g': 'SUGAR_G',
-                'PCA_macro_1': 'PCA_macro_1',
-                'PCA_macro_2': 'PCA_macro_2', 
-                'PCA_macro_3': 'PCA_macro_3',
-                'PCA_micro_1': 'PCA_micro_1',
-                'PCA_micro_2': 'PCA_micro_2',
-                'Cluster_macro': 'Cluster_macro',
-                'Cluster_micro': 'Cluster_micro'
+                'Sugar_g': 'SUGAR_G'
             })
             
             # Ajouter des colonnes de contraintes par défaut (pas disponibles dans le CSV)
@@ -345,21 +259,21 @@ class TransformService:
             print("❌ PCA Data not available")
             return None
             
-        # Nettoyer le nom de l'ingrédient
+        # Clean ingredient name
         ingredient_clean = ingredient_name.lower().strip()
         
-        # Rechercher l'ingrédient dans les données PCA
+        # Search for ingredient in PCA Data 
         matching_rows = self.pca_data[self.pca_data['Descrip'].str.lower().str.contains(ingredient_clean, na=False)]
         
         if matching_rows.empty:
             print(f"⚠️ Ingredient '{ingredient_name}' not found in PCA data")
             return None
             
-        # Prendre la première correspondance
+        # Take the first match
         row = matching_rows.iloc[0]
         print(f"🔍 Ingredient found: {ingredient_name} → {row['Descrip']}")
         
-        # Copier les données pour filtrage selon contraintes
+        # Copy data for filtering based on constraints
         df_filtered = self.pca_data.copy()
 
         # Filter addition for category_llm
@@ -368,7 +282,7 @@ class TransformService:
         else:
             print("⚠️ Column 'Category_LLM' absent from PCA data, category filtering ignored")
         
-        # Appliquer les filtres de contraintes
+        # Apply constraint filters
         if constraints:
             CONSTRAINT_TO_COLUMN = {
                 "no_lactose": ("is_lactose", 0),
@@ -380,7 +294,7 @@ class TransformService:
             
             for constraint_name, (col, allowed_val) in CONSTRAINT_TO_COLUMN.items():
                 if getattr(constraints, constraint_name, False):
-                    # Garder seulement les ingrédients qui respectent la contrainte OU l'ingrédient original
+                    # Keep only ingredients that meet the constraint OR the original ingredient
                     if col in df_filtered.columns:
                         df_filtered = df_filtered[
                             (df_filtered[col] == allowed_val) |
@@ -423,21 +337,38 @@ class TransformService:
         else:
             df_filtered['dist_macro'] = 0
         
-        # Calculer distance micro  
+        # Calculate micro distance  
         if available_micro_cols:
             df_filtered['dist_micro'] = df_filtered[available_micro_cols].apply(
                 lambda x: euclidean_distance(micro_vec, x.values), axis=1)
         else:
             df_filtered['dist_micro'] = 0
         
-        # Score global combiné
+        # Combined global score
         df_filtered['global_score'] = (
             macro_weight * df_filtered['dist_macro'] + 
             micro_weight * df_filtered['dist_micro']
         )
+
+        # -------------------------
+        # Filter similarities (not regex after all), 30/12/25
+        # -------------------------
+        main_word = ingredient_clean.split()[0] # only the first word for now
+
+        def filter_similar_df(df, k):
+            filtered_rows = []
+            for _, row_ in df.iterrows():
+                name_lower = row_['Descrip'].lower()
+                if not name_lower.startswith(main_word):
+                    filtered_rows.append(row_)
+                if len(filtered_rows) >= k:
+                    break
+            return pd.DataFrame(filtered_rows)
         
-        # Trier par score global et prendre les k meilleurs
+        # Sort by global score and take the top k
         best_substitutes = df_filtered.nsmallest(k, 'global_score')
+        # Filter ingredients with the same base name
+        best_substitutes = filter_similar_df(best_substitutes, k)
         
         result = {
             "input_ingredient": row['Descrip'],
@@ -461,6 +392,12 @@ class TransformService:
         
         return result
     
+    def get_score_sante(self, ingredient_name: str) -> float:
+        """
+        TODO
+        """
+        return 1
+    
 
     def judge_substitute(self, candidats):
         """
@@ -473,10 +410,22 @@ class TransformService:
         Returns:
             ingredient_id
         """
-        pass
+        best_ingr = None
+
+        if not candidats:
+            print("Pas de candidats pour le susbstitut")
+            return None
+        for candidat in candidats:
+            if best_ingr is None:
+                best_ingr = candidat
+            else:
+                if self.get_score_sante(candidat) > self.get_score_sante(best_ingr): # CHANGER AVEC LE VRAI NOM DE FCT
+                    best_ingr = candidat
+                    
+        return best_ingr
 
     
-    def substitute_ingr(self, ingredient: str, contraintes: TransformConstraints) -> tuple[str, bool]:
+    def substitute_ingr(self, ingredient: str, contraintes: TransformConstraints) -> Tuple[str, bool]:
         """
         Finds a substitute for the given ingredient using PCA in priority
         
@@ -584,6 +533,7 @@ class TransformService:
         Transform a recipe based on constraints and ingredients to remove, full pipeline
         """
         success = True
+        self.ensure_pca_loaded()
         
         try:
             # Step 1: Compute original recipe score and nutrition
