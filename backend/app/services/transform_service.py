@@ -4,7 +4,7 @@ import numpy as np
 import threading
 from typing import Dict, List, Any, Optional, Tuple
 
-from shared.snowflake.client import SnowflakeClient
+from snowflake.snowpark import Session
 
 from app.models.transform import (
     TransformConstraints,
@@ -13,6 +13,9 @@ from app.models.transform import (
     Recipe,
 )
 from math import ceil
+from app.udf.transform_recipe import (
+    parse_query_result,
+)  # Specific to python only usage
 
 NUTRIENT_BASIS_GRAMS = 100
 NUTRITION_COLS = [
@@ -25,8 +28,8 @@ class TransformService:
     _pca_data_cache = None
     _pca_lock = threading.Lock()
     # check if async necessary for the constructor
-    def __init__(self, client: Optional[SnowflakeClient] = None):
-        self.client = client if client else SnowflakeClient()
+    def __init__(self, session: Optional[Session] = None):
+        self.session = session
         self.ingredients_cache: Dict[str, Optional[Dict]] = {}
         self.recipe_qty_cache: Dict[str, List[Tuple[str, Optional[float]]]] = {}
         self.recipe_nutrition_cache: Dict[str, Dict[str, Optional[Dict[str, Any]]]] = {}
@@ -361,11 +364,34 @@ class TransformService:
             )
 
             # Charger le fichier CSV
-            csv_path = "ingredients_with_clusters.csv"
-            df_csv = pd.read_csv(csv_path)
+            # csv_path = "ingredients_with_clusters.csv"
+            # df_csv = pd.read_csv(csv_path)
+            query = """
+            SELECT
+                NDB_No,
+                Descrip,
+                ENERGY_KCAL,
+                PROTEIN_G,
+                SATURATED_FATS_G,
+                FAT_G,CARB_G,
+                SODIUM_MG,SUGAR_G,
+                PCA_macro_1,
+                PCA_macro_2,
+                PCA_macro_3,
+                PCA_micro_1,
+                PCA_micro_2,
+                Cluster_macro,
+                Cluster_micro
+            FROM NUTRIRAG_PROJECT.ENRICHED.INGREDIENTS
+            """
+            result_cluster = self.session.sql(query)
+            df = pd.DataFrame(parse_query_result(result_cluster))
+
+            for col in list(df.columns[2:-2]):
+                df[col] = df[col].apply(float)
 
             # Adapter les noms de colonnes pour correspondre au format attendu
-            self.pca_data = df_csv.rename(columns={
+            self.pca_data = df.rename(columns={
                 'Energy_kcal': 'ENERGY_KCAL',
                 'Protein_g': 'PROTEIN_G',
                 'Saturated_fats_g': 'SATURATED_FATS_G', 
@@ -374,7 +400,7 @@ class TransformService:
                 'Sodium_mg': 'SODIUM_MG',
                 'Sugar_g': 'SUGAR_G'
             })
-            
+
             # Ajouter des colonnes de contraintes par défaut (pas disponibles dans le CSV)
             self.pca_data["is_lactose"] = 0
             self.pca_data["is_gluten"] = 0
@@ -731,15 +757,17 @@ class TransformService:
             prompt_escaped = base_prompt.replace("'", "''")
 
             # Construire la requête SQL avec le prompt échappé
-            llm_query = """
+            llm_query = f"""
                 SELECT SNOWFLAKE.CORTEX.COMPLETE(
                     'mixtral-8x7b',
-                    %s
+                   '{prompt_escaped}'
                 ) AS adapted_steps
             """
 
-            llm_response = self.client.execute(llm_query, params=(prompt_escaped,), fetch="all")
-            parsed_steps = llm_response[0][0].strip().split("\n")
+            llm_response = self.session.sql(llm_query)
+            llm_response = parse_query_result(llm_response)
+            parsed_steps = llm_response[0]["ADAPTED_STEPS"].strip().split("\n")
+
             new_steps = []
             notes = []
             for step in parsed_steps:
@@ -885,66 +913,3 @@ class TransformService:
             )
 
         return response
-
-        # return TransformResponse(
-        #     recipe_id=recipe_id,
-        #     original_name="Pâtes à la crème et au bacon",
-        #     transformed_name="Pâtes protéinées au yaourt grec et dinde",
-
-        #     substitutions=[
-        #         Substitution(
-        #             original_ingredient="Crème fraîche",
-        #             substitute_ingredient="Yaourt grec 0%",
-        #             original_quantity=100.0,
-        #             substitute_quantity=120.0,
-        #             reason="Moins de matières grasses et meilleure teneur en protéines"
-        #         ),
-        #         Substitution(
-        #             original_ingredient="Bacon",
-        #             substitute_ingredient="Blanc de dinde",
-        #             original_quantity=120.0,
-        #             substitute_quantity=120.0,
-        #             reason="Moins gras et plus riche en protéines"
-        #         ),
-        #         Substitution(
-        #             original_ingredient="Pâtes blanches",
-        #             substitute_ingredient="Pâtes complètes",
-        #             original_quantity=200.0,
-        #             substitute_quantity=200.0,
-        #             reason="Index glycémique plus bas et plus de fibres"
-        #         )
-        #     ],
-
-        #     nutrition_before={
-        #         "calories": 720,
-        #         "protein_g": 22,
-        #         "carb_g": 74,
-        #         "fat_g": 38,
-        #         "fiber_g": 4,
-        #         "sodium_mg": 890,
-        #         "score_health": 42
-        #     },
-
-        #     nutrition_after={
-        #         "calories": 480,
-        #         "protein_g": 42,
-        #         "carb_g": 55,
-        #         "fat_g": 14,
-        #         "fiber_g": 9,
-        #         "sodium_mg": 420,
-        #         "score_health": 78
-        #     },
-
-        #     delta=NutritionDelta(
-        #         calories=-240,
-        #         protein_g=+20,
-        #         fat_g=-24,
-        #         carb_g=-19,
-        #         fiber_g=+5,
-        #         sodium_mg=-470,
-        #         score_health=+36
-        #     ),
-
-        #     success=True,
-        #     message=f"Transformation réussie selon l'objectif '{goal}'"
-        # )
