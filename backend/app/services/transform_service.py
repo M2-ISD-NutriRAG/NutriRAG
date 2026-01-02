@@ -17,6 +17,11 @@ from app.models.transform import (
 from math import ceil
 
 NUTRIENT_BASIS_GRAMS = 100
+NUTRITION_COLS = [
+    "ENERGY_KCAL", "PROTEIN_G", "FAT_G", "SATURATED_FATS_G", "CARB_G",
+    "FIBER_G", "SUGAR_G", "SODIUM_MG", "CALCIUM_MG", "IRON_MG",
+    "MAGNESIUM_MG", "POTASSIUM_MG", "VITC_MG"
+]
 
 class TransformService:
     _pca_data_cache = None
@@ -25,111 +30,218 @@ class TransformService:
     def __init__(self, client: Optional[SnowflakeClient] = None):
         self.client = client if client else SnowflakeClient()
         self.ingredients_cache: Dict[str, Optional[Dict]] = {}
+        self.recipe_nutrition_cache: Dict[str, Dict[str, Optional[Dict[str, float]]]] = {}
         self.pca_data = None  # ingredient coordinates for clustering 
         self._load_pca_data()
 
-    def _get_ingredient_nutrition(self, ingredient_name: str) -> Optional[Dict]:
+    def _normalize_ing_key(self, s: str) -> str:
+        return (s or "").lower().strip()
+    
+    def get_ingredient_nutrition(self, recipe_id: str, ingredient_list: List[str]) -> Optional[Dict[str, float]]:
         """
-        Retrieve nutritional information of an ingredient from the database.
-        
+        Retrieves nutrition information for recipe ingredients from db        
         Args:
-            ingredient_name: ingredient name to search
+            recipe_id : recipe id used for ingredients matching
+            ingredient_name: ingredient to get nutrition for 
             
         Returns:
-            Dict with nutritional information or None if not found
+        Dict of ingrdient nutrition
+       """
+        ingredient_key = self._normalize_ing_key(ingredient_name)
+        cache_key = f"{recipe_id}::{ingredient_key}"
+
+        # quick hit: old cache
+        if cache_key in self.ingredients_cache:
+            return self.ingredients_cache[cache_key]
+    
+        def to_float(x) -> float:
+                return float(x) if x is not None else 0.0
+
+       # Deduplicate & keep only non-empty keys
+        unique_keys = sorted({k for k in ingredient_keys if k})
+        if recipe_id not in self.recipe_nutrition_cache:
+            self.recipe_nutrition_cache[recipe_id] = {}
+
+        # Only query keys we don't already have in recipe cache
+        missing = [k for k in unique_keys if k not in self.recipe_nutrition_cache[recipe_id]]
+        if not missing:
+            return
+
+        placeholders = ", ".join(["%s"] * len(missing))
+
+        query = f"""
+        WITH ranked AS (
+            SELECT
+                LOWER(TRIM(im.ingredient_from_recipe_name)) AS ing_key,
+                ci."ENERGY_KCAL",
+                ci."PROTEIN_G",
+                ci."FAT_G",
+                ci."SATURATED_FATS_G",
+                ci."CARB_G",
+                ci."FIBER_G",
+                ci."SUGAR_G",
+                ci."SODIUM_MG",
+                ci."CALCIUM_MG",
+                ci."IRON_MG",
+                ci."MAGNESIUM_MG",
+                ci."POTASSIUM_MG",
+                ci."VITC_MG",
+                ROW_NUMBER() OVER (
+                    PARTITION BY LOWER(TRIM(im.ingredient_from_recipe_name))
+                    ORDER BY ci."SCORE_SANTE" DESC NULLS LAST
+                ) AS rn
+            FROM NUTRIRAG_PROJECT.RAW.INGREDIENTS_MATCHING im
+            LEFT JOIN NUTRIRAG_PROJECT.RAW.CLEANED_INGREDIENTS ci
+                ON im.ingredient_id = ci."NDB_NO"
+            WHERE im.recipe_id = %s
+              AND LOWER(TRIM(im.ingredient_from_recipe_name)) IN ({placeholders})
+        )
+        SELECT
+            ing_key,
+            "ENERGY_KCAL",
+            "PROTEIN_G",
+            "FAT_G",
+            "SATURATED_FATS_G",
+            "CARB_G",
+            "FIBER_G",
+            "SUGAR_G",
+            "SODIUM_MG",
+            "CALCIUM_MG",
+            "IRON_MG",
+            "MAGNESIUM_MG",
+            "POTASSIUM_MG",
+            "VITC_MG"
+        FROM ranked
+        WHERE rn = 1;
         """
-        ingredient_key = ingredient_name.lower().strip()
-        if ingredient_key in self.ingredients_cache:
-            return self.ingredients_cache[ingredient_key]
+
+        params = (recipe_id, *missing)
 
         try:
-            ingredient_name = ingredient_name.replace("'", "''").lower()
+            rows = self.client.execute(query, params=params, fetch="all") or []
 
-            query = f"""
-            SELECT DISTINCT
-                "DESCRIP",
-                "PROTEIN_G", 
-                "SATURATED_FATS_G",
-                "FAT_G",
-                "CARB_G", 
-                "SODIUM_MG",
-                "FIBER_G",
-                "SUGAR_G",
-                "ENERGY_KCAL",
-                "INGREDIENT" as matched_ingredient
-            FROM (
-                SELECT 
-                    ci."DESCRIP",
-                    ci."PROTEIN_G", 
-                    ci."SATURATED_FATS_G",
-                    ci."FAT_G",
-                    ci."CARB_G", 
-                    ci."SODIUM_MG",
-                    ci."FIBER_G",
-                    ci."SUGAR_G",
-                    ci."ENERGY_KCAL",
-                    ci."NDB_NO",
-                    im."INGREDIENT"
-                FROM NUTRIRAG_PROJECT.RAW.CLEANED_INGREDIENTS ci
-                FULL OUTER JOIN NUTRIRAG_PROJECT.CLEANED.INGREDIENTS_MATCHING im
-                    ON im."NDB_NO" = ci."NDB_NO"
-                WHERE 
-                    LOWER(ci."DESCRIP") LIKE %s
-                    OR LOWER(im."INGREDIENT") LIKE %s
-            ) AS result
-            """
+            # Default all missing to None (so we remember "not found")
+            for k in missing:
+                self.recipe_nutrition_cache[recipe_id][k] = None
 
-            result = self.client.execute(query, params=(ingredient_name, ingredient_name), fetch="all")
-            
-            if result:
-                # Take the best match (exact match prioritized)
-                best_match = None
-                exact_match = None
-                
-                for row in result:
-                    matched_ingredient = row[-1].lower() if row[-1] is not None else row[0].lower()
-                    descrip = row[0].lower() if row[0] is not None else row[-1].lower()
-                    
-                    # Use safe_float for all conversions
-                    nutrition_data = {
-                        'name': descrip,
-                        'matched_ingredient': matched_ingredient,
-                        'protein': float(row[1]),
-                        'saturated_fats': float(row[2]),
-                        'fat': float(row[3]),
-                        'carbs': float(row[4]),
-                        'sodium': float(row[5]),
-                        'fiber': float(row[6]),
-                        'sugar': float(row[7]),
-                        'calories': float(row[8])
-                    }
-                    
-                    # Exact match with the matched ingredient
-                    if matched_ingredient == ingredient_key:
-                        exact_match = nutrition_data
-                        break
-                    # Best partial match
-                    elif ingredient_key in matched_ingredient or any(word in matched_ingredient for word in ingredient_key.split()):
-                        if best_match is None:
-                            best_match = nutrition_data
-                
-                result_data = exact_match or best_match
-                
-                if result_data:
-                    # Cache the result
-                    self.ingredients_cache[ingredient_key] = result_data
-                    print(f" Ingredient found: {ingredient_name} → {result_data['name']}")
-                    return result_data
-            
-            # Not found - cache negative result
-            self.ingredients_cache[ingredient_key] = None
-            print(f"⚠️ Ingredient not found in the database: {ingredient_name}")
-            return None
-            
+            for row in rows:
+                ing_key = row[0]
+                vals = row[1:]
+                data = dict(zip(NUTRITION_COLS, vals))
+
+                self.recipe_nutrition_cache[recipe_id][ing_key] = {
+                    "calories": to_float(data["ENERGY_KCAL"]),
+                    "protein_g": to_float(data["PROTEIN_G"]),
+                    "fat_g": to_float(data["FAT_G"]),
+                    "saturated_fat_g": to_float(data["SATURATED_FATS_G"]),
+                    "carbs_g": to_float(data["CARB_G"]),
+                    "fiber_g": to_float(data["FIBER_G"]),
+                    "sugar_g": to_float(data["SUGAR_G"]),
+                    "sodium_mg": to_float(data["SODIUM_MG"]),
+                    "calcium_mg": to_float(data["CALCIUM_MG"]),
+                    "iron_mg": to_float(data["IRON_MG"]),
+                    "magnesium_mg": to_float(data["MAGNESIUM_MG"]),
+                    "potassium_mg": to_float(data["POTASSIUM_MG"]),
+                    "vitamin_c_mg": to_float(data["VITC_MG"]),
+                }
+
+            # Back-compat: also warm the old per-ingredient cache
+            for k, v in self.recipe_nutrition_cache[recipe_id].items():
+                self.ingredients_cache[f"{recipe_id}::{k}"] = v
+
+        except Exception as e:
+            print(f"❌ _load_recipe_nutrition_cache error (recipe={recipe_id}): {e}")
+            # Remember failures as None to avoid retry storms
+            for k in missing:
+                self.recipe_nutrition_cache[recipe_id][k] = None
+                self.ingredients_cache[f"{recipe_id}::{k}"] = None
+         # Pull from recipe cache (or None)
+        result = self.recipe_nutrition_cache.get(recipe_id, {}).get(ingredient_key)
+
+        # Keep old cache consistent
+        self.ingredients_cache[cache_key] = result
+        return result
+
+    def get_ingredient_quantity(
+        self,
+        recipe_id: str,
+        ingredient_name: str
+    ) -> Optional[float]:
+        """
+        fetch quantity in grams for ingredient in INGREDIENTS_QUANTITY
+        Returns:  float or None
+
+        """
+        safe_ing = ingredient_name.replace("'", "''")
+
+        qty_query = f"""
+        SELECT qty_g
+        FROM NUTRIRAG_PROJECT.RAW.INGREDIENTS_QUANTITY
+        WHERE id = '{recipe_id}'
+          AND LOWER(ingredients) = LOWER('{safe_ing}')
+        LIMIT 1;
+        """
+        try:
+            rows = self.client.execute(qty_query, fetch="all") or []
+            if not rows:
+                return None
+
+            qty_g = rows[0][0]
+            if qty_g is None:
+                return None
+
+            return float(qty_g)
+        
         except Exception as e:
             print(f"❌_get_ingredient : Error searching ingredient '{ingredient_name}': {e}")
             return None
+        
 
+    def calculer_nutrition_recette(self, recipe_id : str,  ingredient_list: List[str], ingredient_quantity: List[str]) -> NutritionDelta:
+        """Calcule la nutrition totale de la recette"""
+
+        total_nutrition = NutritionDelta()
+        unknown_ingredients = []
+        for ingredient, qty in zip(ingredient_list, ingredient_quantity):
+            qty = int(qty) # A changer si multi type
+            ingredient_data = self.get_ingredient_nutrition(recipe_id,ingredient)
+            
+            if ingredient_data:
+                quantity = self.get_ingredient_quantity(recipe_id, ingredient)
+                if quantity:
+                    
+                    # S'assurer que toutes les valeurs sont des float avant les calculs
+                    calories = ceil(ingredient_data['calories']/NUTRIENT_BASIS_GRAMS)
+                    protein = ceil(ingredient_data['protein']/NUTRIENT_BASIS_GRAMS)
+                    saturated_fat = ceil(ingredient_data['saturated_fats']/NUTRIENT_BASIS_GRAMS)
+                    fat = ceil(ingredient_data['fat']/NUTRIENT_BASIS_GRAMS)
+                    carbs = ceil(ingredient_data['carbs']/NUTRIENT_BASIS_GRAMS)
+                    fiber = ceil(ingredient_data['fiber']/NUTRIENT_BASIS_GRAMS)
+                    sodium = ceil(ingredient_data['sodium']/NUTRIENT_BASIS_GRAMS)
+                    sugar = ceil(ingredient_data['sugar']/NUTRIENT_BASIS_GRAMS)
+
+                    total_nutrition.calories += calories * quantity
+                    total_nutrition.protein_g += protein * quantity
+                    total_nutrition.fat_g += fat * quantity
+                    total_nutrition.saturated_fats_g += saturated_fat * quantity
+                    total_nutrition.sugar_g += sugar * quantity
+                    total_nutrition.sodium_mg += sodium * quantity
+                    total_nutrition.carb_g += carbs * quantity
+                    total_nutrition.fiber_g += fiber * quantity
+                else:
+                    unknown_ingredients.append((ingredient,ingredient_data))
+            else:
+                print(f"⚠️ Nutrition inconnue pour l'ingrédient: {ingredient}")
+
+        if unknown_ingredients:
+            print("Ingrédients avec quantité inconnue:")
+            unknown_quantity = max((serving_size * servings) - qty_g, 0) / len(unknown_ingredients) * 0.5
+
+                
+                
+        total_nutrition.score_health = self.calculate_health_score(total_nutrition)
+        return total_nutrition
+    
     def calculate_health_score(self, total_nutrition: NutritionDelta) -> float:
         """
         Calculates Recipe index health score
@@ -400,6 +512,8 @@ class TransformService:
         return 1
     
 
+
+
     def judge_substitute(self, candidats):
         """
         TODO
@@ -540,10 +654,6 @@ class TransformService:
             # Step 1: Compute original recipe score and nutrition
             original_nutrition = self.calculate_recipe_nutrition(ingredient_list=recipe.ingredients, ingredient_quantity=recipe.quantity_ingredients)
             print("Step 1 completed")
-            # TODO
-            # Step 2: Constraint analysis
-            # request.constraints
-            # Parse constraint to sql conditions
 
             # TODO
             # Step 3: Choose ingredient to replace
