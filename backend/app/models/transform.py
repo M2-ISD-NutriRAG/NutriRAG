@@ -28,6 +28,7 @@ class TransformConstraints(BaseModel):
 
 # recipe object request
 class Recipe(BaseModel):
+    id: float
     name: str
     ingredients: List[str]
     quantity_ingredients: List[str]
