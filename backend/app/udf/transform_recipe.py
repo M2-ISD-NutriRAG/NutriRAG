@@ -1,20 +1,228 @@
+################################################################################################################
+
+#                                        Transform service interface
+
+################################################################################################################
+import json
+from enum import Enum
+from typing import Optional, List, Dict, Any
+from snowflake.snowpark import Session
 import traceback
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Optional
-
-from snowflake.snowpark import Session
-
-from app.models.transform import (
-    TransformConstraints,
-    TransformResponse,
-    NutritionDelta,
-    Recipe,
-)
 from math import ceil
-from app.udf.transform_recipe import (
-    parse_query_result,
-)  # Specific to python only usage
+
+
+class TransformationType(Enum):
+    ADD = 0
+    DELETE = 1
+    SUBSTITUTION = 2
+
+
+class TransformConstraints:
+    # Constraints for recipe transformation
+    def __init__(
+        self,
+        transformation: TransformationType,
+        no_lactose: Optional[bool] = False,
+        no_gluten: Optional[bool] = False,
+        no_nuts: Optional[bool] = False,
+        vegetarian: Optional[bool] = False,
+        vegan: Optional[bool] = False,
+        increase_protein: Optional[bool] = False,
+        decrease_sugar: Optional[bool] = False,
+        decrease_protein: Optional[bool] = False,
+        decrease_carbs: Optional[bool] = False,
+        decrease_calories: Optional[bool] = False,
+        decrease_sodium: Optional[bool] = False,
+    ):
+        self.transformation = transformation
+        self.no_lactose = no_lactose
+        self.no_gluten = no_gluten
+        self.no_nuts = no_nuts
+        self.vegetarian = vegetarian
+        self.vegan = vegan
+        self.increase_protein = increase_protein
+        self.decrease_sugar = decrease_sugar
+        self.decrease_protein = decrease_protein
+        self.decrease_carbs = decrease_carbs
+        self.decrease_calories = decrease_calories
+        self.decrease_sodium = decrease_sodium
+
+
+class Recipe:
+    def __init__(
+        self,
+        name: str,
+        ingredients: List[str],
+        quantity_ingredients: List[str],
+        minutes: float,
+        steps: List[str],
+    ):
+        self.name = name
+        self.ingredients = ingredients
+        self.quantity_ingredients = quantity_ingredients
+        self.minutes = minutes
+        self.steps = steps
+
+
+class TransformRequest:
+    # Transform request body
+    def __init__(
+        self,
+        recipe: Recipe,
+        ingredients_to_remove: Optional[List[str]] = None,
+        constraints: Optional[TransformConstraints] = None,
+    ):
+        self.recipe = recipe
+        self.ingredients_to_remove = ingredients_to_remove
+        self.constraints = constraints
+
+
+class Substitution:
+    # Single ingredient substitution
+    def __init__(
+        self,
+        original_ingredient: str,
+        substitute_ingredient: str,
+        original_quantity: Optional[float] = None,
+        substitute_quantity: Optional[float] = None,
+        reason: str = "",
+    ):
+        self.original_ingredient = original_ingredient
+        self.substitute_ingredient = substitute_ingredient
+        self.original_quantity = original_quantity
+        self.substitute_quantity = substitute_quantity
+        self.reason = reason
+
+
+class NutritionDelta:
+    # Changes in nutrition values
+    def __init__(
+        self,
+        calories: float = 0.0,
+        protein_g: float = 0.0,
+        saturated_fats_g: float = 0.0,
+        fat_g: float = 0.0,
+        carb_g: float = 0.0,
+        fiber_g: float = 0.0,
+        sodium_mg: float = 0.0,
+        sugar_g: float = 0.0,
+        score_health: float = 0.0,
+    ):
+        self.calories = calories
+        self.protein_g = protein_g
+        self.saturated_fats_g = saturated_fats_g
+        self.fat_g = fat_g
+        self.carb_g = carb_g
+        self.fiber_g = fiber_g
+        self.sodium_mg = sodium_mg
+        self.sugar_g = sugar_g
+        self.score_health = score_health
+
+
+class TransformResponse:
+    # Transform response
+    def __init__(
+        self,
+        recipe: Recipe,
+        original_name: str,
+        transformed_name: str,
+        substitutions: Optional[List[Substitution]] = None,
+        nutrition_before: Optional[NutritionDelta] = None,
+        nutrition_after: Optional[NutritionDelta] = None,
+        success: bool = True,
+        message: Optional[str] = None,
+    ):
+        self.recipe = recipe
+        self.original_name = original_name
+        self.transformed_name = transformed_name
+        self.substitutions = substitutions
+        self.nutrition_before = nutrition_before
+        self.nutrition_after = nutrition_after
+        self.success = success
+        self.message = message
+
+
+################################################################################################################
+
+#                                               Utilitaires
+
+################################################################################################################
+
+
+def parse_procedure_result(query_result, proc_name) -> Any:
+    """
+    Parse a procedure result parsed with query result to be usable.
+    Args:
+        query_result: query result parsed
+        proc_name: procedure name
+
+    Returns:
+        output: Any
+    """
+    value = query_result[0][proc_name]
+    output = json.loads(value)
+    return output
+
+
+def parse_query_result(query_result) -> List[Dict[str, float]]:
+    """
+    Collect query result and return as dict list
+    Args:
+        query_result : result of a query call (session.sql(query))
+
+    Returns:
+        List[Dict[str, float]]: formatted output
+    """
+    collected_result = query_result.collect()
+    return [row.as_dict() for row in collected_result]
+
+
+def format_output(input: Any) -> str:
+    """
+    Dumps output in json format to be usable.
+    Args:
+        input: Any type of data
+    Returns:
+        str: json result of the formatted output
+    """
+    # Convertir les Decimal en float pour la sérialisation JSON
+    if (
+        isinstance(input, list)
+        and len(input) > 0
+        and isinstance(input[0], dict)
+    ):
+        from decimal import Decimal
+
+        for item in input:
+            for key, value in item.items():
+                if isinstance(value, Decimal):
+                    item[key] = float(value)
+
+    # Retourner en JSON
+    return json.dumps(input, indent=2)
+
+
+def to_dict(obj):
+    """Recursively convert an object and its nested objects to dictionaries"""
+    if isinstance(obj, (str, int, float, bool, type(None))):
+        return obj
+    elif isinstance(obj, list):
+        return [to_dict(item) for item in obj]
+    elif isinstance(obj, dict):
+        return {key: to_dict(value) for key, value in obj.items()}
+    elif hasattr(obj, "__dict__"):
+        return {key: to_dict(value) for key, value in vars(obj).items()}
+    else:
+        return obj
+
+
+################################################################################################################
+
+#                                        Transform service logic
+
+################################################################################################################
 
 
 NUTRIENT_GRAMS = 100
@@ -710,3 +918,34 @@ class TransformService:
             )
 
         return response
+
+
+def transform_recipe(session: Session, request: str) -> str:
+    """
+    Transform endpoint handler - Snowflake Procedure
+
+    Args:
+        session: Snowflake session to execute queries
+        request: JSON string with TransformRequest structure
+
+    Returns:
+        JSON string with TransformResponse structure
+    """
+
+    # Input loading
+    loaded_request: dict = json.loads(request)
+    input_recipe: Recipe = Recipe(**loaded_request["recipe"])
+    input_ingredients_to_remove: List[str] = loaded_request.get(
+        "ingredients_to_remove"
+    )
+    input_constraints: TransformConstraints = TransformConstraints(
+        **loaded_request.get("constraints", {})
+    )
+
+    service = TransformService(session)
+    # Call transform service
+    output = service.transform(
+        input_recipe, input_ingredients_to_remove, input_constraints
+    )
+
+    return format_output(to_dict(output))

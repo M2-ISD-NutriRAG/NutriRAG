@@ -1,6 +1,5 @@
 from enum import Enum
 from typing import Optional, List
-from pydantic import BaseModel  # type: ignore
 
 
 class TransformationType(Enum):
@@ -9,71 +8,126 @@ class TransformationType(Enum):
     SUBSTITUTION = 2
 
 
-class TransformConstraints(BaseModel):
+class TransformConstraints:
     # Constraints for recipe transformation
-    transformation: TransformationType
-    no_lactose: Optional[bool] = False
-    no_gluten: Optional[bool] = False
-    no_nuts: Optional[bool] = False
-    vegetarian: Optional[bool] = False
-    vegan: Optional[bool] = False
+    def __init__(
+        self,
+        transformation: TransformationType,
+        no_lactose: Optional[bool] = False,
+        no_gluten: Optional[bool] = False,
+        no_nuts: Optional[bool] = False,
+        vegetarian: Optional[bool] = False,
+        vegan: Optional[bool] = False,
+        increase_protein: Optional[bool] = False,
+        decrease_sugar: Optional[bool] = False,
+        decrease_protein: Optional[bool] = False,
+        decrease_carbs: Optional[bool] = False,
+        decrease_calories: Optional[bool] = False,
+        decrease_sodium: Optional[bool] = False,
+    ):
+        self.transformation = transformation
+        self.no_lactose = no_lactose
+        self.no_gluten = no_gluten
+        self.no_nuts = no_nuts
+        self.vegetarian = vegetarian
+        self.vegan = vegan
+        self.increase_protein = increase_protein
+        self.decrease_sugar = decrease_sugar
+        self.decrease_protein = decrease_protein
+        self.decrease_carbs = decrease_carbs
+        self.decrease_calories = decrease_calories
+        self.decrease_sodium = decrease_sodium
 
-    increase_protein: Optional[bool] = False
-    decrease_sugar: Optional[bool] = False
-    decrease_protein: Optional[bool] = False
-    decrease_carbs: Optional[bool] = False
-    decrease_calories: Optional[bool] = False
-    decrease_sodium: Optional[bool] = False
+
+class Recipe:
+    def __init__(
+        self,
+        name: str,
+        ingredients: List[str],
+        quantity_ingredients: List[str],
+        minutes: float,
+        steps: List[str],
+    ):
+        self.name = name
+        self.ingredients = ingredients
+        self.quantity_ingredients = quantity_ingredients
+        self.minutes = minutes
+        self.steps = steps
 
 
-# recipe object request
-class Recipe(BaseModel):
-    name: str
-    ingredients: List[str]
-    quantity_ingredients: List[str]
-    minutes: float
-    steps: List[str]
-
-
-class TransformRequest(BaseModel):
+class TransformRequest:
     # Transform request body
-    recipe: Recipe
-    ingredients_to_remove: Optional[List[str]] = None
-    constraints: Optional[TransformConstraints] = None
+    def __init__(
+        self,
+        recipe: Recipe,
+        ingredients_to_remove: Optional[List[str]] = None,
+        constraints: Optional[TransformConstraints] = None,
+    ):
+        self.recipe = recipe
+        self.ingredients_to_remove = ingredients_to_remove
+        self.constraints = constraints
 
 
-class Substitution(BaseModel):
+class Substitution:
     # Single ingredient substitution
-    original_ingredient: str
-    substitute_ingredient: str
-    original_quantity: Optional[float] = None
-    substitute_quantity: Optional[float] = None
-    reason: str
+    def __init__(
+        self,
+        original_ingredient: str,
+        substitute_ingredient: str,
+        original_quantity: Optional[float] = None,
+        substitute_quantity: Optional[float] = None,
+        reason: str = "",
+    ):
+        self.original_ingredient = original_ingredient
+        self.substitute_ingredient = substitute_ingredient
+        self.original_quantity = original_quantity
+        self.substitute_quantity = substitute_quantity
+        self.reason = reason
 
 
-class NutritionDelta(BaseModel):
+class NutritionDelta:
     # Changes in nutrition values
-    calories: float = 0.0
-    protein_g: float = 0.0
-    saturated_fats_g: float = 0.0
-    fat_g: float = 0.0
-    carb_g: float = 0.0
-    fiber_g: float = 0.0
-    sodium_mg: float = 0.0
-    sugar_g: float = 0.0
-    score_health: float = 0.0
+    def __init__(
+        self,
+        calories: float = 0.0,
+        protein_g: float = 0.0,
+        saturated_fats_g: float = 0.0,
+        fat_g: float = 0.0,
+        carb_g: float = 0.0,
+        fiber_g: float = 0.0,
+        sodium_mg: float = 0.0,
+        sugar_g: float = 0.0,
+        score_health: float = 0.0,
+    ):
+        self.calories = calories
+        self.protein_g = protein_g
+        self.saturated_fats_g = saturated_fats_g
+        self.fat_g = fat_g
+        self.carb_g = carb_g
+        self.fiber_g = fiber_g
+        self.sodium_mg = sodium_mg
+        self.sugar_g = sugar_g
+        self.score_health = score_health
 
 
-class TransformResponse(BaseModel):
+class TransformResponse:
     # Transform response
-    recipe: Recipe
-    original_name: str
-    transformed_name: str
-
-    substitutions: Optional[List[Substitution]]
-
-    nutrition_before: Optional[NutritionDelta]  ## nutri score before
-    nutrition_after: Optional[NutritionDelta]  ## nutri score after
-
-    success: bool
-    message: Optional[str] = None
+    def __init__(
+        self,
+        recipe: Recipe,
+        original_name: str,
+        transformed_name: str,
+        substitutions: Optional[List[Substitution]] = None,
+        nutrition_before: Optional[NutritionDelta] = None,
+        nutrition_after: Optional[NutritionDelta] = None,
+        success: bool = True,
+        message: Optional[str] = None,
+    ):
+        self.recipe = recipe
+        self.original_name = original_name
+        self.transformed_name = transformed_name
+        self.substitutions = substitutions
+        self.nutrition_before = nutrition_before
+        self.nutrition_after = nutrition_after
+        self.success = success
+        self.message = message
