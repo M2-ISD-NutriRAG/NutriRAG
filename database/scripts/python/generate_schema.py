@@ -18,12 +18,12 @@ load_dotenv()
 # Importer la configuration
 try:
     from config import SNOWFLAKE_CONFIG
-    WAREHOUSE = SNOWFLAKE_CONFIG.get("warehouse", "NUTRIRAG_PROJECT")
-    DATABASE = SNOWFLAKE_CONFIG.get("database", "NUTRIRAG_PROJECT")
+    WAREHOUSE = SNOWFLAKE_CONFIG.get("warehouse", "NUTRIRAG_PROJECT_TEST")
+    DATABASE = SNOWFLAKE_CONFIG.get("database", "NUTRIRAG_PROJECT_TEST")
 except ImportError:
     # Fallback sur les variables d'environnement
-    WAREHOUSE = os.getenv("SNOWFLAKE_WAREHOUSE", "NUTRIRAG_PROJECT")
-    DATABASE = os.getenv("SNOWFLAKE_DATABASE", "NUTRIRAG_PROJECT")
+    WAREHOUSE = os.getenv("SNOWFLAKE_WAREHOUSE", "NUTRIRAG_PROJECT_TEST")
+    DATABASE = os.getenv("SNOWFLAKE_DATABASE", "NUTRIRAG_PROJECT_TEST")
 
 # Lire le template SQL
 template_path = Path(__file__).parent.parent / "sql" / "schema_db_template.sql"

@@ -50,7 +50,7 @@ class PipelineOrchestrator:
 
             # Get the path to schema_db.sql
             script_dir = os.path.dirname(os.path.abspath(__file__))
-            schema_file = os.path.join(script_dir, "..", "sql", "schema_db.sql")
+            schema_file = os.path.join(script_dir, "..", "sql", "schema_db_generated.sql")
 
             if not os.path.exists(schema_file):
                 raise FileNotFoundError(f"Schema file not found: {schema_file}")
@@ -562,10 +562,10 @@ LEFT JOIN rules r ON LOWER(TRIM(c.INGREDIENT)) = r.INGREDIENT_RULE
         """
         try:
             self.phase_0_setup_schema() # create snowflake schema
-            self.phase_1c_load_raw_data(nrows) # fast load to snowflake
-            self.process_ingredients_sql() # process ingredients: add parsing table
-            self.phase_3_ingest_data() # generate clean data to save to snowflake
-            self.nutri_score() # calculate nutrition scores
+            # self.phase_1c_load_raw_data(nrows) # fast load to snowflake
+            # self.process_ingredients_sql() # process ingredients: add parsing table
+            # self.phase_3_ingest_data() # generate clean data to save to snowflake
+            # self.nutri_score() # calculate nutrition scores
             self.logger.info("🎉 PIPELINE COMPLETED SUCCESSFULLY!")
         except Exception as e:
             self.logger.error(f"❌ Pipeline failed: {e}", exc_info=True)
