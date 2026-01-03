@@ -6,7 +6,10 @@ export type { ChatMessage, ChatRequest, ChatResponse }
 
 export const chatService = {
   async sendMessage(request: ChatRequest): Promise<ChatResponse> {
-    const response = await apiClient.post('/api/orchestrate', request)
+    // const response = await apiClient.post('/api/orchestrate', request)
+    // return response.data
+
+    const response = await apiClient.post('/api/general', request)
     return response.data
   },
 

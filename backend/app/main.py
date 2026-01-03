@@ -11,6 +11,9 @@ from shared.snowflake.client import SnowflakeClient
 
 from app.routers import recipes, search, transform, analytics, orchestration
 
+from app.routers import r_test
+from app.routers import r_auth
+
 # Global SnowflakeClient instance to avoid reconnection overhead
 _snowflake_client = None
 
@@ -65,6 +68,8 @@ app.include_router(
 app.include_router(
     orchestration.router, prefix="/api/orchestrate", tags=["Orchestration - Équipe 5"]
 )
+app.include_router(r_test.router, prefix="/api/general", tags=["General"])
+app.include_router(r_auth.router, prefix="/auth", tags=["General"])
 
 
 @app.get("/")
