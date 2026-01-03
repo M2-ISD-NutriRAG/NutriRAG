@@ -18,12 +18,12 @@ load_dotenv()
 # Importer la configuration
 try:
     from config import SNOWFLAKE_CONFIG
-    WAREHOUSE = SNOWFLAKE_CONFIG.get("warehouse", "NUTRIRAG_PROJECT_TEST")
-    DATABASE = SNOWFLAKE_CONFIG.get("database", "NUTRIRAG_PROJECT_TEST")
+    WAREHOUSE = SNOWFLAKE_CONFIG.get("warehouse", "NUTRIRAG_PROJECT")
+    DATABASE = SNOWFLAKE_CONFIG.get("database", "NUTRIRAG_PROJECT")
 except ImportError:
     # Fallback sur les variables d'environnement
-    WAREHOUSE = os.getenv("SNOWFLAKE_WAREHOUSE", "NUTRIRAG_PROJECT_TEST")
-    DATABASE = os.getenv("SNOWFLAKE_DATABASE", "NUTRIRAG_PROJECT_TEST")
+    WAREHOUSE = os.getenv("SNOWFLAKE_WAREHOUSE", "NUTRIRAG_PROJECT")
+    DATABASE = os.getenv("SNOWFLAKE_DATABASE", "NUTRIRAG_PROJECT")
 
 # Lire le template SQL
 template_path = Path(__file__).parent.parent / "sql" / "schema_db_template.sql"
@@ -40,8 +40,6 @@ print(f"Création du schéma Snowflake")
 print(f"WAREHOUSE: {WAREHOUSE}")
 print(f"DATABASE: {DATABASE}")
 print("=" * 80)
-print(sql_content)
-print("=" * 80)
 
 # Optionnel: Sauvegarder dans un fichier
 output_path = Path(__file__).parent.parent / "sql" / "schema_db_generated.sql"
@@ -53,7 +51,3 @@ with open(output_path, "w") as f:
     f.write(sql_content)
 
 print(f"\n✅ Script SQL généré: {output_path}")
-print("\nPour exécuter ce script dans Snowflake:")
-print("1. Copiez le contenu ci-dessus")
-print("2. Collez-le dans un worksheet Snowflake")
-print("3. Ou utilisez snowsql: snowsql -f schema_db_generated.sql")

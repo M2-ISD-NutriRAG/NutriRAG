@@ -1,3 +1,4 @@
+# not used (replaced by an sql script)
 import ast
 import logging
 import os

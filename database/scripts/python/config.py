@@ -24,8 +24,8 @@ KAGGLE_DATASETS = {
 # Output filenames
 OUTPUT_FILES = {
     "raw_recipes": "RAW_recipes.csv",
-    "raw_interactions": "RAW_INTERACTIONS.csv",
-    "cleaned_ingredients": "CLEANED_INGREDIENTS.csv",
+    "raw_interactions": "RAW_interactions.csv",
+    "cleaned_ingredients": "cleaned_ingredients.csv",
     "recipes_images": "recipes_enhanced_v2.csv",
     "recipes_w_search_terms": "recipes_w_search_terms.csv",
     "cleaned_recipes": "clean_recipes_to_snowflake.csv",
@@ -63,4 +63,4 @@ CACHE_DIR = "./dataset"
 TEMP_KAGGLE_CACHE_DIR = "./temp_kaggle_cache"
 
 # SQL DIR
-SQL_DIR = "./data/scripts/sql"
+SQL_DIR = "./database/scripts/sql"

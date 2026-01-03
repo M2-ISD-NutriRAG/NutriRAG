@@ -10,7 +10,7 @@ from DataTransformer import DataTransformer
 from SnowflakeConnector import SnowflakeConnector
 
 class SnowflakeIngestor:
-    """Orchestrates the ingestion process into Snowflake."""
+    """Orchestrates the ingestion process into Snowflake. Generates clean_recipes table"""
 
     def __init__(self, connector: SnowflakeConnector, transformer: DataTransformer):
         self.connector = connector

@@ -85,7 +85,7 @@ class PipelineOrchestrator:
         except Exception as e:
             self.logger.error(f"Schema setup failed: {e}", exc_info=True)
             raise
-
+# NOT USED
     def phase_1_load_data(self) -> DataLoader:
         """
         PHASE 1: Load data from local dataset folder.
@@ -106,7 +106,7 @@ class PipelineOrchestrator:
 
             self.loader.load_from_local(dataset_folder, OUTPUT_FILES["raw_recipes"])
             self.loader.load_from_local(dataset_folder, OUTPUT_FILES["raw_interactions"])
-            self.loader.load_from_local(dataset_folder, OUTPUT_FILES["cleaned_ingredients"])
+            # self.loader.load_from_local(dataset_folder, OUTPUT_FILES["cleaned_ingredients"])
             self.loader.load_from_local(
                 os.path.join(dataset_folder, "data"),
                 OUTPUT_FILES["recipes_w_search_terms"]
@@ -121,7 +121,7 @@ class PipelineOrchestrator:
         except Exception as e:
             self.logger.error(f"Data loading failed: {e}", exc_info=True)
             raise
-
+# NOT USED
     def phase_1b_generate_raw_inserts(self, nrows: Optional[int] = None) -> None:
         """
         PHASE 1B: Generate SQL insert files for raw data CSVs.
@@ -184,7 +184,7 @@ class PipelineOrchestrator:
             # ("ingredients_parsing", SNOWFLAKE_CONFIG['raw_schema'], SNOWFLAKE_CONFIG['ingredients_parsing_table']),
             ("raw_recipes", SNOWFLAKE_CONFIG['raw_schema'], SNOWFLAKE_CONFIG['raw_table']),
             ("raw_interactions", SNOWFLAKE_CONFIG['raw_schema'], "RAW_INTERACTION_10K"),
-            ("cleaned_ingredients", SNOWFLAKE_CONFIG['raw_schema'], "CLEANED_INGREDIENTS"),
+            # ("cleaned_ingredients", SNOWFLAKE_CONFIG['raw_schema'], "CLEANED_INGREDIENTS"),
             ("recipes_images", SNOWFLAKE_CONFIG['raw_schema'], "RECIPES_ENHANCED_V2"),
             ("recipes_w_search_terms", SNOWFLAKE_CONFIG['raw_schema'], "RECIPES_W_SEARCH_TERMS"),
             ("ingredients_with_clusters", SNOWFLAKE_CONFIG['analytics_schema'], SNOWFLAKE_CONFIG['ingredients_with_clusters_table']),
@@ -250,7 +250,7 @@ class PipelineOrchestrator:
             raise
         finally:
             connector.close()
-
+# not used
     def phase_2_clean_data(self) -> None:
         """
         PHASE 2: Clean and transform data.
@@ -278,7 +278,7 @@ class PipelineOrchestrator:
         except Exception as e:
             self.logger.error(f"Data cleaning failed: {e}", exc_info=True)
             raise
-
+# not used
     def phase_2b_generate_sql_inserts(self, nrows: Optional[int] = None) -> None:
         """
         PHASE 2B: Generate SQL insert file from cleaned recipes CSV.
@@ -328,7 +328,7 @@ class PipelineOrchestrator:
         except Exception as e:
             self.logger.error(f"Ingestion failed: {e}", exc_info=True)
             raise
-
+# not used
     def process_ingredients(self) -> pd.DataFrame:
         """
         Process ingredients with unit conversion and parsing.
@@ -553,6 +553,62 @@ LEFT JOIN rules r ON LOWER(TRIM(c.INGREDIENT)) = r.INGREDIENT_RULE
         finally:
             connector.close()
 
+    def extract_filters(self) -> None:
+        """
+        Extract dietary filters from recipe tags and populate FILTERS column.
+        
+        Creates a UDF that maps tags to filter categories (vegan, vegetarian, 
+        kosher, dairy-free, gluten-free, etc.) and updates RECIPES_SAMPLE_50K.
+        """
+        self.logger.info("=" * 60)
+        self.logger.info("EXTRACTING DIETARY FILTERS FROM TAGS")
+        self.logger.info("=" * 60)
+
+        connector = SnowflakeConnector()
+        try:
+            filters_path = os.path.join(SQL_DIR, "extract_filters_udf.sql")
+            if not os.path.exists(filters_path):
+                raise FileNotFoundError(f"Filters SQL file not found: {filters_path}")
+
+            self.logger.info(f"Reading SQL from: {filters_path}")
+            with open(filters_path, "r", encoding="utf-8") as f:
+                sql_template = f.read()
+
+            # Replace variables with config values
+            sql_content = sql_template.format(
+                database=SNOWFLAKE_CONFIG['database'],
+                raw_schema=SNOWFLAKE_CONFIG['raw_schema'],
+                raw_table=SNOWFLAKE_CONFIG['raw_table'],
+                cleaned_schema=SNOWFLAKE_CONFIG['cleaned_schema'],
+                cleaned_table=SNOWFLAKE_CONFIG['cleaned_table']
+            )
+
+            # Split by semicolon but preserve line breaks (Python UDF needs proper indentation)
+            statements = [s.strip() for s in sql_content.split(';') if s.strip()]
+            self.logger.info(f"Found {len(statements)} SQL statements to execute")
+
+            for idx, statement in enumerate(statements, 1):
+                try:
+                    self.logger.info(f"Executing statement {idx}/{len(statements)}...")
+                    stmt_preview = statement[:100].replace("\n", " ")
+                    self.logger.debug(f"Statement: {stmt_preview}...")
+
+                    connector.safe_execute(statement)
+                    self.logger.info(f"✅ Statement {idx} completed")
+                except Exception as e:
+                    self.logger.error(f"❌ Error on statement {idx}: {e}")
+                    self.logger.error(f"Statement: {statement[:200]}")
+                    raise
+
+            self.logger.info("✅ Filters extraction completed successfully!")
+            self.logger.info("=" * 60)
+
+        except Exception as e:
+            self.logger.error(f"Filters extraction failed: {e}", exc_info=True)
+            raise
+        finally:
+            connector.close()
+
     def run_full_pipeline(self, nrows: Optional[int] = None) -> None:
         """
         Run the complete data pipeline.
@@ -563,8 +619,9 @@ LEFT JOIN rules r ON LOWER(TRIM(c.INGREDIENT)) = r.INGREDIENT_RULE
         try:
             self.phase_0_setup_schema() # create snowflake schema
             self.phase_1c_load_raw_data(nrows) # fast load to snowflake
-            self.process_ingredients_sql() # process ingredients: add parsing table
+            self.extract_filters() # extract dietary filters from tags
             self.phase_3_ingest_data() # generate clean data to save to snowflake
+            self.process_ingredients_sql() # process ingredients: add parsing table
             self.nutri_score() # calculate nutrition scores
             self.logger.info("🎉 PIPELINE COMPLETED SUCCESSFULLY!")
         except Exception as e:
