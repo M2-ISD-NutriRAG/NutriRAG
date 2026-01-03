@@ -9,12 +9,29 @@ export interface LoginResponse {
 }
 
 export const authService = {
-  async login(payload: LoginRequest): Promise<LoginResponse> {
-    const { data } = await apiClient.post('/auth/login', payload)
-    return data
+  // async login(payload: LoginRequest): Promise<LoginResponse> {
+  //   const { data } = await apiClient.post('/auth/login', payload)
+  //   return data
+  // },
+
+  async loginWithSnowflake(payload: LoginRequest): Promise<LoginResponse> {
+    const { data } = await apiClient.post('/auth/login/snowflake', payload)
+    if (data.ok) {
+      window.location.href = data.redirectUrl
+      return { ok: true }
+    } else {
+      return { ok: false }
+    }
   },
 
-  async me(): Promise<LoginResponse> {
+  async finalizeLogin(code: string, account: string): Promise<any> {
+    const { data } = await apiClient.post('/auth/login/finalize', {
+      code, account
+    });
+    return data;
+  },
+
+  async getCurrentUser(): Promise<LoginResponse> {
     const { data } = await apiClient.get('/auth/me')
     return data
   },
