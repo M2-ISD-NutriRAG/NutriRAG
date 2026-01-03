@@ -24,6 +24,7 @@ class EvalLLMJudge:
         number_doc_per_call: int,
         eval_llm_ground_truth_file_path: str,
         max_retries_llm_calls: int = 3,
+        override_llm_eval: bool = False,
     ):
         self.client = client
 
@@ -37,7 +38,7 @@ class EvalLLMJudge:
         with open(prompt_file_path, "r", encoding="utf-8") as f:
             self.prompt_template = f.read()
 
-        self.llm_model = (llm_model,)
+        self.llm_model = llm_model
         self.llm_model_context_windows = llm_model_context_windows
         self.llm_model_max_output_token = llm_model_max_output_token
         self.llm_model_temperature = llm_model_temperature
@@ -51,17 +52,28 @@ class EvalLLMJudge:
 
         self.llm_results = []
 
+        self.override_llm_eval = override_llm_eval
+
     def calculate_llm_relevance_all_queries(self):
         """Calculate LLM relevance for all queries."""
 
-        # add tqdm progress bar
+        if os.path.exists(self.eval_llm_ground_truth_file_path) and not (
+            self.override_llm_eval
+        ):
+            print(
+                f"LLM evaluation file {self.eval_llm_ground_truth_file_path} already exists. Skipping LLM evaluation."
+            )
+            with open(self.eval_llm_ground_truth_file_path, "r", encoding="utf-8") as f:
+                self.llm_results = json.load(f)
+            return
+
         for query in tqdm(self.ground_truth, desc="Processing queries"):
             query_text = query["query_text"]
 
             # Build doc entries for the prompt
             doc_entries = []
             for document in query["relevance_documents"]:
-                doc_id = document["doc_id"]
+                doc_id = document["ID"]
                 recipe_row = self.raw_data_recipes[
                     self.raw_data_recipes["ID"] == doc_id
                 ]
@@ -76,7 +88,7 @@ class EvalLLMJudge:
                     else:
                         recipe_info[col_name] = value
 
-                doc_entries.append({"doc_id": int(doc_id), "recipe_info": recipe_info})
+                doc_entries.append({"ID": int(doc_id), "recipe_info": recipe_info})
 
             # Get relevance judgments from LLM
             relevance_judgments = evaluate_documents_with_llm(

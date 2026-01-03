@@ -4,6 +4,7 @@ import json
 import re
 from typing import List, Dict, Tuple, TypedDict, Any
 from transformers import AutoTokenizer
+from tqdm import tqdm
 
 from shared.snowflake.client import SnowflakeClient
 
@@ -84,51 +85,6 @@ def normalize_json_response(text: str) -> str:
         text = re.sub(r"\s+\]", "]", text)
 
         return text.strip()
-
-
-# def split_docs_recursively(
-#     client: SnowflakeClient,
-#     model: str,
-#     max_tokens: int,
-#     base_template_size: int,
-#     num_token_query: int,
-#     doc_entries: List[Dict[str, Any]],
-# ) -> List[List[Dict]]:
-#     """
-#     Recursively split documents in half until they fit within max_tokens.
-#     """
-
-#     num_token_doc = len(str(doc_entries)) // 3
-
-#     if (base_template_size + num_token_doc + num_token_query) * 1.2 > max_tokens:
-#         mid = len(doc_entries) // 2
-#         left_half = doc_entries[:mid]
-#         right_half = doc_entries[mid:]
-#     else:
-#         return [doc_entries]
-
-#     if len(doc_entries) == 1:
-#         return [doc_entries]
-
-#     # Recursively split both halves
-#     left_batches = split_docs_recursively(
-#         client,
-#         model,
-#         max_tokens,
-#         base_template_size,
-#         num_token_query,
-#         left_half,
-#     )
-#     right_batches = split_docs_recursively(
-#         client,
-#         model,
-#         max_tokens,
-#         base_template_size,
-#         num_token_query,
-#         right_half,
-#     )
-
-#     return left_batches + right_batches
 
 
 def get_llm_response(
@@ -222,7 +178,7 @@ def evaluate_documents_with_llm(
 
     doc_entries_list_chunks = chunk_list_documents(doc_entries, number_doc_per_call)
 
-    for doc_batch in doc_entries_list_chunks:
+    for doc_batch in tqdm(doc_entries_list_chunks, desc="Processing document batches"):
         remaining_docs = doc_batch[:]
         attempt = 0
 
@@ -247,18 +203,16 @@ def evaluate_documents_with_llm(
                 for judgment in json_output["relevance_judgments"]:
                     relevance_judgments.append(
                         {
-                            "doc_id": judgment["doc_id"],
+                            "ID": judgment["ID"],
                             "justification": judgment.get("justification", ""),
                             "relevance_score": judgment["relevance_score"],
                         }
                     )
 
                 # Update remaining docs
-                processed_ids = {
-                    j["doc_id"] for j in json_output["relevance_judgments"]
-                }
+                processed_ids = {j["ID"] for j in json_output["relevance_judgments"]}
                 remaining_docs = [
-                    doc for doc in remaining_docs if doc["doc_id"] not in processed_ids
+                    doc for doc in remaining_docs if doc["ID"] not in processed_ids
                 ]
 
                 if remaining_docs:
@@ -282,12 +236,12 @@ def evaluate_documents_with_llm(
         if remaining_docs:
             print(
                 f"FINAL MISSING after {max_retries} retries "
-                f"for query='{query_text}': {[d['doc_id'] for d in remaining_docs]}"
+                f"for query='{query_text}': {[d['ID'] for d in remaining_docs]}"
             )
             for doc in remaining_docs:
                 relevance_judgments.append(
                     {
-                        "doc_id": doc["doc_id"],
+                        "ID": doc["ID"],
                         "justification": "",
                         "relevance_score": 0.0,
                     }

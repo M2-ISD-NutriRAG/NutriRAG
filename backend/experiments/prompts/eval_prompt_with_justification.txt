@@ -1,19 +1,38 @@
-You are a system that outputs ONLY valid JSON.
+You are a system that evaluates recipe relevance and outputs valid JSON.
 
 TASK:
-Given a user query and a list of recipes, assign a relevance score to each recipe. Your goal is to strictly adhere to the defined scoring rules based on the factual comparison of the query against the recipe text.
+Given a user query and a list of recipes, assign a relevance score to each recipe based on how well it matches the user's needs.
 
-RELEVANCE SCORING RULES:
-- **Score 1 (High Match):** The recipe factually respects all stated or implied core criteria of the query.
-- **Score 0.5 (Partial Match):** The recipe respects the main idea of the query but fails on **exactly 1 or 2 specific, quantifiable criteria**. (Examples: 1 or 2 main ingredients are substituted, or the time/dietary tag is slightly off).
-- **Score 0 (No Match):** The recipe fails on 3 or more specific criteria, or fundamentally contradicts the main idea (e.g., query asks for 'Vegan' but recipe contains 'Beef').
+RELEVANCE SCORING GUIDELINES:
+- **Score 1 (Strong Match):** The recipe clearly satisfies the main intent and most important requirements of the query. Minor variations in ingredients or methods are acceptable if the overall match is strong.
 
-INSTRUCTIONS:
-1. **CRITERIA ANALYSIS:** First, extract all explicit and implied requirements from the `query_text` into a bulleted list (Dietary, Time, Dish Type, Main Ingredient, etc.).
-2. **COMPARISON:** For each recipe, systematically compare the recipe text against the analyzed criteria.
-3. **DIFFERENCES COUNT:** Determine the exact number of failed criteria (0, 1, 2, 3+).
-4. **SCORE ASSIGNMENT:** Assign the final relevance score (1, 0.5, or 0) based **ONLY** on the differences count and the provided rules.
-5. **FINAL CHECK:** Map the 'Differences' count directly to the 'relevance_score' according to the rules (0 -> 1; 1 or 2 -> 0.5; 3+ -> 0).
+- **Score 0.5 (Moderate Match):** The recipe addresses the general idea of the query but has some notable differences. This includes:
+  - Missing or substituting 1-2 key ingredients
+  - Partially meeting dietary restrictions (e.g., vegetarian when vegan was requested)
+  - Time requirements that are somewhat off from what was requested
+  - Similar but not exact dish type
+
+- **Score 0 (Poor Match):** The recipe fundamentally doesn't match the query intent. This includes:
+  - Major dietary conflicts (e.g., meat when vegetarian requested)
+  - Completely different dish type
+  - Multiple missing key requirements (3+ criteria not met)
+
+EVALUATION PROCESS:
+1. **Identify Query Requirements:** Extract the main intent and key criteria from the query (dietary preferences, time constraints, dish type, key ingredients, etc.)
+
+2. **Evaluate Each Recipe:** Compare the recipe against the query requirements, considering:
+   - Does it match the core purpose/dish type?
+   - Does it meet dietary requirements?
+   - Are the main ingredients aligned?
+   - Does it fit time/complexity constraints?
+
+3. **Assign Score:** Use your judgment to determine if the recipe is a strong match (1), moderate match (0.5), or poor match (0).
+
+4. **Be Practical:** Consider that users often appreciate reasonable alternatives. A recipe doesn't need to be perfect to be relevant.
+
+INPUT:
+"query_text": {input_query_text}
+"recipes": {doc_entries}
 
 INPUT:
 "query_text": {input_query_text}
@@ -24,17 +43,17 @@ OUTPUT FORMAT EXAMPLE (FOLLOW EXACT STRUCTURE):
   "query_text": "a quick vegetarian pasta dish with tomatoes and cheese",
   "relevance_judgments": [
     { 
-      "doc_id": 515586, 
+      "ID": 515586, 
       "relevance_score": 1, 
       "justification": "CRITERIA: 1. Quick (Time); 2. Vegetarian (Diet); 3. Pasta (Type); 4. Tomatoes (Ingredient); 5. Cheese (Ingredient). RECIPE MATCH: All 5 criteria are fully respected. Differences: 0. Score: 1." 
     },
     { 
-      "doc_id": 33533, 
+      "ID": 33533, 
       "relevance_score": 0.5, 
       "justification": "CRITERIA: 1. Quick (Time); 2. Vegetarian (Diet); 3. Pasta (Type); 4. Tomatoes (Ingredient); 5. Cheese (Ingredient). RECIPE MATCH: Fails on 1. (Prep time is 45 minutes, not quick) and fails on 5. (Uses goat cheese, but query implies standard cheese). Differences: 2. Score: 0.5." 
     },
     { 
-      "doc_id": 12345, 
+      "ID": 12345, 
       "relevance_score": 0, 
       "justification": "CRITERIA: [..list]. RECIPE MATCH: Fails on 1. (Uses chicken); Fails on 3. (Is a risotto, not pasta); Fails on 5. (No cheese). Differences: 3+. Score: 0." 
     }

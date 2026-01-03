@@ -6,12 +6,14 @@ from typing import Dict
 class InitExperience:
     """Initialize directory structure and input artifacts for an experiment."""
 
-    def __init__(self, experience_id: str, config: Dict):
-        self.experience_id = experience_id
+    def __init__(self, config: Dict):
+        self.experience_id = config["Experiment_id"]
+        self.raw_data_table_name = config["raw_data_table_name"]
+
         self.config = config
 
         self.experience_dir = Path(
-            config["experiments_dir"].format(experiment_id=experience_id)
+            config["experiments_dir"].format(experiment_id=self.experience_id)
         )
 
         self.dirs = {
@@ -56,6 +58,7 @@ class InitExperience:
             "override_documents_retrival": config.get(
                 "override_documents_retrival", False
             ),
+            "override_embedding_eval": config.get("override_embedding_eval", False),
         }
 
         self.paths = {}
@@ -104,8 +107,28 @@ class InitExperience:
             "input_embedding_cache_file": self.config[
                 "input_embedding_cache_file_path"
             ],
-            "retrived_documents_file": self.dirs["temp_data"]
-            / Path(self.config["output_retrieved_documents_file"]).name,
+            "topk_model_query_retrived_documents_file": self.dirs["temp_data"]
+            / Path(
+                self.config["output_topk_model_query_retrieved_documents_file"]
+            ).name,
+            "retrived_query_documents_relevance_file": self.dirs["temp_data"]
+            / Path(self.config["output_retrived_documents_relevence_file"]).name,
+            "output_topk_model_query_retrieved_documents_relevance_file": self.dirs[
+                "embedding_metrics"
+            ]
+            / Path(
+                self.config[
+                    "output_topk_model_query_retrieved_documents_relevance_file"
+                ]
+            ).name,
+            "output_retrived_documents_metrics_file": self.dirs["embedding_metrics"]
+            / Path(self.config["output_retrived_documents_metrics_file"]).name,
+            "output_retrived_documents_aggregated_metrics_file": self.dirs[
+                "embedding_metrics"
+            ]
+            / Path(
+                self.config["output_retrived_documents_aggregated_metrics_file"]
+            ).name,
         }
 
     def main(self):
