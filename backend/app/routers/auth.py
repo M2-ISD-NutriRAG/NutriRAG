@@ -1,8 +1,7 @@
-from fastapi import APIRouter, HTTPException, Response
-from app.models.auth import LoginRequest, LoginResponse, StartAuthRequest
+from fastapi import APIRouter, HTTPException
+from app.models.auth import StartAuthRequest
 
 from urllib.parse import urlencode
-import snowflake.connector
 import os
 
 import requests
