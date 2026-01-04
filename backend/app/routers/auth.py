@@ -91,12 +91,14 @@ def finalize_snowflake_login(payload: dict):
     
     token_response = response.json()
     access_token = token_response.get("access_token")
+    username = token_response.get("username")
     refresh_token = token_response.get("refresh_token")
     expires_in = token_response.get("expires_in")
 
     return {
         "ok": True,
         "access_token": access_token,
+        "username": username,
         "refresh_token": refresh_token,
         "expires_in": expires_in
     }
