@@ -83,6 +83,7 @@ function AppContent() {
       <Routes>
         <Route path="/" element={<ChatPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/chat/:id" element={<ChatPage />} />
         {/* Redirect any unknown paths to home */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
