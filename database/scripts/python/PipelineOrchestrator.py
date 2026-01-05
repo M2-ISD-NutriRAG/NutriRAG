@@ -182,6 +182,7 @@ class PipelineOrchestrator:
 
         load_tasks = [
             # ("ingredients_parsing", SNOWFLAKE_CONFIG['raw_schema'], SNOWFLAKE_CONFIG['ingredients_parsing_table']),
+            # TODO: ici rajouter le fichier csv de parsing
             ("raw_recipes", SNOWFLAKE_CONFIG['raw_schema'], SNOWFLAKE_CONFIG['raw_table']),
             ("raw_interactions", SNOWFLAKE_CONFIG['raw_schema'], "RAW_INTERACTION_10K"),
             # ("cleaned_ingredients", SNOWFLAKE_CONFIG['raw_schema'], "CLEANED_INGREDIENTS"),
@@ -525,10 +526,18 @@ LEFT JOIN rules r ON LOWER(TRIM(c.INGREDIENT)) = r.INGREDIENT_RULE
 
             self.logger.info(f"Reading SQL from: {nutri_score_path}")
             with open(nutri_score_path, "r", encoding="utf-8") as f:
-                sql_content = f.read()
+                sql_template = f.read()
+            
+            # Replace placeholders with actual config values
+            sql = sql_template.format(
+                database=SNOWFLAKE_CONFIG['database'],
+                raw_schema=SNOWFLAKE_CONFIG['raw_schema'],
+                cleaned_schema=SNOWFLAKE_CONFIG['cleaned_schema'],
+                enriched_schema=SNOWFLAKE_CONFIG.get('enriched_schema', 'ENRICHED')
+            )
 
             # Split into statements and execute
-            statements = self._parse_sql_statements(sql_content)
+            statements = self._parse_sql_statements(sql)
             self.logger.info(f"Found {len(statements)} SQL statements to execute")
 
             for idx, statement in enumerate(statements, 1):

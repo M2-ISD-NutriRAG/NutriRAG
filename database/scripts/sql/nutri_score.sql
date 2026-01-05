@@ -1,12 +1,12 @@
-ALTER TABLE NUTRIRAG_PROJECT.RAW.CLEANED_INGREDIENTS 
+ALTER TABLE {database}.{raw_schema}.CLEANED_INGREDIENTS 
 ADD COLUMN IF NOT EXISTS SCORE_SANTE FLOAT;
 
 
-UPDATE NUTRIRAG_PROJECT.RAW.CLEANED_INGREDIENTS
+UPDATE {database}.{raw_schema}.CLEANED_INGREDIENTS
 SET MAGNESIUM_MG = 0
 WHERE NDB_NO = 'P042';
 
-UPDATE NUTRIRAG_PROJECT.RAW.CLEANED_INGREDIENTS
+UPDATE {database}.{raw_schema}.CLEANED_INGREDIENTS
 SET SCORE_SANTE = GREATEST(0,
     (
         -- 40% BENEFICES
@@ -54,14 +54,14 @@ SET SCORE_SANTE = GREATEST(0,
 );
 
 
-MERGE INTO NUTRIRAG_PROJECT.ENRICHED.RECIPES_SAMPLE_50K AS target
+MERGE INTO {database}.{enriched_schema}.RECIPES_SAMPLE_50K AS target
 USING (
     WITH recipe_base AS (
         -- Récupérer le poids total de chaque recette
         SELECT 
             id,
             serving_size * servings AS total_weight
-        FROM NUTRIRAG_PROJECT.CLEANED.RECIPES_SAMPLE_50K
+        FROM {database}.{cleaned_schema}.RECIPES_SAMPLE_50K
     ),
     
     ingredients_with_qty AS (
@@ -71,7 +71,7 @@ USING (
             iq.ingredient,
             iq.qty_g,
             rb.total_weight
-        FROM NUTRIRAG_PROJECT.RAW.INGREDIENTS_QUANTITY iq
+        FROM {database}.{raw_schema}.INGREDIENTS_QUANTITY iq
         INNER JOIN recipe_base rb ON iq.id = rb.id
     ),
     
@@ -129,8 +129,8 @@ USING (
                 PARTITION BY im.recipe_id, im.ingredient_from_recipe_name 
                 ORDER BY ci.score_sante DESC NULLS LAST
             ) AS rn
-        FROM NUTRIRAG_PROJECT.RAW.INGREDIENTS_MATCHING im
-        LEFT JOIN NUTRIRAG_PROJECT.RAW.CLEANED_INGREDIENTS ci 
+        FROM {database}.{raw_schema}.INGREDIENTS_MATCHING im
+        LEFT JOIN {database}.{raw_schema}.CLEANED_INGREDIENTS ci 
             ON im.ingredient_id = ci.ndb_no
     ),
     
@@ -272,11 +272,11 @@ WHEN MATCHED THEN UPDATE SET
 
 
 
-ALTER TABLE NUTRIRAG_PROJECT.ENRICHED.RECIPES_SAMPLE_50K 
+ALTER TABLE {database}.{enriched_schema}.RECIPES_SAMPLE_50K 
 ADD COLUMN IF NOT EXISTS SCORE_SANTE FLOAT;
 
 
-UPDATE NUTRIRAG_PROJECT.ENRICHED.RECIPES_SAMPLE_50K
+UPDATE {database}.{enriched_schema}.RECIPES_SAMPLE_50K
 SET SCORE_SANTE = CASE 
     WHEN ENERGY_KCAL_100G IS NULL THEN NULL
     ELSE GREATEST(0,
