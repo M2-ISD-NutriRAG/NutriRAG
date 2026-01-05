@@ -25,3 +25,16 @@ pytest==7.4.4
 pytest-asyncio==0.23.3
 black==24.1.1
 ruff==0.14.6
+
+
+pandas==2.3.3
+kagglehub==0.3.13
+gdown
+tqdm
+snowflake-snowpark-python[pandas]
+snowflake-connector-python[pandas]
+cryptography
+pyarrow
+python-dotenv
+requests
+numpy

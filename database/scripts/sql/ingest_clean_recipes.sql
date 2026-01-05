@@ -8,7 +8,7 @@
 -- ==================================================================================
 
 -- Step 1: Create full joined and filtered dataset
-CREATE OR REPLACE TABLE {database}.{cleaned_schema}.{cleaned_table} AS
+CREATE  TABLE IF NOT EXISTS {database}.{cleaned_schema}.{cleaned_table} AS
 WITH base_recipes AS (
     SELECT 
         ID,
@@ -81,7 +81,7 @@ WHERE
 ;
 
 -- Step 2: Create 50K sample for CLEANED schema
-CREATE OR REPLACE TABLE {database}.{cleaned_schema}.{cleaned_table} AS
+CREATE  TABLE IF NOT EXISTS {database}.{cleaned_schema}.{cleaned_table} AS
 SELECT 
     NAME,
     ID,
@@ -107,7 +107,7 @@ LIMIT 50000
 ;
 
 -- Step 3: Create 1K sample for DEV schema
-CREATE OR REPLACE TABLE {database}.{dev_schema}.RECIPES_SAMPLE_1K AS
+CREATE  TABLE IF NOT EXISTS {database}.{dev_schema}.RECIPES_SAMPLE_1K AS
 SELECT 
     NAME,
     ID,
@@ -132,7 +132,7 @@ FROM {database}.{cleaned_schema}.{cleaned_table}
 LIMIT 1000
 ;
 -- Step 3: Create 1K sample for DEV schema
-CREATE OR REPLACE TABLE {database}.{dev_schema}.{cleaned_table} AS
+CREATE  TABLE IF NOT EXISTS {database}.{dev_schema}.{cleaned_table} AS
 SELECT 
     NAME,
     ID,
