@@ -69,3 +69,4 @@ logs/
 *_key.pub
 rsa_key*
 TODO.txt
+database/scripts/sql/schema_db.sql
