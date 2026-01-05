@@ -2,14 +2,8 @@
 
 Provides functionality to create vector databases for semantic search."""
 
-import json
 import os
-import time
-import pandas as pd
-from typing import Any, Dict, List, Optional
-
-from snowflake.snowpark import Session
-from snowflake.snowpark.functions import sproc
+from typing import List, Optional
 
 from shared.snowflake.client import SnowflakeClient
 
@@ -27,18 +21,38 @@ class CreateVectorDatabaseService:
         stage_name: str = "VECTORS.create_vector_db_notebook_stage",
         notebook_name: str = "create_vector_db",
         setup: bool = False,
-        source_table: str = "",
-        output_table: str = "",
-        id_column: str = "",
-        columns_to_embedd: List[str] = [],
+        source_table: str = "ENRICHED.RECIPES_SAMPLE_50K",
+        output_table: str = "VECTORS.RECIPES_50K_VECTOR_EMBEDDING",
+        id_column: str = "ID",
+        columns_to_embedd: List[str] = [
+            "NAME",
+            "INGREDIENTS",
+            "STEPS",
+            "DESCRIPTION",
+        ],
         embedding_model: str = "",
     ):
         """Initialise the Create Vector Database Service
 
         Args:
             snowflake_client (Optional[SnowflakeClient]): An optional Snowflake client instance.
-            embedding_model (Optional[str]): The embedding model to use.
-            setup (bool): Whether to perform setup operations.
+            snowflake_client (Optional[SnowflakeClient]): An optional Snowflake client
+                instance. If not provided, a new ``SnowflakeClient`` is created.
+            stage_name (str): Fully-qualified name of the Snowflake stage used to store
+                the notebook for creating the vector database.
+            notebook_name (str): Base name (without extension) of the notebook file
+                to upload to the Snowflake stage.
+            setup (bool): Whether to perform setup operations, such as creating the
+                stage and uploading the notebook.
+            source_table (str): Name of the source table containing the data to embed.
+            output_table (str): Name of the table where the resulting vector
+                embeddings will be stored.
+            id_column (str): Name of the column in ``source_table`` that uniquely
+                identifies each row to be embedded.
+            columns_to_embedd (List[str]): List of column names from ``source_table``
+                whose contents should be embedded.
+            embedding_model (str): The embedding model to use when generating vector
+                representations.
         """
         self.client = snowflake_client or SnowflakeClient()
         self.stage_name = stage_name
@@ -93,7 +107,7 @@ class CreateVectorDatabaseService:
     def create_vector_database(self) -> None:
         """Create the notebook then call it to create the vector database."""
 
-        sql_create_notebook = f"""CREATE OR REPLACE NOTEBOOk {self.notebook_name}
+        sql_create_notebook = f"""CREATE OR REPLACE NOTEBOOK {self.notebook_name}
             FROM @{self.stage_name}
             MAIN_FILE = '{self.notebook_name}.ipynb'
             QUERY_WAREHOUSE = 'NUTRIRAG_PROJECT'
@@ -158,3 +172,8 @@ class CreateVectorDatabaseService:
             print(f"\n✓ All steps completed successfully!")
         except Exception as e:
             raise RuntimeError(f"Failed to create notebook: {str(e)}")
+
+
+if __name__ == "__main__":
+    service = CreateVectorDatabaseService(setup=True)
+    service.create_vector_database()
