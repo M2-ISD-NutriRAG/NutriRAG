@@ -109,7 +109,7 @@ def parse_recipe_from_row(row) -> Recipe:
     tags = parse_list_string(row[5]) or []
     ingredients_raw = parse_list_string(row[10]) or []
     steps = parse_list_string(row[8]) or []
-    nutrition_original = parse_list_string(row[6])
+    nutrition_original = parse_list_string(row[6]) or []
     
     # Ensure they are lists of strings
     tags = [safe_str(t) for t in tags]
