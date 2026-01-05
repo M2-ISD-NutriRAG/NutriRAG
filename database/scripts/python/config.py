@@ -8,6 +8,9 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
+# Get the absolute path to the project root
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
 # Google Drive file IDs
 GOOGLE_DRIVE_FILES = {
     "raw_recipes": "1fxvf7ghbgH0xkvHkPFM_K8_JbeL9QX3L",
@@ -41,6 +44,7 @@ SNOWFLAKE_CONFIG = {
     "raw_schema": "RAW",
     "analytics_schema": "ANALYTICS",
     "cleaned_schema": "CLEANED",
+    "enriched_schema": "ENRICHED",
     "dev_schema": "DEV_SAMPLE",
     "raw_table": "RAW_RECIPES_110K",
     "cleaned_table": "RECIPES_SAMPLE_50K",
@@ -58,9 +62,7 @@ DATA_PARAMS = {
     "min_minutes": 5,
 }
 
-# Cache directory
-CACHE_DIR = "./dataset"
-TEMP_KAGGLE_CACHE_DIR = "./temp_kaggle_cache"
-
-# SQL DIR
-SQL_DIR = "./database/scripts/sql"
+# Absolute paths
+CACHE_DIR = os.path.join(PROJECT_ROOT, "dataset")
+TEMP_KAGGLE_CACHE_DIR = os.path.join(PROJECT_ROOT, "temp_kaggle_cache")
+SQL_DIR = os.path.join(PROJECT_ROOT, "database", "scripts", "sql")
