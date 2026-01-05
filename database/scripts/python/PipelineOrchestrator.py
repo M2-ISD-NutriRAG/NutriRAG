@@ -384,7 +384,7 @@ class PipelineOrchestrator:
             connector.safe_execute(udf_sql)
 
             ctas_sql = f"""
-CREATE OR REPLACE TABLE {db}.{schema}.{out_table} AS
+CREATE TABLE IF NOT EXISTS {db}.{schema}.{out_table} AS
 WITH src AS (
   SELECT r.ID,
          e.INGREDIENTS,
