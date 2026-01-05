@@ -200,17 +200,16 @@ create SCHEMA IF NOT EXISTS ANALYTICS;
 
 CREATE TABLE IF NOT EXISTS ${DATABASE_NAME}.ANALYTICS.CONVERSATIONS (
     id STRING DEFAULT uuid_string(),
-    user_id STRING, -- Snowflake username
+    user_id STRING,
     title STRING,
     created_at TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
     updated_at TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
 );
 
--- table to store individual messages
 CREATE TABLE IF NOT EXISTS ${DATABASE_NAME}.ANALYTICS.MESSAGES (
     id STRING DEFAULT uuid_string(),
     conversation_id STRING,
-    role STRING, -- 'user' or 'assistant'
+    role STRING,
     content STRING,
     created_at TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
 ); 

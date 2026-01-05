@@ -68,7 +68,7 @@ USING (
         -- Charger les ingrédients avec leurs quantités
         SELECT 
             iq.id AS recipe_id,
-            iq.ingredient,
+            iq.ingredients AS ingredient,
             iq.qty_g,
             rb.total_weight
         FROM {database}.{raw_schema}.INGREDIENTS_QUANTITY iq
