@@ -273,7 +273,7 @@ class SnowflakeClient:
 
     def _generate_jwt(self):
         now = datetime.now(timezone.utc)
-        exp = now.replace(year=now.year + 10)
+        exp = now.replace(hour=now.hour + 1)
 
         payload = {
             "iss": f"{self.config['account'].upper()}.{self.config['user'].upper()}.{self.config['public_key_fp']}",
