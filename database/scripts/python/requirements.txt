@@ -1,0 +1,11 @@
+pandas==2.3.3
+kagglehub==0.3.13
+gdown
+tqdm
+snowflake-snowpark-python[pandas]
+snowflake-connector-python[pandas]
+cryptography
+pyarrow
+python-dotenv
+requests
+numpy
