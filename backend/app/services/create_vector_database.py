@@ -172,8 +172,3 @@ class CreateVectorDatabaseService:
             print(f"\n✓ All steps completed successfully!")
         except Exception as e:
             raise RuntimeError(f"Failed to create notebook: {str(e)}")
-
-
-if __name__ == "__main__":
-    service = CreateVectorDatabaseService(setup=True)
-    service.create_vector_database()
