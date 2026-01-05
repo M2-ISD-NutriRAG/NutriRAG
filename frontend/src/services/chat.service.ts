@@ -9,7 +9,15 @@ export const chatService = {
     // const response = await apiClient.post('/api/orchestrate', request)
     // return response.data
 
-    const response = await apiClient.post('/api/general', request)
+    const response = await apiClient.post('/api/chat/send', request)
+    return response.data
+  },
+
+  async getConversationMessages(conversationId: string): Promise<any> {
+    const response = await apiClient.get(`/api/chat/conversations/${conversationId}/messages`)
+    if (!response.data) {
+      throw new Error('No messages found for this conversation')
+    }
     return response.data
   },
 

@@ -39,46 +39,49 @@ export function ChatPage() {
   }, [messages])
 
   useEffect(() => {
-    if (id) {
-      // CASE: Existing Chat (ID present in URL)
-      setIsLoading(true);
-      try {
-        // TODO: Fetch messages from backend using the conversation ID
-        // const history = await chatService.getConversationMessages(id);
-        // setMessages(history);
+    const fetchMessages = async () => {
+      if (id) {
+        // CASE: Existing Chat (ID present in URL)
+        setIsLoading(true);
+        try {
+          // TODO: Fetch messages from backend using the conversation ID
+          const history = await chatService.getConversationMessages(id);
+          setMessages(history);
 
-        // MOTE: Mocked for now
-        if (id > '2') {setMessages([]);} // Simulate no history for unknown IDs
-        else
-        setMessages([
-          {
-            id: crypto.randomUUID(),
-            role: 'assistant',
-            content: 'Loading history... (This is a mocked message. Replace with actual fetched messages.)',
-            timestamp: new Date().toISOString(),
-          },
-          {
-            id: crypto.randomUUID(),
-            role: 'user',
-            content: 'Can you suggest a low-carb recipe?',
-            timestamp: new Date().toISOString(),
-          },
-        ])
-      } catch (error) {
-        console.error('Failed to load conversation history:', error)
-      } finally {
-        setIsLoading(false);
+          // MOTE: Mocked for now
+          // if (id > '2') {setMessages([]);} // Simulate no history for unknown IDs
+          // else
+          // setMessages([
+          //   {
+          //     id: crypto.randomUUID(),
+          //     role: 'assistant',
+          //     content: 'Loading history... (This is a mocked message. Replace with actual fetched messages.)',
+          //     timestamp: new Date().toISOString(),
+          //   },
+          //   {
+          //     id: crypto.randomUUID(),
+          //     role: 'user',
+          //     content: 'Can you suggest a low-carb recipe?',
+          //     timestamp: new Date().toISOString(),
+          //   },
+          // ])
+        } catch (error) {
+          console.error('Failed to load conversation history:', error)
+        } finally {
+          setIsLoading(false);
+        }
+      } else {
+        // CASE: New Chat (No ID in URL)
+        // Reset to empty/welcome state for a brand new chat
+        setMessages([{
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: 'Hello! This is a new chat. How can I help ?',
+          timestamp: new Date().toISOString(),
+        }]);
       }
-    } else {
-      // CASE: New Chat (No ID in URL)
-      // Reset to empty/welcome state for a brand new chat
-      setMessages([{
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: 'Hello! This is a new chat. How can I help ?',
-        timestamp: new Date().toISOString(),
-      }]);
-    }
+    };
+    fetchMessages();
   }, [id]); // Triggers every time you click a different sidebar item
 
   const handleSend = async () => {
