@@ -8,7 +8,7 @@
 -- ==================================================================================
 
 -- Step 1: Create full joined and filtered dataset
-CREATE OR REPLACE TABLE {database}.{cleaned_schema}.{cleaned_table}_FULL AS
+CREATE OR REPLACE TABLE {database}.{cleaned_schema}.{cleaned_table} AS
 WITH base_recipes AS (
     SELECT 
         ID,
@@ -22,7 +22,8 @@ WITH base_recipes AS (
         STEPS,
         DESCRIPTION,
         INGREDIENTS,
-        N_INGREDIENTS
+        N_INGREDIENTS,
+        FILTERS
     FROM {database}.{raw_schema}.{raw_table}
     WHERE ID IS NOT NULL
 ),
@@ -57,8 +58,7 @@ joined AS (
         q.SERVING_SIZE,
         q.SERVINGS,
         q.SEARCH_TERMS,
-        q.INGREDIENTS_RAW_STR,
-        ARRAY_CONSTRUCT() AS FILTERS
+        q.INGREDIENTS_RAW_STR
     FROM base_recipes b
     LEFT JOIN images i ON b.ID = i.ID
     INNER JOIN quantities q ON b.ID = q.ID
@@ -71,6 +71,7 @@ WHERE
     AND LENGTH(NAME) > 0
     AND MINUTES > 5
     AND ID IS NOT NULL
+    AND ARRAY_SIZE(FILTERS) > 0
     AND SUBMITTED IS NOT NULL
     AND ARRAY_SIZE(TAGS) > 0
     AND ARRAY_SIZE(NUTRITION) = 7
@@ -101,12 +102,12 @@ SELECT
     SERVINGS,
     SEARCH_TERMS,
     FILTERS
-FROM {database}.{cleaned_schema}.{cleaned_table}_FULL
+FROM {database}.{cleaned_schema}.{cleaned_table}
 LIMIT 50000
 ;
 
 -- Step 3: Create 1K sample for DEV schema
-CREATE OR REPLACE TABLE {database}.{dev_schema}.{cleaned_table} AS
+CREATE OR REPLACE TABLE {database}.{dev_schema}.RECIPES_SAMPLE_1K AS
 SELECT 
     NAME,
     ID,
@@ -130,6 +131,26 @@ SELECT
 FROM {database}.{cleaned_schema}.{cleaned_table}
 LIMIT 1000
 ;
-
--- Step 4: Clean up temporary full table
-DROP TABLE IF EXISTS {database}.{cleaned_schema}.{cleaned_table}_FULL;
+-- Step 3: Create 1K sample for DEV schema
+CREATE OR REPLACE TABLE {database}.{dev_schema}.{cleaned_table} AS
+SELECT 
+    NAME,
+    ID,
+    MINUTES,
+    CONTRIBUTOR_ID,
+    SUBMITTED,
+    TAGS,
+    NUTRITION,
+    N_STEPS,
+    STEPS,
+    DESCRIPTION,
+    INGREDIENTS,
+    N_INGREDIENTS,
+    HAS_IMAGE,
+    IMAGE_URL,
+    INGREDIENTS_RAW_STR,
+    SERVING_SIZE,
+    SERVINGS,
+    SEARCH_TERMS,
+    FILTERS
+FROM {database}.{cleaned_schema}.{cleaned_table};
