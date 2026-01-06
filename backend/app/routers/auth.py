@@ -1,6 +1,6 @@
-from fastapi import APIRouter, HTTPException
+import hashlib
+from fastapi import APIRouter, HTTPException, Request, Depends
 from app.models.auth import StartAuthRequest
-
 from urllib.parse import urlencode
 import os
 
@@ -8,6 +8,9 @@ import requests
 import base64
 
 router = APIRouter()
+
+def get_db(request: Request): # Dependency to get SnowflakeClient, from app main state
+    return request.app.state.snowflake_client
 
 @router.get("/me")
 def me():
@@ -51,7 +54,7 @@ def login(payload: StartAuthRequest):
         raise HTTPException(status_code=500, detail="Could not generate Auth URL")
     
 @router.post("/login/finalize")
-def finalize_snowflake_login(payload: dict):
+def finalize_snowflake_login(payload: dict, db = Depends(get_db)):
     code = payload.get("code")
     # Get the account name sent from the frontend
     account = payload.get("account") 
@@ -94,6 +97,15 @@ def finalize_snowflake_login(payload: dict):
     username = token_response.get("username")
     refresh_token = token_response.get("refresh_token")
     expires_in = token_response.get("expires_in")
+
+    # We hash the token before saving for security (never store raw tokens if possible)
+    token_hash = hashlib.sha256(access_token.encode()).hexdigest()
+
+    # Save to Snowflake
+    db.execute("""
+        INSERT INTO USER_SESSIONS (token_hash, username, expires_at)
+        VALUES (%s, %s, DATEADD(second, %s, CURRENT_TIMESTAMP()))
+    """, (token_hash, username, expires_in))
 
     return {
         "ok": True,

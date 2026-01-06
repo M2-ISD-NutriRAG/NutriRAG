@@ -17,14 +17,15 @@ const suggestions = [
 ]
 
 export function ChatPage() {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: crypto.randomUUID(),
-      role: 'assistant',
-      content: 'Hello! I am NutriRAG, your AI recipe assistant. I can help you find recipes, transform them according to your dietary needs, and provide nutritional information. What would you like to cook today?',
-      timestamp: new Date().toISOString(),
-    },
-  ])
+  // const [messages, setMessages] = useState<ChatMessage[]>([
+  //   {
+  //     id: crypto.randomUUID(),
+  //     role: 'assistant',
+  //     content: 'Hello! I am NutriRAG, your AI recipe assistant. I can help you find recipes, transform them according to your dietary needs, and provide nutritional information. What would you like to cook today?',
+  //     timestamp: new Date().toISOString(),
+  //   },
+  // ])
+  const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
