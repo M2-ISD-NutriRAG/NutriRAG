@@ -94,9 +94,11 @@ def handle_chat(payload: dict, authorization: str = Header(None), db = Depends(g
     conv_id = payload.get("conversation_id") # Might be null if it's a new chat
     message_text = payload.get("message")
 
+
     # If no conv_id, this is the FIRST message of a new chat
     if not conv_id:
         conv_id = str(uuid.uuid4())
+        print('INSERT INTO CONVERSATIONS', conv_id, message_text)
         db.execute(f"""
             INSERT INTO CONVERSATIONS (id, user_id, title) 
             VALUES (%s, %s, %s)

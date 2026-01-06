@@ -61,7 +61,7 @@ const handleDelete = async (e: React.MouseEvent, id: string) => {
     try {
       setConversations((prev) => prev.filter((c) => c.id !== id));
       await chatService.deleteConversation(id);
-      // if (location.pathname === `/chat/${id}`) navigate('/chat/'); // Removed navigation on delete to avoid lag...
+      if (location.pathname === `/chat/${id}`) navigate('/chat/'); // Causes lag but well, works
     } catch (error) {
       console.error("Failed to delete", error);
     }
