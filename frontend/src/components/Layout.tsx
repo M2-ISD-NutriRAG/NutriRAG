@@ -1,4 +1,4 @@
-import { PlusCircle, MessageSquare, LogOut, ChevronDown , Trash2 } from 'lucide-react'
+import { MessageSquare, LogOut, ChevronDown , Trash2, Plus } from 'lucide-react'
 // import { useNavigate, useLocation } from 'react-router-dom'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
@@ -81,13 +81,13 @@ return (
       {/* SIDEBAR */}
       <aside className="hidden md:flex w-64 flex-col border-r bg-muted/20">
         <div className="p-4">
-          <Button 
-            onClick={createNewChat} 
-            className="w-full justify-start gap-2 shadow-sm" 
-            variant="default"
+            <Button 
+            onClick={() => createNewChat()} 
+            variant="outline"
+            className="w-full justify-start gap-2 border-dashed border-2 hover:border-primary hover:bg-primary/5 transition-all group rounded-xl py-6"
           >
-            <PlusCircle className="h-4 w-4" />
-            New Recipe Chat
+            <Plus className="h-4 w-4 text-muted-foreground group-hover:text-primary" />
+            <span className="font-semibold text-sm">New recipe chat</span>
           </Button>
         </div>
         
