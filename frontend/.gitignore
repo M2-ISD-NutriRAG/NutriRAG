@@ -24,5 +24,3 @@ dist-ssr
 *.sw?
 
 # Package files
-package-lock.json
-
