@@ -292,7 +292,7 @@ class PipelineOrchestrator:
             self.phase_1c_load_raw_data(connector, nrows) # fast load to snowflake
             self.extract_filters(connector) # extract dietary filters from tags
             self.phase_3_ingest_data(connector) # generate clean data to save to snowflake
-            self.nutri_score(connector) # calculate nutrition scores
+            # self.nutri_score(connector) # calculate nutrition scores
             self.logger.info("🎉 PIPELINE COMPLETED SUCCESSFULLY!")
         except Exception as e:
             self.logger.error(f"❌ Pipeline failed: {e}", exc_info=True)
