@@ -4,6 +4,8 @@ import numpy as np
 import threading
 from typing import Dict, List, Any, Optional, Tuple
 
+from backend.app.models.recipe import NutritionDetailed
+from backend.app.services.recipe_index_score import compute_nutrition_for_ingredient
 from shared.snowflake.client import SnowflakeClient
 
 from app.models.transform import (
@@ -35,7 +37,7 @@ class TransformService:
         self.pca_data = None  # ingredient coordinates for clustering 
         self._load_pca_data()
 
-    def fetch_recipe_quantities(self, recipe_id: str, nutrition_per_100g: Dict[str, Any]) -> List[Tuple[str, Optional[float]]]:
+    def fetch_recipe_quantities(self, recipe_id: str) -> Dict[str, Optional[float]]:
             """
             Returns list of (ingredient_string, qty_g_or_none) from INGREDIENTS_QUANTITY.
             Cached per recipe.
@@ -52,14 +54,16 @@ class TransformService:
             """
 
             rows = self.client.execute(query, params=(recipe_id,), fetch="all") or []
-            self.recipe_qty_cache[recipe_id] = rows
-            return rows
+            out: Dict[str, Optional[float]] = {}
+            for ing, qty in rows:
+                if ing is None:
+                    continue  # ingredient name missing is unusable as a dict key
+                out[ing] = float(qty) if qty is not None else None
+
+            self.recipe_qty_cache[recipe_id] = out
+            return out
     
-    def fetch_ingredients_nutrition(
-        self,
-        recipe_id: str,
-        ingredients: List[str],
-    ) -> Dict[str, Optional[Dict[str, Any]]]:
+    def fetch_ingredients_nutrition(self, recipe_id: str, ingredients: List[str]) -> Dict[str, Optional[Dict[str, Any]]]:
         """
         Returns mapping:
           key = LOWER(TRIM(ingredient_from_recipe_name))
@@ -143,6 +147,82 @@ class TransformService:
 
         return self.recipe_nutrition_cache[recipe_id]
     
+
+    def compute_recipe_nutrition_totals(
+        self,
+        recipe_id: str,
+        ingredients: List[str],
+        serving_size: float,
+        servings: float,
+    ) -> NutritionDetailed:
+        """
+        Compute recipe nutrition information for all ingredients
+
+        Parameters
+        ----------
+        ingredients_amounts : recipe ingredients quantity dict
+        nutrition_table : recipe ingredients nutrition dict
+        Returns
+        -------
+        NutritionDetailed
+            Total nutrients for the  recipe
+        """
+        total_weight = (serving_size or 0.0) * (servings or 0.0)
+        ingredients_quantity = self.fetch_recipe_quantities(recipe_id)
+        ingredients_nutrition = self.fetch_ingredients_nutrition(recipe_id, ingredients)
+        
+        known_weight = 0.0
+        unknown_count = 0
+
+        for _, qty in ingredients_quantity.items():
+            if qty is None:
+                unknown_count += 1
+            else:
+                known_weight += float(qty)
+
+        if unknown_count > 0:
+            fill_qty = max(total_weight - known_weight, 0.0) / unknown_count * 0.5
+        else:
+            fill_qty = 0.0
+        
+        recipe_nutrition = NutritionDetailed(
+            calories=0.0,
+            protein_g=0.0,
+            fat_g=0.0,
+            saturated_fat_g=0.0,
+            carbs_g=0.0,
+            fiber_g=0.0,
+            sugar_g=0.0,
+            sodium_mg=0.0,
+            calcium_mg=0.0,
+            iron_mg=0.0,
+            magnesium_mg=0.0,
+            potassium_mg=0.0,
+            vitamin_c_mg=0.0,
+        )
+        for name, nutrition in ingredients_nutrition.items():
+            if nutrition is None:
+                continue
+            quantity = ingredients_quantity.get(name) if not None else fill_qty
+            factor = float(quantity) / NUTRIENT_BASIS_GRAMS
+
+            recipe_nutrition.calories += nutrition.calories * factor
+            recipe_nutrition.protein_g += nutrition.protein_g * factor
+            recipe_nutrition.fat_g += nutrition.fat_g 
+            recipe_nutrition.saturated_fat_g += nutrition.saturated_fat_g * factor
+            recipe_nutrition.carbs_g += nutrition.carbs_g * factor
+            recipe_nutrition.fiber_g += nutrition.fiber_g * factor
+            recipe_nutrition.sugar_g += nutrition.sugar_g * factor
+            recipe_nutrition.sodium_mg += nutrition.sodium_mg * factor
+
+            recipe_nutrition.calcium_mg += nutrition.calcium_mg * factor
+            recipe_nutrition.iron_mg += nutrition.iron_mg * factor
+            recipe_nutrition.magnesium_mg += nutrition.magnesium_mg * factor
+            recipe_nutrition.potassium_mg += nutrition.potassium_mg * factor
+            recipe_nutrition.vitamin_c_mg += nutrition.vitamin_c_mg * factor
+
+        return recipe_nutrition
+
     def compute_rhi_score(ingredients_amounts: Dict[str, float],
     nutrition_table: Dict[str, Dict[str, Any]]):
         """
