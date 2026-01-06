@@ -91,7 +91,7 @@ Vérifiez que `choco` est installé :
 choco -v
 ```
 
-(Optionnel) Si `choco` n'est pas installé, installez-le :
+(Optionnel) Si `choco` n'est pas installé, installez-le (administrateur terminal) :
 
 ```Powershell
 Set-ExecutionPolicy Bypass -Scope Process -Force; `
@@ -99,7 +99,7 @@ Set-ExecutionPolicy Bypass -Scope Process -Force; `
 iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
 ```
 
-Puis, installez :
+Puis, installez OpenSSL (administrateur terminal) :
 
 ```Powershell
 choco install openssl -y
@@ -124,7 +124,22 @@ python setup_snowflake.py
 
 **Note importante :** Pour toute question sur la configuration Snowflake ou les clés RSA, contactez **Mathusan**.
 
-1. **Configurer pre-commit (optionnel mais recommandé)**
+**6. Récupérer les identifiants (OAuth) dans Snowflake**
+```sql
+-- Get the Client Secret (This will give you a JSON blob containing the secret)
+SELECT SYSTEM$SHOW_OAUTH_CLIENT_SECRETS('MY_LOCALHOST_APP');
+```
+Le résultat s'affichera sous la forme d'un objet JSON :
+```json
+{
+  "OAUTH_CLIENT_ID": "votre_client_id_ici...",
+  "OAUTH_CLIENT_SECRET": "votre_secret_ici...",
+  "OAUTH_CLIENT_SECRET_2": "..."
+}
+```
+Copiez les valeurs de `OAUTH_CLIENT_ID` et `OAUTH_CLIENT_SECRET` dans le fichier `.env` aux variables `CLIENT_ID` et `CLIENT_SECRET`.
+
+### Configurer pre-commit (optionnel mais recommandé)
 
 Pre-commit permet d'exécuter automatiquement des vérifications de code (linting, formatage) avant chaque commit.
 
