@@ -29,7 +29,7 @@ Scripts d'orchestration du pipeline de données :
 | **DataTransformer.py** | Transforme et nettoie les données |
 | **RecipeCleaner.py** | Spécifique au nettoyage des recettes |
 | **IngredientParser.py** | Parse et traite les ingrédients |
-| **SnowFlakeIngestor.py** | Ingère les données dans Snowflake |
+| **CleanData.py** | Ingère les données dans Snowflake |
 | **SqlInsertGenerator.py** | Génère les requêtes SQL INSERT |
 | **generate_schema.py** | Génère le schéma SQL à partir du template |
 | **create_ingredients_quantities_csv.py** | Crée un CSV des quantités d'ingrédients |

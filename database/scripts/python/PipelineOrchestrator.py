@@ -11,10 +11,9 @@ from typing import Optional
 
 import pandas as pd
 
-from DataLoader import DataLoader
 from DataTransformer import DataTransformer
 from SnowflakeConnector import SnowflakeConnector
-from SnowFlakeIngestor import SnowflakeIngestor
+from CleanData import CleanData
 import generate_schema
 from config import (
     OUTPUT_FILES,
@@ -30,7 +29,6 @@ class PipelineOrchestrator:
     def __init__(self):
         """Initialize the orchestrator with a logger."""
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.loader: Optional[DataLoader] = None
         self.connector: Optional[SnowflakeConnector] = None
 
     def phase_0_setup_schema(self, connector: SnowflakeConnector) -> None:
@@ -167,7 +165,7 @@ class PipelineOrchestrator:
 
         try:
             transformer = DataTransformer()
-            ingestor = SnowflakeIngestor(connector, transformer)
+            ingestor = CleanData(connector, transformer)
 
             # Use server-side SQL ingestion for better performance
             ingestor.run_ingestion_sql()

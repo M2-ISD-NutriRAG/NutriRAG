@@ -10,8 +10,6 @@ from typing import List
 
 import pandas as pd
 
-from config import DATA_PARAMS
-
 
 class DataTransformer:
     """Handles recipe data cleaning and validation."""

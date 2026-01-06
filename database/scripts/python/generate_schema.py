@@ -34,20 +34,12 @@ with open(template_path, "r") as f:
 sql_content = sql_template.replace("${WAREHOUSE_NAME}", WAREHOUSE)
 sql_content = sql_content.replace("${DATABASE_NAME}", DATABASE)
 
-# Afficher le SQL généré
-print("=" * 80)
-print(f"Création du schéma Snowflake")
-print(f"WAREHOUSE: {WAREHOUSE}")
-print(f"DATABASE: {DATABASE}")
-print("=" * 80)
-
 # Optionnel: Sauvegarder dans un fichier
 output_path = Path(__file__).parent.parent / "sql" / "schema_db_generated.sql"
 with open(output_path, "w") as f:
     f.write(f"-- Auto-generated from schema_db_template.sql\n")
     f.write(f"-- WAREHOUSE: {WAREHOUSE}\n")
     f.write(f"-- DATABASE: {DATABASE}\n")
-    f.write(f"-- Generated: {os.popen('date').read().strip()}\n\n")
+    f.write(f"-- Generated: auto-generated schema\n\n")
     f.write(sql_content)
 
-print(f"\n✅ Script SQL généré: {output_path}")
