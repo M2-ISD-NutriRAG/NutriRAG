@@ -7,7 +7,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { chatService, type ChatMessage } from '@/services/chat.service'
 import { cn } from '@/lib/utils'
 
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 
 const suggestions = [
   "Find me a healthy vegetarian recipe",
@@ -30,41 +30,24 @@ export function ChatPage() {
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const { id } = useParams();
+  const navigate = useNavigate();
 
-  // Auto-scroll to bottom when messages change
+  // EFFECT: Auto-scroll to bottom when messages change
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
   }, [messages])
 
+  // EFFECT: Load conversation history when 'id' changes
   useEffect(() => {
     const fetchMessages = async () => {
       if (id) {
         // CASE: Existing Chat (ID present in URL)
         setIsLoading(true);
         try {
-          // TODO: Fetch messages from backend using the conversation ID
           const history = await chatService.getConversationMessages(id);
           setMessages(history);
-
-          // MOTE: Mocked for now
-          // if (id > '2') {setMessages([]);} // Simulate no history for unknown IDs
-          // else
-          // setMessages([
-          //   {
-          //     id: crypto.randomUUID(),
-          //     role: 'assistant',
-          //     content: 'Loading history... (This is a mocked message. Replace with actual fetched messages.)',
-          //     timestamp: new Date().toISOString(),
-          //   },
-          //   {
-          //     id: crypto.randomUUID(),
-          //     role: 'user',
-          //     content: 'Can you suggest a low-carb recipe?',
-          //     timestamp: new Date().toISOString(),
-          //   },
-          // ])
         } catch (error) {
           console.error('Failed to load conversation history:', error)
         } finally {
@@ -102,6 +85,7 @@ export function ChatPage() {
       const response = await chatService.sendMessage({
         message: userMessage.content,
         conversation_history: messages,
+        conversation_id: id || undefined,
       })
 
       const assistantMessage: ChatMessage = {
@@ -112,6 +96,13 @@ export function ChatPage() {
       }
 
       setMessages((prev) => [...prev, assistantMessage])
+
+      if (!id && response.conversation_id) {
+        // If this was a new conversation, update the URL with the new ID
+        navigate(`/chat/${response.conversation_id}`, { replace: true });
+
+      }
+
     } catch (error) {
       console.error('Error sending message:', error)
       const errorMessage: ChatMessage = {

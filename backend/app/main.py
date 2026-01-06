@@ -30,6 +30,9 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"⚠️  Failed to connect to Snowflake: {e}")
         _snowflake_client = None
+
+    app.state.snowflake_client = _snowflake_client
+
     yield
     # Shutdown
     print("👋 Shutting down NutriRAG Backend...")

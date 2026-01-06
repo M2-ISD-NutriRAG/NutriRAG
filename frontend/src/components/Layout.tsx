@@ -14,6 +14,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useState, useEffect } from 'react'
+import chatService from '@/services/chat.service'
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
@@ -22,22 +23,26 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const accountName = localStorage.getItem('snowflake_account_display') || 'Snowflake User'
   const [conversations, setConversations] = useState<{id: string, title: string}[]>([]);
 
+
   useEffect(() => {
-    // TODO: Replace with actual API call to fetch conversations
-    const mockHistory = [
-      {id: '1', title: 'Heavy Chicken Pasta'},
-      {id: '2', title: 'Vegan Salad Ideas'},
-    ];
-  setConversations(mockHistory);
-  }, []);
+  const fetchHistory = async () => {
+    try {
+      const history = await chatService.getConversations();
+      setConversations(history);
+    } catch (e) {
+      console.error("Failed to load sidebar history", e);
+    }
+  };
+  fetchHistory();
+}, [location.pathname]); // Re-fetch when URL changes (so new chats appear)
 
   const createNewChat = async () => {
     // 1. TODO: Call backend to create a new row in Snowflake CONVERSATIONS table
     // 2. TODO: Get the new ID back
-    const newId = crypto.randomUUID(); // Temporary; get this from backend later
+    // const newId = crypto.randomUUID(); // Temporary; get this from backend later
     
     // 3. Navigate to the new chat page
-    navigate(`/chat/${newId}`);
+    navigate(`/chat/`);
   };
 
   const handleLogout = async () => {

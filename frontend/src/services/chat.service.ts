@@ -21,6 +21,17 @@ export const chatService = {
     return response.data
   },
 
+  async getConversations(): Promise<any> {
+    const response = await apiClient.get('/api/chat/conversations')
+    // STOPPED HERE
+    return response.data
+  },
+
+  async createConversation(): Promise<{ id: string, title: string }> {
+    const response = await apiClient.post('/api/chat/conversations', {})
+    return response.data
+  },
+
   async detectIntent(message: string): Promise<{ intent: string; confidence: number }> {
     const response = await apiClient.post('/api/orchestrate/intent', { message })
     return response.data
