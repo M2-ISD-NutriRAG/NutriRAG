@@ -81,7 +81,7 @@ WHERE
 ;
 
 -- Step 2: Create 50K sample for CLEANED schema
-CREATE  TABLE IF NOT EXISTS {database}.{cleaned_schema}.{cleaned_table} AS
+CREATE OR REPLACE TABLE {database}.{cleaned_schema}.{cleaned_table} AS
 SELECT 
     NAME,
     ID,
@@ -107,7 +107,7 @@ LIMIT 50000
 ;
 
 -- Step 3: Create 1K sample for DEV schema
-CREATE  TABLE IF NOT EXISTS {database}.{dev_schema}.RECIPES_SAMPLE_1K AS
+CREATE OR REPLACE TABLE {database}.{dev_schema}.RECIPES_SAMPLE_1K AS
 SELECT 
     NAME,
     ID,
@@ -131,26 +131,6 @@ SELECT
 FROM {database}.{cleaned_schema}.{cleaned_table}
 LIMIT 1000
 ;
--- Step 3: Create 1K sample for DEV schema
-CREATE  TABLE IF NOT EXISTS {database}.{dev_schema}.{cleaned_table} AS
-SELECT 
-    NAME,
-    ID,
-    MINUTES,
-    CONTRIBUTOR_ID,
-    SUBMITTED,
-    TAGS,
-    NUTRITION,
-    N_STEPS,
-    STEPS,
-    DESCRIPTION,
-    INGREDIENTS,
-    N_INGREDIENTS,
-    HAS_IMAGE,
-    IMAGE_URL,
-    INGREDIENTS_RAW_STR,
-    SERVING_SIZE,
-    SERVINGS,
-    SEARCH_TERMS,
-    FILTERS
-FROM {database}.{cleaned_schema}.{cleaned_table};
+
+CREATE OR REPLACE TABLE {database}.{dev_schema}.{cleaned_table} AS
+SELECT * FROM {database}.{cleaned_schema}.{cleaned_table};

@@ -27,7 +27,6 @@ import sys
 from dotenv import load_dotenv
 
 from PipelineOrchestrator import PipelineOrchestrator
-from IngredientParser import IngredientParser
 
 # Load environment variables from .env file
 load_dotenv()
@@ -97,33 +96,10 @@ def main():
 
         orchestrator = PipelineOrchestrator()
 
-        # Process ingredients locally (Python) if requested
-        if args.process_ingredients:
-            orchestrator.process_ingredients()
-            logger.info("🎉 INGREDIENT PROCESSING COMPLETED SUCCESSFULLY!")
-            return
-
-        # Process ingredients server-side (Snowflake SQL/UDF)
-        if args.ingredients_sql:
-            orchestrator.process_ingredients_sql()
-            logger.info("🎉 INGREDIENT SQL PROCESSING COMPLETED SUCCESSFULLY!")
-            return
-
         # Process individual phases if requested
         if args.setup_only:
             orchestrator.phase_0_setup_schema()
             logger.info("🎉 SETUP COMPLETED SUCCESSFULLY!")
-            return
-
-        if args.load_only:
-            orchestrator.phase_1_load_data()
-            logger.info("🎉 DATA LOADING COMPLETED SUCCESSFULLY!")
-            return
-
-        if args.clean_only:
-            orchestrator.phase_1_load_data()
-            orchestrator.phase_2_clean_data()
-            logger.info("🎉 DATA CLEANING COMPLETED SUCCESSFULLY!")
             return
 
         if args.ingest_only:
@@ -131,11 +107,6 @@ def main():
             logger.info("🎉 DATA INGESTION COMPLETED SUCCESSFULLY!")
             return
 
-        if args.sql_inserts:
-            orchestrator.phase_1b_generate_raw_inserts(args.nrows)
-            orchestrator.phase_2b_generate_sql_inserts(args.nrows)
-            logger.info("🎉 SQL INSERTS GENERATION COMPLETED SUCCESSFULLY!")
-            return
 
         # Run full pipeline if no specific phase requested
         orchestrator.run_full_pipeline(nrows=args.nrows)
