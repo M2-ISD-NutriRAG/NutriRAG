@@ -71,7 +71,7 @@ USING (
             iq.ingredients AS ingredient,
             iq.qty_g,
             rb.total_weight
-        FROM {database}.{raw_schema}.INGREDIENTS_QUANTITY iq
+        FROM {database}.{cleaned_schema}.INGREDIENTS_QUANTITY iq
         INNER JOIN recipe_base rb ON iq.id = rb.id
     ),
     
@@ -129,7 +129,7 @@ USING (
                 PARTITION BY im.recipe_id, im.ingredient_from_recipe_name 
                 ORDER BY ci.score_sante DESC NULLS LAST
             ) AS rn
-        FROM {database}.{raw_schema}.INGREDIENTS_MATCHING im
+        FROM {database}.{cleaned_schema}.INGREDIENTS_MATCHING im
         LEFT JOIN {database}.{raw_schema}.CLEANED_INGREDIENTS ci 
             ON im.ingredient_id = ci.ndb_no
     ),
