@@ -222,6 +222,114 @@ class TransformService:
             recipe_nutrition.vitamin_c_mg += nutrition.vitamin_c_mg * factor
 
         return recipe_nutrition
+    
+    def compute_benefit_score(self, protein_g: float, fiber_g: float) -> float:
+        """
+        Compute the benefit score of a recipe based on total protein and fiber.
+        Returns a value in [0, 1].
+        """
+        protein_ref = 50.0  
+        fiber_ref   = 30.0
+
+        s_protein = min(protein_g / protein_ref, 1.0)
+        s_fiber   = min((fiber_g or 0.0) / fiber_ref, 1.0)
+
+        benefit_score = (s_protein + s_fiber) / 2.0
+
+        return benefit_score
+
+    def compute_risk_score(
+        self,
+        sugar_g: float,
+        saturated_fat_g: float,
+        sodium_mg: float,
+        alpha_sugar: float = 1.2,
+        alpha_satfat: float = 1.0,
+        alpha_sodium: float = 1.5,
+    ) -> float:
+        """
+        Compute risk score where exceeding nutrient limits creates negative scores proportional to how badly limits are exceeded.
+        Returns float between -inf and 1.0
+        """
+
+        sugar_limit = 50.0     
+        satfat_limit = 20.0   
+        sodium_limit = 2000.0
+
+        def subscore(x, L, alpha):
+            x = max(x, 0.0)
+            if x <= L:
+                return 1.0 - (x / L)
+            else:
+                return -alpha * ((x / L) - 1.0)
+
+        h_sugar   = subscore(sugar_g, sugar_limit, alpha_sugar)
+        h_satfat  = subscore(saturated_fat_g, satfat_limit, alpha_satfat)
+        h_sodium  = subscore(sodium_mg, sodium_limit, alpha_sodium)
+
+        risk_control_score = (h_sugar + h_satfat + h_sodium) / 3.0
+        return risk_control_score
+
+    def compute_micronutrient_density_score(
+        self,
+        calcium_mg: float,
+        iron_mg: float,
+        magnesium_mg: float,
+        potassium_mg: float,
+        vitamin_c_mg: float,
+    ) -> float:
+        """
+        Compute a micronutrient density score in [0, 1] based on totals for the recipe.
+        """
+
+        calcium_ref   = 1000.0
+        iron_ref      = 18.0
+        magnesium_ref = 350.0
+        potassium_ref = 3500.0
+        vitamin_c_ref = 90.0
+
+        m_ca = min(max(calcium_mg, 0.0)   / calcium_ref,   1.0)
+        m_fe = min(max(iron_mg, 0.0)      / iron_ref,      1.0)
+        m_mg = min(max(magnesium_mg, 0.0) / magnesium_ref, 1.0)
+        m_k  = min(max(potassium_mg, 0.0) / potassium_ref, 1.0)
+        m_c  = min(max(vitamin_c_mg, 0.0) / vitamin_c_ref,      1.0)
+
+        micronutrient_score = (m_ca + m_fe + m_mg + m_k + m_c) / 5.0
+
+        return micronutrient_score
+
+    def compute_rhi(self, nutrition: NutritionDetailed) -> float:
+        """
+        Compute the Recipe Health Index (RHI) on [0, 100] for a whole recipe.
+        Uses:
+          - benefit score (protein + fiber, vs daily references)
+          - risk score (sugar, saturated fat, sodium vs daily limits, with penalties above limits)
+          - micronutrient density score (Ca, Fe, Mg, K, Vit C vs daily references)
+
+        RHI = max(0, 0.4 * risk + 0.4 * benefit + 0.2 * micro) * 100
+        """
+
+        benefit = self.compute_benefit_score(protein_g=nutrition.protein_g, fiber_g=nutrition.fiber_g)
+        risk = self.compute_risk_score(
+            sugar_g=nutrition.sugar_g,
+            saturated_fat_g=nutrition.saturated_fat_g,
+            sodium_mg=nutrition.sodium_mg,
+        )
+        micro = self.compute_micronutrient_density_score(
+            calcium_mg=nutrition.calcium_mg,
+            iron_mg=nutrition.iron_mg,
+            magnesium_mg=nutrition.magnesium_mg,
+            potassium_mg=nutrition.potassium_mg,
+            vitamin_c_mg=nutrition.vitamin_c_mg,
+        )
+
+        rhi_raw = 0.4 * risk + 0.4 * benefit + 0.2 * micro
+
+        rhi_0_1 = max(0.0, rhi_raw)
+        rhi = rhi_0_1 * 100.0
+
+        return rhi
+
 
     def compute_rhi_score(ingredients_amounts: Dict[str, float],
     nutrition_table: Dict[str, Dict[str, Any]]):
@@ -462,8 +570,6 @@ class TransformService:
         return 1
     
 
-
-
     def judge_substitute(self, candidats):
         """
         TODO
@@ -636,6 +742,12 @@ class TransformService:
             print("Step 2 completed")
 
             # Step 3 compute health score for new recipe
+            recipe_nutrition = self.compute_recipe_nutrition_totals(
+                recipe_id=recipe.id,
+                ingredients=recipe.ingredients,
+                serving_size=recipe.serving_size,
+                servings=recipe.servings
+            )
             new_nutrition = self.calculate_recipe_nutrition(new_ingredients, new_quantity)
             new_recipe = Recipe(
                 name=recipe.name,
