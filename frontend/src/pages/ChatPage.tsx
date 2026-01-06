@@ -58,12 +58,7 @@ export function ChatPage() {
       } else {
         // CASE: New Chat (No ID in URL)
         // Reset to empty/welcome state for a brand new chat
-        setMessages([{
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content: 'Hello! This is a new chat. How can I help ?',
-          timestamp: new Date().toISOString(),
-        }]);
+        setMessages([]);
       }
     };
     fetchMessages();
@@ -141,119 +136,123 @@ export function ChatPage() {
     )
   }
 
-  return (
-    <div className="flex h-full flex-col">
+return (
+    <div className="flex h-full flex-col bg-background">
       {/* Messages Area */}
-      <ScrollArea ref={scrollRef} className="flex-1 p-4">
-        <div className="mx-auto max-w-3xl space-y-4">
-          {messages.map((message, index) => (
-            <div
-              key={index}
-              className={cn(
-                'flex gap-3 animate-slide-in',
-                message.role === 'user' ? 'justify-end' : 'justify-start'
-              )}
-            >
-              {message.role === 'assistant' && (
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary">
-                  <Sparkles className="h-4 w-4 text-primary-foreground" />
-                </div>
-              )}
-              
-              <div
-                className={cn(
-                  'max-w-[80%] rounded-lg px-4 py-3',
-                  message.role === 'user'
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted'
-                )}
-              >
-                
-                <p className="whitespace-pre-wrap text-sm leading-relaxed">
-                  {message.content}
-                </p>
+      <ScrollArea ref={scrollRef} className="flex-1 p-4 relative">
+        <div className="mx-auto max-w-3xl h-full">
+          
+          {/* EMPTY STATE HERO SECTION */}
+          {messages.length === 0 && !isThinking && (
+            <div className="flex h-[70vh] flex-col items-center justify-center text-center animate-in fade-in zoom-in duration-500">
+              <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-primary/10 text-primary shadow-inner">
+                <Sparkles className="h-10 w-10" />
               </div>
-
-              {message.role === 'user' && (
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-secondary">
-                  <span className="text-sm font-medium">U</span>
-                </div>
-              )}
-            </div>
-          ))}
-
-          {isThinking && (
-            <div className="flex gap-3 justify-start animate-in fade-in duration-500">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                <Sparkles className="h-4 w-4" />
-              </div>
-              <div className="rounded-2xl bg-muted/50 border px-4 py-4 flex gap-1 items-center">
-                <span className="w-1.5 h-1.5 bg-foreground/40 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
-                <span className="w-1.5 h-1.5 bg-foreground/40 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
-                <span className="w-1.5 h-1.5 bg-foreground/40 rounded-full animate-bounce"></span>
-              </div>
+              <h1 className="mb-2 text-4xl font-bold tracking-tight text-foreground/90">
+                What are we cooking?
+              </h1>
+              <p className="max-w-md text-muted-foreground">
+                Ask NutriRAG to find recipes, calculate macros, or transform your favorite meals into healthy alternatives.
+              </p>
             </div>
           )}
+
+          {/* CHAT BUBBLES */}
+          <div className="space-y-6">
+            {messages.map((message, index) => (
+              <div
+                key={index}
+                className={cn(
+                  'flex gap-3 animate-slide-in',
+                  message.role === 'user' ? 'justify-end' : 'justify-start'
+                )}
+              >
+                {message.role === 'assistant' && (
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <Sparkles className="h-4 w-4" />
+                  </div>
+                )}
+                
+                <div
+                  className={cn(
+                    'max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm border',
+                    message.role === 'user'
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'bg-card text-card-foreground border-border'
+                  )}
+                >
+                  <p className="whitespace-pre-wrap">{message.content}</p>
+                </div>
+
+                {message.role === 'user' && (
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground border shadow-sm">
+                    <span className="text-[10px] font-bold">YOU</span>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {/* THINKING INDICATOR */}
+            {isThinking && (
+               <div className="flex gap-3 justify-start animate-in fade-in duration-300">
+                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                   <Sparkles className="h-4 w-4" />
+                 </div>
+                 <div className="rounded-2xl bg-muted/40 border px-5 py-4 flex gap-1.5 items-center">
+                   <span className="w-1.5 h-1.5 bg-foreground/30 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
+                   <span className="w-1.5 h-1.5 bg-foreground/30 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
+                   <span className="w-1.5 h-1.5 bg-foreground/30 rounded-full animate-bounce"></span>
+                 </div>
+               </div>
+            )}
+          </div>
         </div>
       </ScrollArea>
 
-      {/* Suggestions */}
-      {messages.length <= 1 && (
-        <div className="bg-card px-4 py-3">
-          <div className="mx-auto max-w-3xl">
-            <p className="mb-2 text-xs font-medium text-muted-foreground">
-              Suggestions:
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {suggestions.map((suggestion, index) => (
-                <Button
-                  key={index}
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleSuggestionClick(suggestion)}
-                  className="text-xs"
-                >
-                  {suggestion}
-                </Button>
-              ))}
-            </div>
+      {/* Suggestions Overlay (Fixed position above input when empty) */}
+      {messages.length === 0 && (
+        <div className="px-4 py-2 animate-in slide-in-from-bottom-4 duration-700">
+          <div className="mx-auto max-w-3xl flex flex-wrap justify-center gap-2">
+            {suggestions.map((suggestion, index) => (
+              <Button
+                key={index}
+                variant="outline"
+                size="sm"
+                onClick={() => handleSuggestionClick(suggestion)}
+                className="text-xs rounded-full border-primary/20 hover:bg-primary/5 hover:border-primary/50 transition-all shadow-sm"
+              >
+                {suggestion}
+              </Button>
+            ))}
           </div>
         </div>
       )}
 
       {/* Input Area */}
-      <div className="bg-card p-4">
+      <div className="p-4 bg-background">
         <div className="mx-auto max-w-3xl">
-          <Card className="p-2">
+          <Card className="p-2 shadow-xl border-primary/5 ring-1 ring-black/5 bg-card/50 backdrop-blur-sm">
             <div className="flex gap-2">
               <Textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder="Ask questions about recipes, nutrition, or transformations..."
-                className="min-h-[60px] resize-none border-0 focus-visible:ring-0"
-                disabled={isLoading}
+                onKeyDown={handleKeyPress}
+                placeholder="Ask NutriRAG..."
+                className="min-h-[60px] resize-none border-0 focus-visible:ring-0 bg-transparent"
+                disabled={isThinking}
               />
               <Button
                 onClick={handleSend}
-                disabled={!input.trim() || isLoading}
+                disabled={!input.trim() || isThinking}
                 size="icon"
-                className="shrink-0"
+                className="h-12 w-12 rounded-xl shrink-0"
               >
-                {isLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Send className="h-4 w-4" />
-                )}
+                {isThinking ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
               </Button>
             </div>
           </Card>
-          <p className="mt-2 text-center text-xs text-muted-foreground">
-            NutriRAG may make errors. Verify important nutritional information.
-          </p>
         </div>
       </div>
     </div>
   )
 }
-

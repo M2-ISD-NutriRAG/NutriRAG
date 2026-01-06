@@ -77,6 +77,7 @@ def handle_chat(payload: dict, authorization: str = Header(None), db = Depends(g
 
     # If no conv_id, this is the FIRST message of a new chat
     if not conv_id:
+        conv_id = str(uuid.uuid4())
         db.execute(f"""
             INSERT INTO CONVERSATIONS (id, user_id, title) 
             VALUES ('{conv_id}', '{username}', '{" ".join(message_text[:27].split()[:-1])}...')
