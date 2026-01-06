@@ -12,7 +12,7 @@ from typing import Optional
 import pandas as pd
 
 from DataTransformer import DataTransformer
-from SnowflakeConnector import SnowflakeConnector
+from SnowflakeUtils import SnowflakeUtils
 from CleanData import CleanData
 import generate_schema
 from config import (
@@ -29,9 +29,9 @@ class PipelineOrchestrator:
     def __init__(self):
         """Initialize the orchestrator with a logger."""
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.connector: Optional[SnowflakeConnector] = None
+        self.connector: Optional[SnowflakeUtils] = None
 
-    def phase_0_setup_schema(self, connector: SnowflakeConnector) -> None:
+    def phase_0_setup_schema(self, connector: SnowflakeUtils) -> None:
         """
         PHASE 0: Create Snowflake schema and tables from schema_db.sql.
         """
@@ -77,7 +77,7 @@ class PipelineOrchestrator:
             self.logger.error(f"Schema setup failed: {e}", exc_info=True)
             raise
 
-    def phase_1c_load_raw_data(self, connector: SnowflakeConnector, nrows) -> None:
+    def phase_1c_load_raw_data(self, connector: SnowflakeUtils, nrows) -> None:
         """
         PHASE 1C: Fast load raw data directly to Snowflake via write_pandas.
         """
@@ -155,7 +155,7 @@ class PipelineOrchestrator:
             self.logger.error(f"Fast load failed: {e}", exc_info=True)
             raise
 
-    def phase_3_ingest_data(self, connector: SnowflakeConnector) -> None:
+    def phase_3_ingest_data(self, connector: SnowflakeUtils) -> None:
         """
         PHASE 3: Ingest data into Snowflake (server-side SQL).
         """
@@ -177,7 +177,7 @@ class PipelineOrchestrator:
             self.logger.error(f"Ingestion failed: {e}", exc_info=True)
             raise
 
-    def nutri_score(self, connector: SnowflakeConnector) -> None:
+    def nutri_score(self, connector: SnowflakeUtils) -> None:
         """
         Calculate nutritional scores by executing nutri_score.sql.
         """
@@ -226,7 +226,7 @@ class PipelineOrchestrator:
             self.logger.error(f"Nutrition score calculation failed: {e}", exc_info=True)
             raise
 
-    def extract_filters(self, connector: SnowflakeConnector) -> None:
+    def extract_filters(self, connector: SnowflakeUtils) -> None:
         """
         Extract dietary filters from recipe tags and populate FILTERS column.
         
@@ -286,7 +286,7 @@ class PipelineOrchestrator:
         Args:
             nrows: Optional limit on number of rows to process
         """
-        connector = SnowflakeConnector()
+        connector = SnowflakeUtils()
         try:
             self.phase_0_setup_schema(connector) # create snowflake schema
             self.phase_1c_load_raw_data(connector, nrows) # fast load to snowflake
