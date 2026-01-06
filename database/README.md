@@ -11,7 +11,8 @@ database/
 ├── scripts/
 │   ├── python/                   # Scripts Python pour le pipeline
 │   └── sql/                      # Scripts SQL pour la création du schéma
-└── dataset/                      # (Données locales, non versionné)
+└-
+dataset/                      # (Fichiers csv)
 ```
 
 ## 📝 Contenu des sous-dossiers
@@ -24,7 +25,7 @@ Scripts d'orchestration du pipeline de données :
 |---------|-------------|
 | **main.py** | Point d'entrée principal - orchestre tout le pipeline |
 | **PipelineOrchestrator.py** | Orchestre les phases du pipeline (setup, load, clean, ingest) |
-| **SnowflakeConnector.py** | Gère la connexion à Snowflake |
+| **SnowflakeUtils.py** | Gère la connexion à Snowflake |
 | **DataLoader.py** | Charge les données depuis Google Drive et Kaggle |
 | **DataTransformer.py** | Transforme et nettoie les données |
 | **RecipeCleaner.py** | Spécifique au nettoyage des recettes |
