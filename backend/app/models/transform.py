@@ -30,6 +30,9 @@ class TransformConstraints(BaseModel):
 class Recipe(BaseModel):
     id: float
     name: str
+    serving_size: float
+    servings: float
+    health_score: float
     ingredients: List[str]
     quantity_ingredients: List[str]
     minutes: float
@@ -39,7 +42,6 @@ class Recipe(BaseModel):
 class TransformRequest(BaseModel):
     # Transform request body
     recipe: Recipe
-    ingredients_to_remove: Optional[List[str]] = None
     ingredients_to_remove: Optional[List[str]] = None
     constraints: Optional[TransformConstraints] = None
 
