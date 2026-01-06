@@ -223,6 +223,27 @@ class TransformService:
 
         return recipe_nutrition
     
+    def scale_nutrition(self, n: NutritionDetailed, factor: float) -> NutritionDetailed:
+        """
+        Scales nutrition value for 100g = a portion of the recipe, to represent the score per portion
+        Separate from total nutrition calculation to send totals for full recipe if asked 
+        """
+        return NutritionDetailed(
+        calories=n.calories * factor,
+        protein_g=n.protein_g * factor,
+        fat_g=n.fat_g * factor,
+        saturated_fat_g=n.saturated_fat_g * factor,
+        carbs_g=n.carbs_g * factor,
+        fiber_g=n.fiber_g * factor,
+        sugar_g=n.sugar_g * factor,
+        sodium_mg=n.sodium_mg * factor,
+        calcium_mg=n.calcium_mg * factor,
+        iron_mg=n.iron_mg * factor,
+        magnesium_mg=n.magnesium_mg * factor,
+        potassium_mg=n.potassium_mg * factor,
+        vitamin_c_mg=n.vitamin_c_mg * factor,
+    )
+    
     def compute_benefit_score(self, protein_g: float, fiber_g: float) -> float:
         """
         Compute the benefit score of a recipe based on total protein and fiber.
@@ -330,21 +351,6 @@ class TransformService:
 
         return rhi
 
-
-    def compute_rhi_score(ingredients_amounts: Dict[str, float],
-    nutrition_table: Dict[str, Dict[str, Any]]):
-        """
-        Compute recipe RHI score based on ingredients nutrition
-
-        Parameters
-        ----------
-        ingredients_amounts : recipe ingredients quantity dict
-        nutrition_table : recipe ingredients nutrition dict
-        Returns
-        -------
-        float
-            RHI score for the  recipe
-        """
     
 
     def ensure_pca_loaded(self):
@@ -563,7 +569,7 @@ class TransformService:
         
         return result
     
-    def get_score_sante(self, ingredient_name: str) -> float:
+    def get_health_score(self, ingredient_name: str) -> float:
         """
         TODO
         """
@@ -590,7 +596,7 @@ class TransformService:
             if best_ingr is None:
                 best_ingr = candidat
             else:
-                if self.get_score_sante(candidat) > self.get_score_sante(best_ingr): # CHANGER AVEC LE VRAI NOM DE FCT
+                if self.get_health_score(candidat) > self.get_health_score(best_ingr): # CHANGER AVEC LE VRAI NOM DE FCT
                     best_ingr = candidat
                     
         return best_ingr
@@ -742,38 +748,50 @@ class TransformService:
             print("Step 2 completed")
 
             # Step 3 compute health score for new recipe
-            recipe_nutrition = self.compute_recipe_nutrition_totals(
+            new_recipe_nutrition = self.compute_recipe_nutrition_totals(
                 recipe_id=recipe.id,
-                ingredients=recipe.ingredients,
+                ingredients=new_ingredients,
                 serving_size=recipe.serving_size,
                 servings=recipe.servings
             )
-            new_nutrition = self.calculate_recipe_nutrition(new_ingredients, new_quantity)
+            scaled_nutrition = self.scale_nutrition(
+                new_recipe_nutrition,
+                factor=100.0 / (recipe.serving_size * recipe.servings)
+            )
+            rhi_score = self.compute_rhi(scaled_nutrition)
+
+            print("Step 3 completed")
+
             new_recipe = Recipe(
+                id=recipe.id,
                 name=recipe.name,
+                serving_size=recipe.serving_size,
+                servings=recipe.servings,
+                health_score=rhi_score,
                 ingredients=new_ingredients,
-                quantity_ingredients=new_quantity,
+                quantity_ingredients=new_quantity, # TODO fetch new quantity for recipe
                 minutes=recipe.minutes,
                 steps=recipe.steps
             )
-            print("Step 5 completed")
-            # Repeat step 3-5
-            # if original_nutrition.score>=new_nutrition.score:
-
-
             # Step 6: Adapt recipe step with LLM
             if transformations:
                 new_recipe.steps, notes = self.adapt_recipe_with_llm(new_recipe, transformations)
             print("Step 6 completed")
 
             # Step 7 : Build output
+            original_nutrition = self.compute_recipe_nutrition_totals(
+                recipe_id=recipe.id,
+                ingredients=recipe.ingredients,
+                serving_size=recipe.serving_size,
+                servings=recipe.servings
+            )
             response = TransformResponse(
                 recipe=new_recipe,
                 original_name=recipe.name,
                 transformed_name=new_recipe.name,
                 substitutions=None,
                 nutrition_before=original_nutrition,
-                nutrition_after=new_nutrition,
+                nutrition_after=new_recipe_nutrition,
                 success=success,
                 message="\n".join(notes)
             )
