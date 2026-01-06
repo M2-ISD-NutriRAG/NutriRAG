@@ -124,7 +124,7 @@ python setup_snowflake.py
 
 **Note importante :** Pour toute question sur la configuration Snowflake ou les clés RSA, contactez **Mathusan**.
 
-**6. Récupérer les identifiants (OAuth) dans Snowflake**
+6. **Récupérer les identifiants (OAuth) dans Snowflake**
 ```sql
 -- Get the Client Secret (This will give you a JSON blob containing the secret)
 SELECT SYSTEM$SHOW_OAUTH_CLIENT_SECRETS('MY_LOCALHOST_APP');
