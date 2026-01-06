@@ -15,8 +15,7 @@ from snowflake.snowpark.functions import sproc
 from data.embeddings.config import EMBEDDING_MODEL as DEFAULT_EMBEDDING_MODEL
 from shared.models.embedding_models import (
     EmbeddingModel,
-    get_embedding_config,
-    get_embedding_model,
+    get_embedding_config
 )
 from shared.snowflake.client import SnowflakeClient
 
@@ -54,7 +53,6 @@ class VectorSearchService:
         self.client = snowflake_client or SnowflakeClient()
         # Use provided model or default from config (must match embeddings creation)
         self.embedding_model = embedding_model or DEFAULT_EMBEDDING_MODEL
-        self.model = get_embedding_model(self.embedding_model, self.client)
         self.embedding_config = get_embedding_config(self.embedding_model)
         self.stage_name = "@VECTORS.embedding_models_stage"
 
