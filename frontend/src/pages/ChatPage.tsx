@@ -27,7 +27,8 @@ export function ChatPage() {
   // ])
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(false) // For switching chats, initial load, etc.
+  const [isThinking, setIsThinking] = useState(false) // For AI response
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const { id } = useParams();
@@ -38,7 +39,7 @@ export function ChatPage() {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [messages])
+  }, [messages, isThinking])
 
   // EFFECT: Load conversation history when 'id' changes
   useEffect(() => {
@@ -69,7 +70,7 @@ export function ChatPage() {
   }, [id]); // Triggers every time you click a different sidebar item
 
   const handleSend = async () => {
-    if (!input.trim() || isLoading) return
+    if (!input.trim() || isThinking) return
 
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
@@ -80,7 +81,7 @@ export function ChatPage() {
 
     setMessages((prev) => [...prev, userMessage])
     setInput('')
-    setIsLoading(true)
+    setIsThinking(true)
 
     try {
       const response = await chatService.sendMessage({
@@ -114,7 +115,7 @@ export function ChatPage() {
       }
       setMessages((prev) => [...prev, errorMessage])
     } finally {
-      setIsLoading(false)
+      setIsThinking(false)
     }
   }
 
@@ -127,6 +128,17 @@ export function ChatPage() {
 
   const handleSuggestionClick = (suggestion: string) => {
     setInput(suggestion)
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="flex flex-col items-center gap-2">
+          <Loader2 className="h-8 w-8 animate-spin text-primary opacity-20" />
+          <p className="text-sm text-muted-foreground animate-pulse">Loading conversation...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -170,13 +182,15 @@ export function ChatPage() {
             </div>
           ))}
 
-          {isLoading && (
-            <div className="flex gap-3 justify-start animate-slide-in">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary">
-                <Sparkles className="h-4 w-4 text-primary-foreground" />
+          {isThinking && (
+            <div className="flex gap-3 justify-start animate-in fade-in duration-500">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <Sparkles className="h-4 w-4" />
               </div>
-              <div className="rounded-lg bg-muted px-4 py-3">
-                <Loader2 className="h-4 w-4 animate-spin" />
+              <div className="rounded-2xl bg-muted/50 border px-4 py-4 flex gap-1 items-center">
+                <span className="w-1.5 h-1.5 bg-foreground/40 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
+                <span className="w-1.5 h-1.5 bg-foreground/40 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
+                <span className="w-1.5 h-1.5 bg-foreground/40 rounded-full animate-bounce"></span>
               </div>
             </div>
           )}
