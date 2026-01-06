@@ -36,6 +36,10 @@ export const chatService = {
     const response = await apiClient.post('/api/orchestrate/intent', { message })
     return response.data
   },
+
+  async deleteConversation(conversationId: string): Promise<void> {
+    await apiClient.delete(`/api/chat/conversations/${conversationId}`);
+  }
 }
 
 export default chatService

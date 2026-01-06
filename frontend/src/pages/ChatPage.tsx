@@ -34,6 +34,10 @@ export function ChatPage() {
   const { id } = useParams();
   const navigate = useNavigate();
 
+  // Create a ref to track which ID the current messages belong to
+  const loadedIdRef = useRef<string | undefined>(undefined);
+
+
   // EFFECT: Auto-scroll to bottom when messages change
   useEffect(() => {
     if (scrollRef.current) {
@@ -43,6 +47,10 @@ export function ChatPage() {
 
   // EFFECT: Load conversation history when 'id' changes
   useEffect(() => {
+    // GUARD: If we have messages and the last message was from the assistant, no need to re-fetch
+    if (id === loadedIdRef.current && messages.length > 0) {
+      return;
+    }
     const fetchMessages = async () => {
       if (id) {
         // CASE: Existing Chat (ID present in URL)
@@ -50,6 +58,7 @@ export function ChatPage() {
         try {
           const history = await chatService.getConversationMessages(id);
           setMessages(history);
+          loadedIdRef.current = id; // Update the loaded ID ref
         } catch (error) {
           console.error('Failed to load conversation history:', error)
         } finally {
@@ -59,60 +68,62 @@ export function ChatPage() {
         // CASE: New Chat (No ID in URL)
         // Reset to empty/welcome state for a brand new chat
         setMessages([]);
+        loadedIdRef.current = undefined;
       }
     };
     fetchMessages();
   }, [id]); // Triggers every time you click a different sidebar item
 
-  const handleSend = async () => {
-    if (!input.trim() || isThinking) return
+const handleSend = async (directMessage?: string) => {
+  const messageContent = directMessage || input;
 
-    const userMessage: ChatMessage = {
+  // Validation: check the extracted content instead of just the 'input' state
+  if (!messageContent.trim() || isThinking) return;
+
+  const userMessage: ChatMessage = {
+    id: crypto.randomUUID(),
+    role: 'user',
+    content: messageContent.trim(),
+    timestamp: new Date().toISOString(),
+  };
+
+  setMessages((prev) => [...prev, userMessage]);
+  setInput(''); // Clear input regardless of how it was sent
+  setIsThinking(true);
+
+  try {
+    const response = await chatService.sendMessage({
+      message: userMessage.content,
+      conversation_history: messages,
+      conversation_id: id || undefined,
+    });
+
+    const assistantMessage: ChatMessage = {
       id: crypto.randomUUID(),
-      role: 'user',
-      content: input.trim(),
+      role: 'assistant',
+      content: response.message,
       timestamp: new Date().toISOString(),
+    };
+
+    setMessages((prev) => [...prev, assistantMessage]);
+
+    if (!id && response.conversation_id) {
+      loadedIdRef.current = response.conversation_id; // Tell useEffect we've loaded this ID
+      navigate(`/chat/${response.conversation_id}`, { replace: true });
     }
-
-    setMessages((prev) => [...prev, userMessage])
-    setInput('')
-    setIsThinking(true)
-
-    try {
-      const response = await chatService.sendMessage({
-        message: userMessage.content,
-        conversation_history: messages,
-        conversation_id: id || undefined,
-      })
-
-      const assistantMessage: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: response.message,
-        timestamp: new Date().toISOString(),
-      }
-
-      setMessages((prev) => [...prev, assistantMessage])
-
-      if (!id && response.conversation_id) {
-        // If this was a new conversation, update the URL with the new ID
-        navigate(`/chat/${response.conversation_id}`, { replace: true });
-
-      }
-
-    } catch (error) {
-      console.error('Error sending message:', error)
-      const errorMessage: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: 'Sorry, I encountered an error. Please try again.',
-        timestamp: new Date().toISOString(),
-      }
-      setMessages((prev) => [...prev, errorMessage])
-    } finally {
-      setIsThinking(false)
-    }
+  } catch (error) {
+    console.error('Error sending message:', error);
+    const errorMessage: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: 'assistant',
+      content: 'Sorry, I encountered an error. Please try again.',
+      timestamp: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, errorMessage]);
+  } finally {
+    setIsThinking(false);
   }
+};
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -122,8 +133,8 @@ export function ChatPage() {
   }
 
   const handleSuggestionClick = (suggestion: string) => {
-    setInput(suggestion)
-  }
+    handleSend(suggestion); // Pass the text directly to skip the state delay
+  };
 
   if (isLoading) {
     return (
@@ -168,8 +179,8 @@ return (
                 )}
               >
                 {message.role === 'assistant' && (
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                    <Sparkles className="h-4 w-4" />
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-900 text-white shadow-md">
+                    <Sparkles className="h-4 w-4 text-amber-400" />
                   </div>
                 )}
                 
@@ -183,12 +194,6 @@ return (
                 >
                   <p className="whitespace-pre-wrap">{message.content}</p>
                 </div>
-
-                {message.role === 'user' && (
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground border shadow-sm">
-                    <span className="text-[10px] font-bold">YOU</span>
-                  </div>
-                )}
               </div>
             ))}
 
@@ -218,7 +223,7 @@ return (
                 key={index}
                 variant="outline"
                 size="sm"
-                onClick={() => handleSuggestionClick(suggestion)}
+                onClick={() => handleSuggestionClick(suggestion)} // Now triggers auto-send
                 className="text-xs rounded-full border-primary/20 hover:bg-primary/5 hover:border-primary/50 transition-all shadow-sm"
               >
                 {suggestion}
@@ -242,7 +247,7 @@ return (
                 disabled={isThinking}
               />
               <Button
-                onClick={handleSend}
+                onClick={() => handleSend()}
                 disabled={!input.trim() || isThinking}
                 size="icon"
                 className="h-12 w-12 rounded-xl shrink-0"

@@ -1,4 +1,4 @@
-import { PlusCircle, MessageSquare, LogOut, User, ChevronDown , Loader2 } from 'lucide-react'
+import { PlusCircle, MessageSquare, LogOut, ChevronDown , Trash2 } from 'lucide-react'
 // import { useNavigate, useLocation } from 'react-router-dom'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
@@ -15,23 +15,37 @@ import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useState, useEffect } from 'react'
 import chatService from '@/services/chat.service'
-import { cn } from '@/lib/utils'
+import { cn, getAvatarColor, getInitials } from '@/lib/utils'
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
-  // const location = useLocation();
-  // Get the account name we saved earlier during the OAuth flow
+  const location = useLocation();
   const accountName = localStorage.getItem('snowflake_account_display') || 'Snowflake User'
+  
   const [conversations, setConversations] = useState<{id: string, title: string}[]>([]);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [newlyAddedId, setNewlyAddedId] = useState<string | null>(null);
 
 
   useEffect(() => {
   const fetchHistory = async () => {
-    setIsHistoryLoading(true);
+    const isInitialLoad = conversations.length === 0;
+    if (isInitialLoad) setIsHistoryLoading(true);
+
     try {
       const history = await chatService.getConversations();
-      setConversations(history);
+
+      // HIGHLIGHT LOGIC:
+      if (conversations.length > 0 && history.length > conversations.length) {
+        const newItems = history.filter((h: { id: string }) => !conversations.find(c => c.id === h.id));
+        if (newItems.length > 0) {
+          setNewlyAddedId(newItems[0].id);
+          setTimeout(() => setNewlyAddedId(null), 1000); // Remove highlight after 3s
+        }
+      }
+
+      if (JSON.stringify(history) !== JSON.stringify(conversations))
+          setConversations(history);
     } catch (e) {
       console.error("Failed to load sidebar history", e);
     } finally {
@@ -41,14 +55,26 @@ export function Layout({ children }: { children: React.ReactNode }) {
   fetchHistory();
 }, [location.pathname]); // Re-fetch when URL changes (so new chats appear)
 
-  const createNewChat = async () => {
-    navigate(`/chat/`);
+
+const handleDelete = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation(); // Prevent navigating to the chat when clicking delete
+    try {
+      setConversations((prev) => prev.filter((c) => c.id !== id));
+      await chatService.deleteConversation(id);
+      // if (location.pathname === `/chat/${id}`) navigate('/chat/'); // Removed navigation on delete to avoid lag...
+    } catch (error) {
+      console.error("Failed to delete", error);
+    }
   };
 
-  const handleLogout = async () => {
-      localStorage.clear();
-      window.location.href = '/';
-  };
+const createNewChat = async () => {
+  navigate(`/chat/`);
+};
+
+const handleLogout = async () => {
+    localStorage.clear();
+    window.location.href = '/';
+};
 
 return (
     <div className="flex h-screen w-full bg-background overflow-hidden">
@@ -93,17 +119,37 @@ return (
               </div>
             ) : (
               /* ACTUAL DATA */
-              conversations.map((chat) => (
+              <>
+                {/* Inside ScrollArea mapping */}
+                {conversations.map((chat) => (
+              <div key={chat.id} className="relative group px-1">
                 <Button 
-                  key={chat.id} 
                   variant={location.pathname === `/chat/${chat.id}` ? "secondary" : "ghost"}
-                  className="w-full justify-start font-normal truncate group"
+                  className={cn(
+                    "w-full justify-start font-normal truncate pr-8 transition-all duration-500",
+                    // The Highlight Animation
+                    newlyAddedId === chat.id 
+                      ? "bg-primary/20 ring-1 ring-primary/50 text-primary" 
+                      : ""
+                  )}
                   onClick={() => navigate(`/chat/${chat.id}`)}
                 >
-                  <MessageSquare className="mr-2 h-4 w-4 opacity-70 group-hover:opacity-100" />
-                  {chat.title}
+                  <MessageSquare className="mr-2 h-4 w-4 shrink-0 opacity-70" />
+                  <span className="truncate">{chat.title || "New Conversation"}</span>
                 </Button>
-              ))
+
+                {/* Delete Icon - Visible only on Hover */}
+                <button
+                  onClick={(e) => handleDelete(e, chat.id)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md 
+                            opacity-0 group-hover:opacity-100 hover:bg-destructive/10 
+                            hover:text-destructive transition-all text-muted-foreground"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+              </>
             )}
           </div>
         </ScrollArea>
@@ -121,10 +167,15 @@ return (
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="gap-2 px-2">
                 <Avatar className="h-7 w-7">
-                  <AvatarFallback className="bg-primary/10 text-primary text-[10px]">
-                    {accountName.substring(0, 2).toUpperCase()}
+                  <AvatarFallback style={{ backgroundColor: getAvatarColor(accountName) }} className="bg-primary/10 text-white text-[10px]">
+                    {getInitials(accountName)}
                   </AvatarFallback>
                 </Avatar>
+                {/* To change color of avatar use getAvatarColor from utils in this way: 
+                <AvatarFallback style={{ backgroundColor: getAvatarColor(accountName) }} className="text-white text-[10px]">
+                  {getInitials(accountName)}
+                </AvatarFallback>
+                */}
                 <span className="text-sm font-medium">{accountName}</span>
                 <ChevronDown className="h-3 w-3 opacity-50" />
               </Button>
