@@ -26,8 +26,6 @@ pytest-asyncio==0.23.3
 black==24.1.1
 ruff==0.14.6
 
-
-pandas==2.3.3
-snowflake-snowpark-python[pandas]
-snowflake-connector-python[pandas]
+snowflake-snowpark-python[pandas]==1.11.1
+snowflake-connector-python[pandas]==3.6.0
 pyarrow
