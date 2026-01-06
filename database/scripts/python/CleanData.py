@@ -3,14 +3,14 @@ import os
 import pandas as pd
 from snowflake.snowpark.functions import col
 
-from config import DATA_PARAMS, SNOWFLAKE_CONFIG, SQL_DIR
+from config import SNOWFLAKE_CONFIG, SQL_DIR
 from DataTransformer import DataTransformer
-from SnowflakeConnector import SnowflakeConnector
+from SnowflakeUtils import SnowflakeUtils
 
 class CleanData:
     """Orchestrates the ingestion process into Snowflake. Generates clean_recipes table"""
 
-    def __init__(self, connector: SnowflakeConnector, transformer: DataTransformer):
+    def __init__(self, connector: SnowflakeUtils, transformer: DataTransformer):
         self.connector = connector
         self.transformer = transformer
         self.logger = logging.getLogger(self.__class__.__name__)

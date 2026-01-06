@@ -11,25 +11,12 @@ load_dotenv()
 # Get the absolute path to the project root
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-# Google Drive file IDs
-GOOGLE_DRIVE_FILES = {
-    "raw_recipes": "1fxvf7ghbgH0xkvHkPFM_K8_JbeL9QX3L",
-    "raw_interactions": "10zdNLf2oKiMY30ZacdwdF1AEpkrbyoUN",
-    "cleaned_ingredients": "1HjT5RiZnxlg2PkcMLlqzxBjeeRGITYvx",
-}
-
-# Kaggle dataset identifiers
-KAGGLE_DATASETS = {
-    "recipes_images": "behnamrahdari/foodcom-enhanced-recipes-with-images",
-    "recipes_w_search_terms": "shuyangli94/foodcom-recipes-with-search-terms-and-tags",
-}
-
 # Output filenames
 OUTPUT_FILES = {
     "raw_recipes": "RAW_recipes.csv",
     "raw_interactions": "RAW_interactions.csv",
     "cleaned_ingredients": "cleaned_ingredients.csv",
-    "recipes_images": "recipes_enhanced_v2.csv",
+    "recipes_images": "recipe_enhanced_v2.csv",
     "recipes_w_search_terms": "recipes_w_search_terms.csv",
     "cleaned_recipes": "clean_recipes_to_snowflake.csv",
     "db_inserts": "clean_recipes_inserts.sql",
