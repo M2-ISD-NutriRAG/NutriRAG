@@ -88,11 +88,8 @@ class PipelineOrchestrator:
         load_tasks = [
             # ("ingredients_parsing", SNOWFLAKE_CONFIG['raw_schema'], SNOWFLAKE_CONFIG['ingredients_parsing_table']),
             # TODO: ici rajouter le fichier csv de parsing
-            ("raw_recipes", SNOWFLAKE_CONFIG['raw_schema'], SNOWFLAKE_CONFIG['raw_table']),
-            ("raw_interactions", SNOWFLAKE_CONFIG['raw_schema'], "RAW_INTERACTION_10K"),
-            # ("cleaned_ingredients", SNOWFLAKE_CONFIG['raw_schema'], "CLEANED_INGREDIENTS"),
-            ("recipes_images", SNOWFLAKE_CONFIG['raw_schema'], "RECIPES_ENHANCED_V2"),
-            ("recipes_w_search_terms", SNOWFLAKE_CONFIG['raw_schema'], "RECIPES_W_SEARCH_TERMS"),
+            ("cleaned_recipes", SNOWFLAKE_CONFIG['cleaned_schema'], SNOWFLAKE_CONFIG['cleaned_table']),
+            ("cleaned_ingredients", SNOWFLAKE_CONFIG['raw_schema'], "CLEANED_INGREDIENTS"),
             ("ingredients_with_clusters", SNOWFLAKE_CONFIG['analytics_schema'], SNOWFLAKE_CONFIG['ingredients_with_clusters_table']),
         ]
 
@@ -290,9 +287,9 @@ class PipelineOrchestrator:
         try:
             self.phase_0_setup_schema(connector) # create snowflake schema
             self.phase_1c_load_raw_data(connector, nrows) # fast load to snowflake
-            self.extract_filters(connector) # extract dietary filters from tags
-            self.phase_3_ingest_data(connector) # generate clean data to save to snowflake
-            # self.nutri_score(connector) # calculate nutrition scores
+            #self.extract_filters(connector) # extract dietary filters from tags
+            #self.phase_3_ingest_data(connector) # generate clean data to save to snowflake
+            self.nutri_score(connector) # calculate nutrition scores
             self.logger.info("🎉 PIPELINE COMPLETED SUCCESSFULLY!")
         except Exception as e:
             self.logger.error(f"❌ Pipeline failed: {e}", exc_info=True)
