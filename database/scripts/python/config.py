@@ -13,14 +13,8 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(o
 
 # Output filenames
 OUTPUT_FILES = {
-    "raw_recipes": "RAW_recipes.csv",
-    "raw_interactions": "RAW_interactions.csv",
     "cleaned_ingredients": "cleaned_ingredients.csv",
-    "recipes_images": "recipe_enhanced_v2.csv",
-    "recipes_w_search_terms": "recipes_w_search_terms.csv",
-    "cleaned_recipes": "clean_recipes_to_snowflake.csv",
-    "db_inserts": "clean_recipes_inserts.sql",
-    "ingredients_parsing": "ingredients_parsing.csv",
+    "cleaned_recipes": "Recipes_50k.csv",
     "ingredients_with_clusters": "ingredients_with_clusters.csv",
 }
 
@@ -33,10 +27,7 @@ SNOWFLAKE_CONFIG = {
     "cleaned_schema": "CLEANED",
     "enriched_schema": "ENRICHED",
     "dev_schema": "DEV_SAMPLE",
-    "raw_table": "RAW_RECIPES_110K",
     "cleaned_table": "RECIPES_SAMPLE_50K",
-    "recipes_enhanced_v2_table": "RECIPES_ENHANCED_V2",
-    "recipes_w_search_terms_table": "RECIPES_W_SEARCH_TERMS",
     "ingredients_parsing_table": "INGREDIENTS_QUANTITY",
     "ingredients_with_clusters_table": "INGREDIENTS_WITH_CLUSTERS",
 }
