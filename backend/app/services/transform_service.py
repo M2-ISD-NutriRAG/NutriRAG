@@ -4,12 +4,15 @@ import numpy as np
 import threading
 from typing import Dict, List, Any, Optional, Tuple
 
+from snowflake.snowpark.functions import col, lower, trim, row_number
+from snowflake.snowpark.window import Window
 from snowflake.snowpark import Session
 
 from app.models.transform import (
     TransformConstraints,
     TransformResponse,
     NutritionDelta,
+    TransformationType,
     Recipe,
 )
 from math import ceil
@@ -34,7 +37,7 @@ class TransformService:
         self.recipe_qty_cache: Dict[str, List[Tuple[str, Optional[float]]]] = {}
         self.recipe_nutrition_cache: Dict[str, Dict[str, Optional[Dict[str, Any]]]] = {}
         self.pca_data = None  # ingredient coordinates for clustering 
-        self._load_pca_data()
+        self.load_pca_data()
 
     def fetch_recipe_quantities(self, recipe_id: str) -> Dict[str, Optional[float]]:
             """
@@ -43,28 +46,29 @@ class TransformService:
             """
             if recipe_id in self.recipe_qty_cache:
                 return self.recipe_qty_cache[recipe_id]
+            
+            sdf = (
+            self.session.table("NUTRIRAG_PROJECT.RAW.INGREDIENTS_QUANTITY")
+            .filter(col("ID") == recipe_id)
+            .select(col("INGREDIENTS"), col("QTY_G"))
+            )
 
-            query = """
-            SELECT
-                INGREDIENTS,
-                QTY_G
-            FROM NUTRIRAG_PROJECT.RAW.INGREDIENTS_QUANTITY
-            WHERE ID = %s
-            """
-
-            rows = self.client.execute(query, params=(recipe_id,), fetch="all") or []
+            rows = sdf.collect()  # <-- materialize results
             out: Dict[str, Optional[float]] = {}
-            for ing, qty in rows:
+
+            for r in rows:
+                ing = r["INGREDIENTS"]
+                qty = r["QTY_G"]
                 if ing is None:
-                    continue  # ingredient name missing is unusable as a dict key
+                    continue
                 out[ing] = float(qty) if qty is not None else None
 
             self.recipe_qty_cache[recipe_id] = out
             return out
-    
+
     def fetch_ingredients_nutrition(self, recipe_id: str, ingredients: List[str]) -> Dict[str, Optional[Dict[str, Any]]]:
         """
-        Returns mapping:
+         Returns mapping:
           key = LOWER(TRIM(ingredient_from_recipe_name))
           val = dict of nutrition columns per 100g (or None if not found)
         Cached per recipe+ingredient key.
@@ -72,47 +76,52 @@ class TransformService:
         if recipe_id not in self.recipe_nutrition_cache:
             self.recipe_nutrition_cache[recipe_id] = {}
 
-        # Build keys we will query (lower/trim like in SQL)
-        keys = [ (s or "").strip().lower() for s in ingredients ]
-        keys = [k for k in keys if k]  # remove empty
+        keys = [(s or "").strip().lower() for s in ingredients]
+        keys = [k for k in keys if k]
         unique_keys = sorted(set(keys))
 
-        # Only query missing keys
         missing = [k for k in unique_keys if k not in self.recipe_nutrition_cache[recipe_id]]
         if not missing:
             return self.recipe_nutrition_cache[recipe_id]
 
-        placeholders = ", ".join(["%s"] * len(missing))
+        # Default missing keys to None so we don't re-query forever
+        for k in missing:
+            self.recipe_nutrition_cache[recipe_id][k] = None
 
-        query = f"""
-        WITH ranked AS (
-            SELECT
-                LOWER(TRIM(im.INGREDIENT_FROM_RECIPE_NAME)) AS ING_KEY,
-                ci."ENERGY_KCAL",
-                ci."PROTEIN_G",
-                ci."FAT_G",
-                ci."SATURATED_FATS_G",
-                ci."CARB_G",
-                ci."FIBER_G",
-                ci."SUGAR_G",
-                ci."SODIUM_MG",
-                ci."CALCIUM_MG",
-                ci."IRON_MG",
-                ci."MAGNESIUM_MG",
-                ci."POTASSIUM_MG",
-                ci."VITC_MG",
-                ROW_NUMBER() OVER (
-                    PARTITION BY LOWER(TRIM(im.INGREDIENT_FROM_RECIPE_NAME))
-                    ORDER BY ci."SCORE_SANTE" DESC NULLS LAST
-                ) AS RN
-            FROM NUTRIRAG_PROJECT.RAW.INGREDIENTS_MATCHING im
-            LEFT JOIN NUTRIRAG_PROJECT.RAW.CLEANED_INGREDIENTS ci
-                ON im.INGREDIENT_ID = ci."NDB_NO"
-            WHERE im.RECIPE_ID = %s
-              AND LOWER(TRIM(im.INGREDIENT_FROM_RECIPE_NAME)) IN ({placeholders})
+        im = self.session.table("NUTRIRAG_PROJECT.RAW.INGREDIENTS_MATCHING")
+        ci = self.session.table("NUTRIRAG_PROJECT.RAW.CLEANED_INGREDIENTS")
+
+        ing_key_expr = lower(trim(col("INGREDIENT_FROM_RECIPE_NAME")))
+
+        joined = (
+            im.filter(col("RECIPE_ID") == recipe_id)
+              .with_column("ING_KEY", ing_key_expr)
+              .filter(col("ING_KEY").isin(missing))
+              .join(ci, col("INGREDIENT_ID") == col("NDB_NO"), how="left")
+              .select(
+                  col("ING_KEY"),
+                  col("ENERGY_KCAL"),
+                  col("PROTEIN_G"),
+                  col("FAT_G"),
+                  col("SATURATED_FATS_G"),
+                  col("CARB_G"),
+                  col("FIBER_G"),
+                  col("SUGAR_G"),
+                  col("SODIUM_MG"),
+                  col("CALCIUM_MG"),
+                  col("IRON_MG"),
+                  col("MAGNESIUM_MG"),
+                  col("POTASSIUM_MG"),
+                  col("VITC_MG"),
+                  col("SCORE_SANTE"),
+              )
         )
-        SELECT
-            ING_KEY,
+
+        w = Window.partition_by(col("ING_KEY")).order_by(col("SCORE_SANTE").desc_nulls_last())
+        ranked = joined.with_column("RN", row_number().over(w)).filter(col("RN") == 1)
+
+        rows = ranked.select(
+            "ING_KEY",
             "ENERGY_KCAL",
             "PROTEIN_G",
             "FAT_G",
@@ -125,27 +134,15 @@ class TransformService:
             "IRON_MG",
             "MAGNESIUM_MG",
             "POTASSIUM_MG",
-            "VITC_MG"
-        FROM ranked
-        WHERE RN = 1;
-        """
+            "VITC_MG",
+        ).collect()
 
-        params = (recipe_id, *missing)
-
-        rows = self.client.execute(query, params=params, fetch="all") or []
-
-        # Default missing keys to None (so we don't re-query forever)
-        for k in missing:
-            self.recipe_nutrition_cache[recipe_id][k] = None
-
-        for row in rows:
-            ing_key = row[0]               # already lower/trim
-            vals = row[1:]                 # nutrients
-            nutr = dict(zip(NUTRITION_COLS, vals))
-            self.recipe_nutrition_cache[recipe_id][ing_key] = nutr
+        for r in rows:
+            ing_key = r["ING_KEY"]
+            vals = [r[c] for c in NUTRITION_COLS]
+            self.recipe_nutrition_cache[recipe_id][ing_key] = dict(zip(NUTRITION_COLS, vals))
 
         return self.recipe_nutrition_cache[recipe_id]
-    
 
     def compute_recipe_nutrition_totals(
         self,
@@ -391,15 +388,26 @@ class TransformService:
                 df[col] = df[col].apply(float)
 
             # Adapter les noms de colonnes pour correspondre au format attendu
-            self.pca_data = df.rename(columns={
-                'Energy_kcal': 'ENERGY_KCAL',
-                'Protein_g': 'PROTEIN_G',
-                'Saturated_fats_g': 'SATURATED_FATS_G', 
-                'Fat_g': 'FAT_G',
-                'Carb_g': 'CARB_G',
-                'Sodium_mg': 'SODIUM_MG',
-                'Sugar_g': 'SUGAR_G'
-            })
+            self.pca_data = df.rename(
+                columns={
+                    "NDB_No": "NDB_No",
+                    "DESCRIP": "Descrip",
+                    "Energy_kcal": "ENERGY_KCAL",
+                    "Protein_g": "PROTEIN_G",
+                    "Saturated_fats_g": "SATURATED_FATS_G",
+                    "Fat_g": "FAT_G",
+                    "Carb_g": "CARB_G",
+                    "Sodium_mg": "SODIUM_MG",
+                    "Sugar_g": "SUGAR_G",
+                    "PCA_MACRO_1": "PCA_macro_1",
+                    "PCA_MACRO_2": "PCA_macro_2",
+                    "PCA_MACRO_3": "PCA_macro_3",
+                    "PCA_MICRO_1": "PCA_micro_1",
+                    "PCA_MICRO_2": "PCA_micro_2",
+                    "Cluster_macro": "Cluster_macro",
+                    "Cluster_micro": "Cluster_micro",
+                }
+            )
 
             # Ajouter des colonnes de contraintes par défaut (pas disponibles dans le CSV)
             self.pca_data["is_lactose"] = 0
@@ -789,23 +797,23 @@ class TransformService:
             ]
             return adapted_steps, []
 
-    async def transform(
+    def transform(
             self,
-            request: TransformRequest,
             recipe: Recipe,
             ingredients_to_remove: List[str],
             constraints: TransformConstraints)-> TransformResponse:
         """
         Transform a recipe based on constraints and ingredients to remove, full pipeline
         """
-        success = True
-        self.ensure_pca_loaded()
+        success = True  
+        """         if self.pca_data is None:
+            self.load_pca_data() """
         
         try:
             # Step 1: Find ingredient to 'transform' depending on constraints if not received
-            transformation_type = request.constraints.transformation
-            if request.ingredients_to_remove is not None:
-                ingredients_to_substitute = request.ingredients_to_remove
+            transformation_type = constraints.transformation
+            if ingredients_to_remove is not None:
+                ingredients_to_substitute = ingredients_to_remove
             else:
                 ingredients_to_substitute = self._extract_ingredients_from_text(recipe.ingredients)
                 # TODO : code à rajouter 
@@ -855,6 +863,7 @@ class TransformService:
             new_recipe_nutrition.health_score = rhi_score
 
             print("Step 3 completed")
+            new_quantity = recipe.quantity_ingredients
 
             new_recipe = Recipe(
                 id=recipe.id,
@@ -867,15 +876,15 @@ class TransformService:
                 minutes=recipe.minutes,
                 steps=recipe.steps,
             )
-            # Repeat step 3-5
+            # TODO add judge implemmentation to choose candidate
             # if original_nutrition.score>=new_nutrition.score:
 
-            # Step 6: Adapt recipe step with LLM
+            # Step4 : Adapt recipe step with LLM
             if transformations:
                 new_recipe.steps, notes = self.adapt_recipe_with_llm(new_recipe, transformations)
-            print("Step 6 completed")
+            print("Step 4 completed")
 
-            # Step 7 : Build output
+            # Step 5 : Build output
             original_nutrition = self.compute_recipe_nutrition_totals(
                 recipe_id=recipe.id,
                 ingredients=recipe.ingredients,
@@ -893,7 +902,7 @@ class TransformService:
                 success=success,
                 message="\n".join(notes),
             )
-            print("Step 7 completed")
+            print("Step 5 completed")
             return response
 
         except Exception as e:
