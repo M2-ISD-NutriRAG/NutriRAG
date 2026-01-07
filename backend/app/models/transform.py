@@ -67,6 +67,13 @@ class NutritionDelta(BaseModel):
     sugar_g: float = 0.0
     score_health: float = 0.0
 
+    calcium_mg: float = None
+    iron_mg: float = None
+    magnesium_mg: float = None
+    potassium_mg: float = None
+    vitamin_c_mg: float = None
+
+
 
 class TransformResponse(BaseModel):
     # Transform response
