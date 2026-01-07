@@ -1,4 +1,4 @@
-CREATE OR REPLACE AGENT AGENT_TEST
+CREATE OR REPLACE AGENT AGENT_TEST_1
   COMMENT = 'NutriRAG orchestrator agent for recipe search and transformation'
   PROFILE = '{"display_name":"NutriRAG Assistant","avatar":"chef-hat.png","color":"green"}'
 FROM SPECIFICATION $$
@@ -189,17 +189,38 @@ tools:
             type: string
             description: |
                 Natural language search query - use the user's request as faithfully as possible.
-
                 Pass the user's query in its original form or with minimal reformulation.
                 The search tool handles semantic understanding and keyword matching automatically.
-                
-                Examples of what users might ask:
-                - Ingredient-focused: "chicken and rice", "tomato basil"
-                - Dish type: "chocolate cake", "pasta dinner", "breakfast smoothie"
-                - Cuisine: "Italian", "Asian", "Mexican"
-                - Descriptive: "healthy breakfast", "comfort food", "quick meal"
-                - Dietary: "vegetarian pasta", "vegan dessert"
-                
+                Natural language search query used for recipe retrieval.
+            
+                PRE-PROCESSING GUIDELINES (IMPORTANT):
+                - Remove conversational or non-informative words that do not contribute to search intent
+                  (e.g. greetings like "hello", "hi", "bonjour", "salut", polite phrases like "please", "merci",
+                  or filler expressions).
+                - Preserve the core culinary and nutritional intent of the user.
+                - Do NOT add, infer, or invent constraints that were not explicitly mentioned.
+            
+                LANGUAGE NORMALIZATION:
+                - If the user query is not in English, translate it to English before passing it to the search tool.
+                - Translation must be faithful and neutral, without enrichment or interpretation.
+                - Do not expand vague terms beyond their literal meaning.
+            
+                QUERY REFORMULATION RULES:
+                - Keep the query concise and focused on food-related concepts
+                  (ingredients, dish types, cuisines, dietary preferences, cooking context).
+                - Avoid full sentences when possible; prefer keyword-style queries.
+                - Do not rewrite the query beyond light cleaning and translation.
+            
+                EXAMPLES:
+                - User: "Bonjour, je cherche une recette végétarienne rapide"
+                  → query_input: "quick vegetarian recipe"
+                - User: "Salut, que puis-je cuisiner avec du poulet et du riz ?"
+                  → query_input: "chicken rice recipes"
+                - User: "Merci, un dessert sans gluten"
+                  → query_input: "gluten-free dessert"
+            
+                The search engine performs semantic and keyword-based matching automatically.
+                Do not over-optimize or enrich the query.
                 DO NOT over-process the query - the tool is designed to understand natural language.
                 Keep the user's intent and wording intact.
 
@@ -260,6 +281,7 @@ tools:
           - user_input
           - query_input
           - k_input
+          - filters_input
           
   - tool_spec:
       type: generic
