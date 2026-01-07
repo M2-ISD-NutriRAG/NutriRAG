@@ -1,4 +1,4 @@
-CREATE OR REPLACE AGENT AGENT_TEST_1
+CREATE OR REPLACE AGENT AGENT_TEST
   COMMENT = 'NutriRAG orchestrator agent for recipe search and transformation'
   PROFILE = '{"display_name":"NutriRAG Assistant","avatar":"chef-hat.png","color":"green"}'
 FROM SPECIFICATION $$
