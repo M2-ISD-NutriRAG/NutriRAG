@@ -94,6 +94,11 @@ class SnowflakeClient:
         # Add OCSP fail open for certificate issues
         self.config["ocsp_fail_open"] = True
 
+        # Allow insecure mode if explicitly set (bypass strict SSL/OCSP checks)
+        insecure_env = os.getenv("SNOWFLAKE_INSECURE_MODE", "True").strip().lower()
+        if insecure_env in ("1", "true", "yes", "on"):
+            self.config["insecure_mode"] = True
+
         # Verify required fields
         required_fields = ["user", "account", "role", "warehouse", "database", "schema"]
         missing = [k for k in required_fields if self.config.get(k) is None]
