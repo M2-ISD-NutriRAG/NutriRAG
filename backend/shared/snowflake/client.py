@@ -88,12 +88,11 @@ class SnowflakeClient:
             "warehouse": warehouse or os.getenv("SNOWFLAKE_WAREHOUSE"),
             "database": database or os.getenv("SNOWFLAKE_DATABASE"),
             "schema": schema or os.getenv("SNOWFLAKE_SCHEMA"),
-            "schema_agent" : os.getenv("SNOWFLAKE_SERVICES_SCHEMA"),
-            "agent" : os.getenv("AGENT_NAME"),
-            "public_key_fp" : os.getenv("PUBLIC_KEY_FP"),
-            "token_cache_path" : Path(os.getenv("PRIVATE_KEY_PATH")),
+            "schema_agent" : schema_agent or os.getenv("SNOWFLAKE_SERVICES_SCHEMA"),
+            "agent" : agent or os.getenv("AGENT_NAME"),
+            "public_key_fp" : public_key_fp or os.getenv("PUBLIC_KEY_FP"),
+            "token_cache_path" : token_cache_path or Path(os.getenv("PRIVATE_KEY_PATH")),
             "private_key_jwt" : Path(os.getenv("SNOWFLAKE_PRIVATE_KEY_PATH")).read_text()
-
         }
 
         # Add authentication - either key pair or password

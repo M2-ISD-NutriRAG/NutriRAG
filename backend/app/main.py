@@ -9,7 +9,9 @@ from contextlib import asynccontextmanager
 
 from shared.snowflake.client import SnowflakeClient
 
-from app.routers import recipes, search, transform, analytics, orchestration
+from app.routers import recipes
+from app.routers import auth
+from app.routers import chat
 
 # Global SnowflakeClient instance to avoid reconnection overhead
 _snowflake_client = None
@@ -27,6 +29,9 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"⚠️  Failed to connect to Snowflake: {e}")
         _snowflake_client = None
+
+    app.state.snowflake_client = _snowflake_client
+
     yield
     # Shutdown
     print("👋 Shutting down NutriRAG Backend...")
@@ -55,16 +60,8 @@ app.add_middleware(
 
 # Include routers
 app.include_router(recipes.router, prefix="/api/recipes", tags=["Recipes - Équipe 1"])
-app.include_router(search.router, prefix="/api/search", tags=["Search - Équipe 2"])
-app.include_router(
-    transform.router, prefix="/api/transform", tags=["Transform - Équipe 3"]
-)
-app.include_router(
-    analytics.router, prefix="/api/analytics", tags=["Analytics - Équipe 4"]
-)
-app.include_router(
-    orchestration.router, prefix="/api/orchestrate", tags=["Orchestration - Équipe 5"]
-)
+app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
+app.include_router(chat.router, prefix="/api/chat", tags=["Conversation"])
 
 
 @app.get("/")
