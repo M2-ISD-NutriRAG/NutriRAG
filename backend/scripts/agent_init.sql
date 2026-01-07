@@ -84,11 +84,13 @@ instructions:
     - Maintain a “working set” of the most recent search results (recipe ids/names + essential fields needed for transform).
     - Resolve references like “this one / the second / the previous recipe” using that working set.
     - If multiple candidates match the reference, ask a short clarification question listing the ambiguous options.
+    - DATA INTEGRITY: When a recipe is selected for transformation, you MUST retrieve the FULL recipe object (including all ingredients, quantity_ingredients, and steps) from the prior search output.
+    - Never truncate or summarize this data when building the REQUEST JSON for the transform tool; the tool requires the exact, complete schema to function.
     
     FILTER EXTRACTION (for search.filters_input)
     - Build filters_input as a JSON STRING that matches the SearchFilters model:
       {
-        "numeric_filters": [{"name": <field>, "operator": <one of: >,>=,<,<=,=>,=, "value": <number>}],
+        "numeric_filters": [{"name": <field>, "operator": <one of: >,>=,<,<=,=, "value": <number>}],
         "dietary_filters": [<tag>, ...],
         "include_ingredients": [<str>, ...],
         "exclude_ingredients": [<str>, ...],
@@ -227,7 +229,7 @@ tools:
           k_input:
             type: number
             description: "Maximum number of results to return, depending on the number of recipes requested by the user"
-            default: 1
+            default: 3
           filters_input:
             type: string
             description: |
