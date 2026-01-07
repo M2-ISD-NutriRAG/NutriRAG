@@ -2,14 +2,18 @@ import traceback
 import pandas as pd
 import numpy as np
 import threading
+import logging
 from typing import Dict, List, Any, Optional, Tuple
 
+from snowflake.snowpark.functions import col, lower, trim, row_number
+from snowflake.snowpark.window import Window
 from snowflake.snowpark import Session
 
 from app.models.transform import (
     TransformConstraints,
     TransformResponse,
     NutritionDelta,
+    TransformationType,
     Recipe,
 )
 from math import ceil
@@ -34,7 +38,7 @@ class TransformService:
         self.recipe_qty_cache: Dict[str, List[Tuple[str, Optional[float]]]] = {}
         self.recipe_nutrition_cache: Dict[str, Dict[str, Optional[Dict[str, Any]]]] = {}
         self.pca_data = None  # ingredient coordinates for clustering 
-        self._load_pca_data()
+        self.load_pca_data()
 
     def fetch_recipe_quantities(self, recipe_id: str) -> Dict[str, Optional[float]]:
             """
@@ -43,28 +47,29 @@ class TransformService:
             """
             if recipe_id in self.recipe_qty_cache:
                 return self.recipe_qty_cache[recipe_id]
+            
+            sdf = (
+            self.session.table("NUTRIRAG_PROJECT.RAW.INGREDIENTS_QUANTITY")
+            .filter(col("ID") == recipe_id)
+            .select(col("INGREDIENTS"), col("QTY_G"))
+            )
 
-            query = """
-            SELECT
-                INGREDIENTS,
-                QTY_G
-            FROM NUTRIRAG_PROJECT.RAW.INGREDIENTS_QUANTITY
-            WHERE ID = %s
-            """
-
-            rows = self.client.execute(query, params=(recipe_id,), fetch="all") or []
+            rows = sdf.collect()  # <-- materialize results
             out: Dict[str, Optional[float]] = {}
-            for ing, qty in rows:
+
+            for r in rows:
+                ing = r["INGREDIENTS"]
+                qty = r["QTY_G"]
                 if ing is None:
-                    continue  # ingredient name missing is unusable as a dict key
+                    continue
                 out[ing] = float(qty) if qty is not None else None
 
             self.recipe_qty_cache[recipe_id] = out
             return out
-    
+
     def fetch_ingredients_nutrition(self, recipe_id: str, ingredients: List[str]) -> Dict[str, Optional[Dict[str, Any]]]:
         """
-        Returns mapping:
+         Returns mapping:
           key = LOWER(TRIM(ingredient_from_recipe_name))
           val = dict of nutrition columns per 100g (or None if not found)
         Cached per recipe+ingredient key.
@@ -72,47 +77,52 @@ class TransformService:
         if recipe_id not in self.recipe_nutrition_cache:
             self.recipe_nutrition_cache[recipe_id] = {}
 
-        # Build keys we will query (lower/trim like in SQL)
-        keys = [ (s or "").strip().lower() for s in ingredients ]
-        keys = [k for k in keys if k]  # remove empty
+        keys = [(s or "").strip().lower() for s in ingredients]
+        keys = [k for k in keys if k]
         unique_keys = sorted(set(keys))
 
-        # Only query missing keys
         missing = [k for k in unique_keys if k not in self.recipe_nutrition_cache[recipe_id]]
         if not missing:
             return self.recipe_nutrition_cache[recipe_id]
 
-        placeholders = ", ".join(["%s"] * len(missing))
+        # Default missing keys to None so we don't re-query forever
+        for k in missing:
+            self.recipe_nutrition_cache[recipe_id][k] = None
 
-        query = f"""
-        WITH ranked AS (
-            SELECT
-                LOWER(TRIM(im.INGREDIENT_FROM_RECIPE_NAME)) AS ING_KEY,
-                ci."ENERGY_KCAL",
-                ci."PROTEIN_G",
-                ci."FAT_G",
-                ci."SATURATED_FATS_G",
-                ci."CARB_G",
-                ci."FIBER_G",
-                ci."SUGAR_G",
-                ci."SODIUM_MG",
-                ci."CALCIUM_MG",
-                ci."IRON_MG",
-                ci."MAGNESIUM_MG",
-                ci."POTASSIUM_MG",
-                ci."VITC_MG",
-                ROW_NUMBER() OVER (
-                    PARTITION BY LOWER(TRIM(im.INGREDIENT_FROM_RECIPE_NAME))
-                    ORDER BY ci."SCORE_SANTE" DESC NULLS LAST
-                ) AS RN
-            FROM NUTRIRAG_PROJECT.RAW.INGREDIENTS_MATCHING im
-            LEFT JOIN NUTRIRAG_PROJECT.RAW.CLEANED_INGREDIENTS ci
-                ON im.INGREDIENT_ID = ci."NDB_NO"
-            WHERE im.RECIPE_ID = %s
-              AND LOWER(TRIM(im.INGREDIENT_FROM_RECIPE_NAME)) IN ({placeholders})
+        im = self.session.table("NUTRIRAG_PROJECT.RAW.INGREDIENTS_MATCHING")
+        ci = self.session.table("NUTRIRAG_PROJECT.RAW.CLEANED_INGREDIENTS")
+
+        ing_key_expr = lower(trim(col("INGREDIENT_FROM_RECIPE_NAME")))
+
+        joined = (
+            im.filter(col("RECIPE_ID") == recipe_id)
+              .with_column("ING_KEY", ing_key_expr)
+              .filter(col("ING_KEY").isin(missing))
+              .join(ci, col("INGREDIENT_ID") == col("NDB_NO"), how="left")
+              .select(
+                  col("ING_KEY"),
+                  col("ENERGY_KCAL"),
+                  col("PROTEIN_G"),
+                  col("FAT_G"),
+                  col("SATURATED_FATS_G"),
+                  col("CARB_G"),
+                  col("FIBER_G"),
+                  col("SUGAR_G"),
+                  col("SODIUM_MG"),
+                  col("CALCIUM_MG"),
+                  col("IRON_MG"),
+                  col("MAGNESIUM_MG"),
+                  col("POTASSIUM_MG"),
+                  col("VITC_MG"),
+                  col("SCORE_SANTE"),
+              )
         )
-        SELECT
-            ING_KEY,
+
+        w = Window.partition_by(col("ING_KEY")).order_by(col("SCORE_SANTE").desc_nulls_last())
+        ranked = joined.with_column("RN", row_number().over(w)).filter(col("RN") == 1)
+
+        rows = ranked.select(
+            "ING_KEY",
             "ENERGY_KCAL",
             "PROTEIN_G",
             "FAT_G",
@@ -125,27 +135,15 @@ class TransformService:
             "IRON_MG",
             "MAGNESIUM_MG",
             "POTASSIUM_MG",
-            "VITC_MG"
-        FROM ranked
-        WHERE RN = 1;
-        """
+            "VITC_MG",
+        ).collect()
 
-        params = (recipe_id, *missing)
-
-        rows = self.client.execute(query, params=params, fetch="all") or []
-
-        # Default missing keys to None (so we don't re-query forever)
-        for k in missing:
-            self.recipe_nutrition_cache[recipe_id][k] = None
-
-        for row in rows:
-            ing_key = row[0]               # already lower/trim
-            vals = row[1:]                 # nutrients
-            nutr = dict(zip(NUTRITION_COLS, vals))
-            self.recipe_nutrition_cache[recipe_id][ing_key] = nutr
+        for r in rows:
+            ing_key = r["ING_KEY"]
+            vals = [r[c] for c in NUTRITION_COLS]
+            self.recipe_nutrition_cache[recipe_id][ing_key] = dict(zip(NUTRITION_COLS, vals))
 
         return self.recipe_nutrition_cache[recipe_id]
-    
 
     def compute_recipe_nutrition_totals(
         self,
@@ -347,8 +345,6 @@ class TransformService:
 
         return rhi
 
-    
-
     def ensure_pca_loaded(self):
         if TransformService._pca_data_cache is None:
             with TransformService._pca_lock:
@@ -359,10 +355,6 @@ class TransformService:
     def load_pca_data(self):
         """Load PCA data from Snowflake or CSV as fallback"""
         try:
-            print(
-                " Chargement des données PCA depuis CSV (ingredients_with_clusters.csv)..."
-            )
-
             # Charger le fichier CSV
             # csv_path = "ingredients_with_clusters.csv"
             # df_csv = pd.read_csv(csv_path)
@@ -383,6 +375,7 @@ class TransformService:
                 Cluster_macro,
                 Cluster_micro
             FROM NUTRIRAG_PROJECT.ENRICHED.INGREDIENTS
+            LIMIT 100;
             """
             result_cluster = self.session.sql(query)
             df = pd.DataFrame(parse_query_result(result_cluster))
@@ -391,15 +384,26 @@ class TransformService:
                 df[col] = df[col].apply(float)
 
             # Adapter les noms de colonnes pour correspondre au format attendu
-            self.pca_data = df.rename(columns={
-                'Energy_kcal': 'ENERGY_KCAL',
-                'Protein_g': 'PROTEIN_G',
-                'Saturated_fats_g': 'SATURATED_FATS_G', 
-                'Fat_g': 'FAT_G',
-                'Carb_g': 'CARB_G',
-                'Sodium_mg': 'SODIUM_MG',
-                'Sugar_g': 'SUGAR_G'
-            })
+            self.pca_data = df.rename(
+                columns={
+                    "NDB_No": "NDB_No",
+                    "DESCRIP": "Descrip",
+                    "Energy_kcal": "ENERGY_KCAL",
+                    "Protein_g": "PROTEIN_G",
+                    "Saturated_fats_g": "SATURATED_FATS_G",
+                    "Fat_g": "FAT_G",
+                    "Carb_g": "CARB_G",
+                    "Sodium_mg": "SODIUM_MG",
+                    "Sugar_g": "SUGAR_G",
+                    "PCA_MACRO_1": "PCA_macro_1",
+                    "PCA_MACRO_2": "PCA_macro_2",
+                    "PCA_MACRO_3": "PCA_macro_3",
+                    "PCA_MICRO_1": "PCA_micro_1",
+                    "PCA_MICRO_2": "PCA_micro_2",
+                    "Cluster_macro": "Cluster_macro",
+                    "Cluster_micro": "Cluster_micro",
+                }
+            )
 
             # Ajouter des colonnes de contraintes par défaut (pas disponibles dans le CSV)
             self.pca_data["is_lactose"] = 0
@@ -464,12 +468,10 @@ class TransformService:
                 ):
                     self.pca_data.at[idx, "is_vegetable"] = 1
 
-            print(
-                f"[1.4-_load_pca_data] ✅ Données CSV chargées: {len(self.pca_data)} ingrédients"
-            )
+            logging.info("Success: PCA ingredients coordinates successfully loaded.")
 
         except Exception as e:
-            print(f"[1.5-_load_pca_data] ❌ Erreur chargement CSV: {e}")
+            logging.error(f"Failure: PCA ingredients coordinates loading error. Error: {str(e)}. Traceback: {traceback.format_exc()}")
             self.pca_data = None
 
     def get_neighbors_pca(
@@ -494,7 +496,7 @@ class TransformService:
             Dict with the best substitutes 
         """
         if self.pca_data is None:
-            print("❌ PCA Data not available")
+            logging.warning("Failure: PCA ingredients coordinates missing.")
             return None
             
         # Clean ingredient name
@@ -508,12 +510,12 @@ class TransformService:
         ]
 
         if matching_rows.empty:
-            print(f"⚠️ Ingredient '{ingredient_name}' not found in PCA data")
+            logging.warning(f"Failure:  Ingredient '{ingredient_name}' not found in PCA data")
             return None
             
         # Take the first match
         row = matching_rows.iloc[0]
-        print(f"🔍 Ingredient found: {ingredient_name} → {row['Descrip']}")
+        logging.info(f"Success: Ingredient found: {ingredient_name} → {row['Descrip']}")
         
         # Copy data for filtering based on constraints
         df_filtered = self.pca_data.copy()
@@ -545,7 +547,6 @@ class TransformService:
                                 == ingredient_clean
                             )
                         ]
-                        print(f"🔧 Constraint applied: {constraint_name}")
         
         # PCA columns
         macro_cols = ['PCA_macro_1', 'PCA_macro_2', 'PCA_macro_3']
@@ -556,7 +557,7 @@ class TransformService:
         available_micro_cols = [col for col in micro_cols if col in df_filtered.columns]
         
         if not available_macro_cols and not available_micro_cols:
-            print("❌ No PCA columns available for distance calculation")
+            logging.warning(f"Failure:  No pca coordinates available in pca dataframe.")
             return None
 
         macro_vec = (
@@ -577,7 +578,7 @@ class TransformService:
         df_filtered = df_filtered[df_filtered['Descrip'] != row['Descrip']]
         
         if df_filtered.empty:
-            print("⚠️ No substitute found after applying constraints")
+            logging.warning("Failure: No substitute found after applying constraints")
             return None
         
         # Calculate global distances (macro + micro combination)
@@ -649,16 +650,31 @@ class TransformService:
 
         return result
     
-    def get_health_score(self, ingredient_name: str) -> float:
+    def get_health_score(self, new_ingredients: List[str], recipe_id : int, serving_size : float, servings :float) -> NutritionDelta:
         """
-        TODO
+        Calculates health score for a recipe based on give ingredients
         """
-        return 1
+        new_recipe_nutrition = self.compute_recipe_nutrition_totals(
+                recipe_id=recipe_id,
+                ingredients=new_ingredients,
+                serving_size=serving_size,
+                servings=servings
+            )
+        denom = (serving_size or 0) * (servings or 0)
+        if denom > 0:
+            scaled_nutrition = self.scale_nutrition(
+            new_recipe_nutrition,
+            factor=100.0 / denom
+            )
+        else :
+            scaled_nutrition = new_recipe_nutrition ## fallback servings null
+        rhi_score = self.compute_rhi(scaled_nutrition)
+        new_recipe_nutrition.health_score = rhi_score
+        return new_recipe_nutrition
     
 
-    def judge_substitute(self, candidats):
+    def judge_substitute(self, candidats, recipe_ingredients: List[str], recipe_id: int, serving_size: float, servings: float) -> Tuple[str,NutritionDelta]:
         """
-        TODO
         Final ingredient choice between list of candidats
 
         Args:
@@ -668,21 +684,24 @@ class TransformService:
             ingredient_id
         """
         best_ingr = None
+        best_nutrition = NutritionDelta()
 
         if not candidats:
-            print("Pas de candidats pour le susbstitut")
+            logging.warning("Failure: No candidate found.")
             return None
         for candidat in candidats:
             if best_ingr is None:
                 best_ingr = candidat
             else:
-                if self.get_health_score(candidat) > self.get_health_score(best_ingr): # CHANGER AVEC LE VRAI NOM DE FCT
+                candidat_nutrition = self.get_health_score(recipe_ingredients + [candidat], recipe_id, serving_size, servings)
+                best_current_score = self.get_health_score(recipe_ingredients + [best_ingr], recipe_id, serving_size, servings)
+                if candidat_nutrition.health_score > best_current_score.health_score:
                     best_ingr = candidat
-                    
-        return best_ingr
+                    best_nutrition = candidat_nutrition
+        return best_ingr, best_nutrition
 
     
-    def substitute_ingr(self, ingredient: str, contraintes: TransformConstraints) -> Tuple[str, bool]:
+    def substitute_ingr(self, ingredient: str, contraintes: TransformConstraints, recipe_ingredients: List[str], recipe_id: int, serving_size: float, servings: float) -> Tuple[str, bool, NutritionDelta]:
         """
         Finds a substitute for the given ingredient using PCA in priority
         
@@ -693,21 +712,17 @@ class TransformService:
         Returns:
             Tuple (substituted_ingredient, substitution_performed)
         """
-        # Try with PCA first
-        pca_result = self.get_neighbors_pca(ingredient, contraintes, k=3)
+        candidats = self.get_neighbors_pca(ingredient, contraintes)
+        substitute , nutrition = self.judge_substitute(candidats, recipe_ingredients, recipe_id, serving_size, servings)
 
-        if pca_result and pca_result["best_substitutes"]:
-            # Take the best PCA substitute
-            best_substitute = pca_result["best_substitutes"][0]
-            substitute_name = best_substitute["name"]
+        if substitute:
+            substitute_name = substitute["name"]
+            
+            logging.info(f"Success: Found substitute for {ingredient} → {substitute_name} (PCA score: {substitute['global_score']:.3f})")
+            return substitute_name, True, nutrition
+        
+        return ingredient, False, NutritionDelta()
 
-            print(
-                f"🎯 {ingredient} → {substitute_name} (PCA score: {best_substitute['global_score']:.3f})"
-            )
-            return substitute_name, True
-
-        return ingredient, False
-    
     def adapt_recipe_with_llm(self, recipe: Recipe, substitutions: Dict) -> str:
         """
         Adapt the recipe steps with substitutions via LLM
@@ -779,7 +794,7 @@ class TransformService:
             return new_steps, notes
 
         except Exception as e:
-            print(f"⚠️ LLM error: {e}")
+            logging.error(f"Failure:  Error found with recipe adaptation steps with substitution transformation made by LLM. Error: {str(e)}. Traceback: {traceback.format_exc()}")
             # Fallback: simple manual adaptation
             adapted_steps = recipe.steps
             adapted_steps = [
@@ -789,9 +804,87 @@ class TransformService:
             ]
             return adapted_steps, []
 
-    async def transform(
+    def adapt_recipe_delete(self, recipe: Recipe, ingredients_to_delete: List[str]) -> Tuple[List[str], List[str]]:
+        """
+        Adapt the recipe steps by deleting ingredients via LLM.
+        Returns: (new_steps, notes)
+        """
+
+        base_prompt = f"""You are an expert chef specializing in recipe adaptation for ingredient deletion.
+        ORIGINAL RECIPE:
+        Name: {recipe.name}
+        Ingredients: {recipe.ingredients}
+        Steps: {recipe.steps}
+
+        INGREDIENTS TO REMOVE:
+        """
+
+        for ing in ingredients_to_delete:
+            base_prompt += f"- Remove '{ing}'\n"
+
+        base_prompt += """
+        YOUR TASK:
+        Adapt the recipe steps to REMOVE these ingredients while maintaining the dish's quality and integrity.
+
+        ADAPTATION GUIDELINES:
+        1. Modify ONLY the preparation steps that are affected by the deletions
+        2. Remove all mentions of the deleted ingredients from the steps
+        2. Preserve the original step numbering and structure
+        5. Note any texture or consistency changes that may occur
+        6. Suggest technique modifications if needed (e.g., mixing methods, prep techniques)
+        7. Keep instructions clear, concise, and actionable
+        8. Maintain the same cooking skill level as the original recipe
+
+        IMPORTANT CONSIDERATIONS:
+        - If multiple steps use the same deleted ingredient, ensure consistency across all adaptations
+        - Do not add new steps; only modify or delete existing ones.
+        - Do not change unaffected steps
+        - Do NOT add new ingredients no matter what. Even if the recipe does not seem coherent to you.
+
+        OUTPUT FORMAT:
+        Provide only the adapted recipe steps in numbered format.
+
+        ADAPTED RECIPE STEPS:"""
+
+        try:
+            prompt_escaped = base_prompt.replace("'", "''")
+
+            llm_query = f"""
+                SELECT SNOWFLAKE.CORTEX.COMPLETE(
+                    'mixtral-8x7b',
+                   '{prompt_escaped}'
+                ) AS adapted_steps
+            """
+
+            llm_response = self.session.sql(llm_query)
+            llm_response = parse_query_result(llm_response)
+            parsed_steps = llm_response[0]["ADAPTED_STEPS"].strip().split("\n")
+
+            new_steps: List[str] = []
+            notes: List[str] = []
+
+            for step in parsed_steps:
+                if step:
+                    if step[0].isdigit():
+                        new_steps.append(step)
+                    elif step.lower().startswith("note"):
+                        # handles "Note:" or "note:"
+                        notes.append(step.split(":", 1)[-1].strip())
+
+            return new_steps, notes
+
+        except Exception as e:
+            logging.error(f"Failure:  Error found with recipe adaptation steps for deletion transformation made by LLM. Error: {str(e)}. Traceback: {traceback.format_exc()}")
+
+            # Fallback: naive removal of ingredient words in steps
+            adapted_steps = list(recipe.steps)
+            for ing in ingredients_to_delete:
+                adapted_steps = [step.replace(ing, "").strip() for step in adapted_steps]
+
+            return adapted_steps, []
+
+    def transform(
             self,
-            request: TransformRequest,
             recipe: Recipe,
             ingredients_to_remove: List[str],
             constraints: TransformConstraints)-> TransformResponse:
@@ -799,83 +892,85 @@ class TransformService:
         Transform a recipe based on constraints and ingredients to remove, full pipeline
         """
         success = True
-        self.ensure_pca_loaded()
         
         try:
             # Step 1: Find ingredient to 'transform' depending on constraints if not received
-            transformation_type = request.constraints.transformation
-            if request.ingredients_to_remove is not None:
-                ingredients_to_substitute = request.ingredients_to_remove
+            transformation_type = constraints.transformation
+            if ingredients_to_remove is not None:
+                ingredients_to_transform = ingredients_to_remove
             else:
-                ingredients_to_substitute = self._extract_ingredients_from_text(recipe.ingredients)
+                ingredients_to_transform = self._extract_ingredients_from_text(recipe.ingredients)
                 # TODO : code à rajouter 
 
-            print("Step 1 completed")
+            logging.info("Success: Step 1 finished (Ingredients to remove has been found).")
 
             transformations = {}
             transformation_count = 0
-            new_ingredients = recipe.ingredients # default value
-            ## Step 2 based on transformation type
-            if transformation_type == TransformationType.SUBSTITUTION:
-                ## Step 2.1 Get new ingredients to substitute
-                ingredients_to_substitute_matched = [
-                    self.ingredients_cache[ing]["name"] 
-                    for ing in ingredients_to_substitute]
-                
-                for original_ing, matched_name in zip(ingredients_to_substitute, ingredients_to_substitute_matched):
-                    substitute, was_substituted = self.substitute_ingr(matched_name, constraints)
-                    if was_substituted:
-                        transformations[original_ing] = substitute
-                        transformation_count += 1
-                new_ingredients = [transformations.get(ingredient, ingredient) for ingredient in recipe.ingredients]
-            elif transformation_type == TransformationType.ADD:
-                # TODO
-                pass
-            elif transformation_type == TransformationType.DELETE:
-                # TODO
-                pass
-            print("Step 2 completed")
-
-            # Step 3 compute health score for new recipe
-            new_recipe_nutrition = self.compute_recipe_nutrition_totals(
-                recipe_id=recipe.id,
-                ingredients=new_ingredients,
-                serving_size=recipe.serving_size,
-                servings=recipe.servings
-            )
-            denom = (recipe.serving_size or 0) * (recipe.servings or 0)
-            if denom > 0:
-                scaled_nutrition = self.scale_nutrition(
-                new_recipe_nutrition,
-                factor=100.0 / denom
-                )
-            else :
-                scaled_nutrition = new_recipe_nutrition ## fallback servings null
-            rhi_score = self.compute_rhi(scaled_nutrition)
-            new_recipe_nutrition.health_score = rhi_score
-
-            print("Step 3 completed")
+            new_recipe_score = 0.0
+            base_ingredients = [ing for ing in recipe.ingredients if ing not in ingredients_to_transform]
 
             new_recipe = Recipe(
                 id=recipe.id,
                 name=recipe.name,
                 serving_size=recipe.serving_size,
                 servings=recipe.servings,
-                health_score=rhi_score,
-                ingredients=new_ingredients,
-                quantity_ingredients=new_quantity, # TODO fetch new quantity for recipe
+                health_score=new_recipe_score,
+                ingredients=base_ingredients,
+                quantity_ingredients=recipe.quantity_ingredients,
                 minutes=recipe.minutes,
                 steps=recipe.steps,
             )
-            # Repeat step 3-5
-            # if original_nutrition.score>=new_nutrition.score:
+            new_ingredients = recipe.ingredients # default value
+            new_recipe_nutrition = NutritionDelta()
+            # Pipeline diversion based on transformation type
+            if transformation_type == TransformationType.SUBSTITUTION:
+                # Step 2 : Find substitutes for ingredients to transform, function returns new recipe health score as well.
+                if self.pca_data is None:
+                    self.load_pca_data()
+                ingredients_to_substitute_matched = [
+                    self.ingredients_cache[ing]["name"] 
+                    for ing in ingredients_to_transform]
+                
+                for original_ing, matched_name in zip(ingredients_to_transform, ingredients_to_substitute_matched):
+                    substitute, was_substituted , new_recipe_nutrition = self.substitute_ingr(matched_name, constraints, base_ingredients, recipe.id, recipe.serving_size, recipe.servings)
+                    if was_substituted:
+                        transformations[original_ing] = substitute
+                        transformation_count += 1
+                new_ingredients = [transformations.get(ingredient, ingredient) for ingredient in recipe.ingredients]
+                new_recipe_score = new_recipe_nutrition.health_score
+                logging.info("Success: Step 2 finished for Substitution (Subtitute ingredients found for eache ingredients to remove).")
+                # Step 3 : Adapt recipe step with LLM
+                if transformations:
+                    new_recipe.steps, notes = self.adapt_recipe_with_llm(new_recipe, transformations)
+                logging.info("Success: Step 3 finished for Substitution (LLM's adapted new_recipe steps successfully).")
 
-            # Step 6: Adapt recipe step with LLM
-            if transformations:
-                new_recipe.steps, notes = self.adapt_recipe_with_llm(new_recipe, transformations)
-            print("Step 6 completed")
+            elif transformation_type == TransformationType.ADD:
+                # TODO
+                pass
+            elif transformation_type == TransformationType.DELETE and ingredients_to_transform:
+                # Step 2 : Delete ingredients from recipe, calculate health score after deletion
+                new_recipe_nutrition = self.compute_recipe_nutrition_totals(
+                recipe_id=recipe.id,
+                ingredients=base_ingredients,
+                serving_size=recipe.serving_size,
+                servings=recipe.servings
+                )
+                denom = (recipe.serving_size or 0) * (recipe.servings or 0)
+                if denom > 0:
+                    scaled_nutrition = self.scale_nutrition(
+                    new_recipe_nutrition,
+                    factor=100.0 / denom
+                    )
+                else :
+                    scaled_nutrition = new_recipe_nutrition ## fallback servings null
+                new_recipe_score = self.compute_rhi(scaled_nutrition)
+                new_recipe_nutrition.health_score = new_recipe_score
+                logging.info("Success: Step 2 finished for Deletion (Removed successfully unwanted ingredients and computed new health score).")
+                # Step 3 : Adapt recipe step with LLM
+                new_recipe.steps, notes= self.adapt_recipe_delete(recipe, ingredients_to_transform)
+                logging.info("Success: Step 3 finished for Deletion (LLM's adapted new_recipe steps successfully).")
 
-            # Step 7 : Build output
+            # Step 4 : Build output
             original_nutrition = self.compute_recipe_nutrition_totals(
                 recipe_id=recipe.id,
                 ingredients=recipe.ingredients,
@@ -893,13 +988,11 @@ class TransformService:
                 success=success,
                 message="\n".join(notes),
             )
-            print("Step 7 completed")
+            logging.info("Success: Step 4 finished (TransformerResponse successfully built, returning it...).")
             return response
 
         except Exception as e:
-            print(f"Error in transformation process: {e}")
-            print("\nTraceback complet:")
-            traceback.print_exc()
+            logging.error(f"Failure: Transform function failed. Error: {str(e)}. Traceback: {traceback.format_exc()}")
             success = False
             response = TransformResponse(
                 recipe=recipe,
@@ -911,5 +1004,5 @@ class TransformService:
                 success=success,
                 message=None,
             )
-
+        logging.error("Returning default response with input recipe.")
         return response
