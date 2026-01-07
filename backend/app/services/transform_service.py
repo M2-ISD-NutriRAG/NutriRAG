@@ -4,8 +4,6 @@ import numpy as np
 import threading
 from typing import Dict, List, Any, Optional, Tuple
 
-from backend.app.models.recipe import NutritionDetailed
-from backend.app.services.recipe_index_score import compute_nutrition_for_ingredient
 from shared.snowflake.client import SnowflakeClient
 
 from app.models.transform import (
@@ -154,7 +152,7 @@ class TransformService:
         ingredients: List[str],
         serving_size: float,
         servings: float,
-    ) -> NutritionDetailed:
+    ) -> NutritionDelta:
         """
         Compute recipe nutrition information for all ingredients
 
@@ -164,7 +162,7 @@ class TransformService:
         nutrition_table : recipe ingredients nutrition dict
         Returns
         -------
-        NutritionDetailed
+        NutritionDelta
             Total nutrients for the  recipe
         """
         total_weight = (serving_size or 0.0) * (servings or 0.0)
@@ -185,12 +183,12 @@ class TransformService:
         else:
             fill_qty = 0.0
         
-        recipe_nutrition = NutritionDetailed(
+        recipe_nutrition = NutritionDelta(
             calories=0.0,
             protein_g=0.0,
             fat_g=0.0,
-            saturated_fat_g=0.0,
-            carbs_g=0.0,
+            saturated_fats_g=0.0,
+            carb_g=0.0,
             fiber_g=0.0,
             sugar_g=0.0,
             sodium_mg=0.0,
@@ -209,8 +207,8 @@ class TransformService:
             recipe_nutrition.calories += nutrition.calories * factor
             recipe_nutrition.protein_g += nutrition.protein_g * factor
             recipe_nutrition.fat_g += nutrition.fat_g 
-            recipe_nutrition.saturated_fat_g += nutrition.saturated_fat_g * factor
-            recipe_nutrition.carbs_g += nutrition.carbs_g * factor
+            recipe_nutrition.saturated_fats_g += nutrition.saturated_fats_g * factor
+            recipe_nutrition.carb_g += nutrition.carb_g * factor
             recipe_nutrition.fiber_g += nutrition.fiber_g * factor
             recipe_nutrition.sugar_g += nutrition.sugar_g * factor
             recipe_nutrition.sodium_mg += nutrition.sodium_mg * factor
@@ -223,17 +221,17 @@ class TransformService:
 
         return recipe_nutrition
     
-    def scale_nutrition(self, n: NutritionDetailed, factor: float) -> NutritionDetailed:
+    def scale_nutrition(self, n: NutritionDelta, factor: float) -> NutritionDelta:
         """
         Scales nutrition value for 100g = a portion of the recipe, to represent the score per portion
         Separate from total nutrition calculation to send totals for full recipe if asked 
         """
-        return NutritionDetailed(
+        return NutritionDelta(
         calories=n.calories * factor,
         protein_g=n.protein_g * factor,
         fat_g=n.fat_g * factor,
-        saturated_fat_g=n.saturated_fat_g * factor,
-        carbs_g=n.carbs_g * factor,
+        saturated_fats_g=n.saturated_fats_g * factor,
+        carb_g=n.carb_g * factor,
         fiber_g=n.fiber_g * factor,
         sugar_g=n.sugar_g * factor,
         sodium_mg=n.sodium_mg * factor,
@@ -243,7 +241,7 @@ class TransformService:
         potassium_mg=n.potassium_mg * factor,
         vitamin_c_mg=n.vitamin_c_mg * factor,
     )
-    
+
     def compute_benefit_score(self, protein_g: float, fiber_g: float) -> float:
         """
         Compute the benefit score of a recipe based on total protein and fiber.
@@ -262,7 +260,7 @@ class TransformService:
     def compute_risk_score(
         self,
         sugar_g: float,
-        saturated_fat_g: float,
+        saturated_fats_g: float,
         sodium_mg: float,
         alpha_sugar: float = 1.2,
         alpha_satfat: float = 1.0,
@@ -285,7 +283,7 @@ class TransformService:
                 return -alpha * ((x / L) - 1.0)
 
         h_sugar   = subscore(sugar_g, sugar_limit, alpha_sugar)
-        h_satfat  = subscore(saturated_fat_g, satfat_limit, alpha_satfat)
+        h_satfat  = subscore(saturated_fats_g, satfat_limit, alpha_satfat)
         h_sodium  = subscore(sodium_mg, sodium_limit, alpha_sodium)
 
         risk_control_score = (h_sugar + h_satfat + h_sodium) / 3.0
@@ -319,7 +317,7 @@ class TransformService:
 
         return micronutrient_score
 
-    def compute_rhi(self, nutrition: NutritionDetailed) -> float:
+    def compute_rhi(self, nutrition: NutritionDelta) -> float:
         """
         Compute the Recipe Health Index (RHI) on [0, 100] for a whole recipe.
         Uses:
@@ -333,7 +331,7 @@ class TransformService:
         benefit = self.compute_benefit_score(protein_g=nutrition.protein_g, fiber_g=nutrition.fiber_g)
         risk = self.compute_risk_score(
             sugar_g=nutrition.sugar_g,
-            saturated_fat_g=nutrition.saturated_fat_g,
+            saturated_fats_g=nutrition.saturated_fats_g,
             sodium_mg=nutrition.sodium_mg,
         )
         micro = self.compute_micronutrient_density_score(
@@ -714,7 +712,8 @@ class TransformService:
         self.ensure_pca_loaded()
         
         try:
-            transformation_type = request.constraints.transformation            # Step 1: Find ingredient to 'transform' depending on constrainsts if not received
+            # Step 1: Find ingredient to 'transform' depending on constrainsts if not received
+            transformation_type = request.constraints.transformation
             if request.ingredients_to_remove is not None:
                 ingredients_to_substitute = request.ingredients_to_remove
             else:
@@ -849,7 +848,7 @@ class TransformService:
         #     nutrition_before={
         #         "calories": 720,
         #         "protein_g": 22,
-        #         "carbs_g": 74,
+        #         "carb_g": 74,
         #         "fat_g": 38,
         #         "fiber_g": 4,
         #         "sodium_mg": 890,
@@ -859,7 +858,7 @@ class TransformService:
         #     nutrition_after={
         #         "calories": 480,
         #         "protein_g": 42,
-        #         "carbs_g": 55,
+        #         "carb_g": 55,
         #         "fat_g": 14,
         #         "fiber_g": 9,
         #         "sodium_mg": 420,
@@ -870,7 +869,7 @@ class TransformService:
         #         calories=-240,
         #         protein_g=+20,
         #         fat_g=-24,
-        #         carbs_g=-19,
+        #         carb_g=-19,
         #         fiber_g=+5,
         #         sodium_mg=-470,
         #         score_health=+36
