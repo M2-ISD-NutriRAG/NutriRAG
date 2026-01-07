@@ -120,7 +120,7 @@ class NutritionDelta:
         self.fiber_g = fiber_g
         self.sodium_mg = sodium_mg
         self.sugar_g = sugar_g
-        self.calcium_mg
+        self.calcium_mg = calcium_mg
         self.iron_mg = iron_mg
         self.magnesium_mg = magnesium_mg
         self.potassium_mg = potassium_mg
