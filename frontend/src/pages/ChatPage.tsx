@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Card } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { chatService, type ChatMessage } from '@/services/chat.service'
+import { chatService, type ChatMessage, type ThinkingStatus } from '@/services/chat.service'
 import { cn } from '@/lib/utils'
 
 import { useParams, useNavigate } from 'react-router-dom'
@@ -29,6 +29,8 @@ export function ChatPage() {
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false) // For switching chats, initial load, etc.
   const [isThinking, setIsThinking] = useState(false) // For AI response
+  const [streamingContent, setStreamingContent] = useState('') // For streaming message content
+  const [thinkingStatus, setThinkingStatus] = useState<ThinkingStatus | null>(null) // For thinking display
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const { id } = useParams();
@@ -43,7 +45,7 @@ export function ChatPage() {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [messages, isThinking])
+  }, [messages, isThinking, streamingContent, thinkingStatus])
 
   // EFFECT: Load conversation history when 'id' changes
   useEffect(() => {
@@ -90,27 +92,64 @@ const handleSend = async (directMessage?: string) => {
   setMessages((prev) => [...prev, userMessage]);
   setInput(''); // Clear input regardless of how it was sent
   setIsThinking(true);
+  setStreamingContent(''); // Reset streaming content
+  setThinkingStatus(null); // Reset thinking status
 
   try {
-    const response = await chatService.sendMessage({
-      message: userMessage.content,
-      conversation_history: messages,
-      conversation_id: id || undefined,
-    });
+    await chatService.sendMessageStream(
+      {
+        message: userMessage.content,
+        conversation_history: messages,
+        conversation_id: id || undefined,
+      },
+      {
+        onConversationId: (conversationId) => {
+          if (!id) {
+            loadedIdRef.current = conversationId;
+            navigate(`/chat/${conversationId}`, { replace: true });
+          }
+        },
+        onThinking: (status) => {
+          setThinkingStatus(status);
+        },
+        onTextDelta: (text) => {
+          setStreamingContent((prev) => prev + text);
+        },
+        onCompleteResponse: (text) => {
+          // Fallback for complete response if deltas weren't received
+          if (!streamingContent) {
+            setStreamingContent(text);
+          }
+        },
+        onDone: () => {
+          // Add final message to messages array
+          const assistantMessage: ChatMessage = {
+            id: crypto.randomUUID(),
+            role: 'assistant',
+            content: streamingContent || 'No response received',
+            timestamp: new Date().toISOString(),
+          };
 
-    const assistantMessage: ChatMessage = {
-      id: crypto.randomUUID(),
-      role: 'assistant',
-      content: response.message,
-      timestamp: new Date().toISOString(),
-    };
-
-    setMessages((prev) => [...prev, assistantMessage]);
-
-    if (!id && response.conversation_id) {
-      loadedIdRef.current = response.conversation_id; // Tell useEffect we've loaded this ID
-      navigate(`/chat/${response.conversation_id}`, { replace: true });
-    }
+          setMessages((prev) => [...prev, assistantMessage]);
+          setIsThinking(false);
+          setStreamingContent('');
+          setThinkingStatus(null);
+        },
+        onError: (error) => {
+          console.error('Streaming error:', error);
+          const errorMessage: ChatMessage = {
+            id: crypto.randomUUID(),
+            role: 'assistant',
+            content: `Sorry, I encountered an error: ${error}`,
+            timestamp: new Date().toISOString(),
+          };
+          setMessages((prev) => [...prev, errorMessage]);
+          setIsThinking(false);
+          setStreamingContent('');
+          setThinkingStatus(null);
+        },
+      }
+    );
   } catch (error) {
     console.error('Error sending message:', error);
     const errorMessage: ChatMessage = {
@@ -120,8 +159,9 @@ const handleSend = async (directMessage?: string) => {
       timestamp: new Date().toISOString(),
     };
     setMessages((prev) => [...prev, errorMessage]);
-  } finally {
     setIsThinking(false);
+    setStreamingContent('');
+    setThinkingStatus(null);
   }
 };
 
@@ -152,7 +192,7 @@ return (
       {/* Messages Area */}
       <ScrollArea ref={scrollRef} className="flex-1 p-4 relative">
         <div className="mx-auto max-w-3xl h-full">
-          
+
           {/* EMPTY STATE HERO SECTION */}
           {messages.length === 0 && !isThinking && (
             <div className="flex h-[70vh] flex-col items-center justify-center text-center animate-in fade-in zoom-in duration-500">
@@ -183,7 +223,7 @@ return (
                     <Sparkles className="h-4 w-4 text-amber-400" />
                   </div>
                 )}
-                
+
                 <div
                   className={cn(
                     'max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm border',
@@ -197,18 +237,47 @@ return (
               </div>
             ))}
 
-            {/* THINKING INDICATOR */}
+            {/* THINKING STATUS & STREAMING CONTENT */}
             {isThinking && (
-               <div className="flex gap-3 justify-start animate-in fade-in duration-300">
-                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                   <Sparkles className="h-4 w-4" />
-                 </div>
-                 <div className="rounded-2xl bg-muted/40 border px-5 py-4 flex gap-1.5 items-center">
-                   <span className="w-1.5 h-1.5 bg-foreground/30 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
-                   <span className="w-1.5 h-1.5 bg-foreground/30 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
-                   <span className="w-1.5 h-1.5 bg-foreground/30 rounded-full animate-bounce"></span>
-                 </div>
-               </div>
+              <div className="flex gap-3 justify-start animate-in fade-in duration-300">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-900 text-white shadow-md">
+                  <Sparkles className="h-4 w-4 text-amber-400" />
+                </div>
+
+                <div className="max-w-[85%] space-y-3">
+                  {/* Thinking Status Display */}
+                  {thinkingStatus && (
+                    <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm">
+                      <div className="flex items-center gap-2 text-amber-700">
+                        <div className="flex gap-1">
+                          <span className="w-1 h-1 bg-amber-400 rounded-full animate-pulse"></span>
+                          <span className="w-1 h-1 bg-amber-400 rounded-full animate-pulse [animation-delay:0.2s]"></span>
+                          <span className="w-1 h-1 bg-amber-400 rounded-full animate-pulse [animation-delay:0.4s]"></span>
+                        </div>
+                        <span className="font-medium capitalize">{thinkingStatus.status.replace(/_/g, ' ')}</span>
+                      </div>
+                      <p className="text-amber-600 mt-1">{thinkingStatus.message}</p>
+                    </div>
+                  )}
+
+                  {/* Streaming Content Display */}
+                  {streamingContent && (
+                    <div className="rounded-2xl bg-card text-card-foreground border-border border px-4 py-3 text-sm leading-relaxed shadow-sm">
+                      <p className="whitespace-pre-wrap">{streamingContent}</p>
+                      <span className="inline-block w-2 h-5 bg-primary animate-pulse ml-1"></span>
+                    </div>
+                  )}
+
+                  {/* Default thinking indicator when no specific status */}
+                  {!thinkingStatus && !streamingContent && (
+                    <div className="rounded-2xl bg-muted/40 border px-5 py-4 flex gap-1.5 items-center">
+                      <span className="w-1.5 h-1.5 bg-foreground/30 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
+                      <span className="w-1.5 h-1.5 bg-foreground/30 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
+                      <span className="w-1.5 h-1.5 bg-foreground/30 rounded-full animate-bounce"></span>
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
           </div>
         </div>

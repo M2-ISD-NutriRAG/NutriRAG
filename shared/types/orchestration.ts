@@ -68,3 +68,38 @@ export interface ChatResponse {
   conversation_id?: string
 }
 
+// Streaming types
+export interface StreamingChatMessage extends ChatMessage {
+  isStreaming?: boolean
+  thinkingStatus?: ThinkingStatus
+}
+
+export interface ThinkingStatus {
+  status: string
+  message: string
+}
+
+export type StreamChunkType =
+  | 'conversation_id'
+  | 'thinking'
+  | 'text_delta'
+  | 'complete_response'
+  | 'done'
+  | 'error'
+
+export interface StreamChunk {
+  type: StreamChunkType
+  conversation_id?: string
+  status?: string
+  message?: string
+  text?: string
+}
+
+export interface StreamingCallbacks {
+  onConversationId?: (conversationId: string) => void
+  onThinking?: (status: ThinkingStatus) => void
+  onTextDelta?: (text: string) => void
+  onCompleteResponse?: (text: string) => void
+  onDone?: () => void
+  onError?: (error: string) => void
+}
