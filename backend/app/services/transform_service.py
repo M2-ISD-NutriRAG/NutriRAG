@@ -344,8 +344,6 @@ class TransformService:
 
         return rhi
 
-    
-
     def ensure_pca_loaded(self):
         if TransformService._pca_data_cache is None:
             with TransformService._pca_lock:
