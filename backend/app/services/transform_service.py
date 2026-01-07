@@ -699,19 +699,15 @@ class TransformService:
         Returns:
             Tuple (substituted_ingredient, substitution_performed)
         """
-        # Try with PCA first
-        pca_result = self.get_neighbors_pca(ingredient, contraintes, k=3)
+        candidats = self.get_neighbors_pca(ingredient, contraintes)
+        substitute = self.judge_substitute(candidats)
 
-        if pca_result and pca_result["best_substitutes"]:
-            # Take the best PCA substitute
-            best_substitute = pca_result["best_substitutes"][0]
-            substitute_name = best_substitute["name"]
-
-            print(
-                f"🎯 {ingredient} → {substitute_name} (PCA score: {best_substitute['global_score']:.3f})"
-            )
+        if substitute:
+            substitute_name = substitute["name"]
+            
+            print(f"🎯 {ingredient} → {substitute_name} (PCA score: {substitute['global_score']:.3f})")
             return substitute_name, True
-
+        
         return ingredient, False
     
     def adapt_recipe_with_llm(self, recipe: Recipe, substitutions: Dict) -> str:
