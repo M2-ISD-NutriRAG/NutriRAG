@@ -1,6 +1,6 @@
 from enum import Enum
 from typing import Optional, List
-from pydantic import BaseModel  # type: ignore
+from pydantic import BaseModel, Field  # type: ignore
 
 
 class TransformationType(Enum):
@@ -28,11 +28,11 @@ class TransformConstraints(BaseModel):
 
 # recipe object request
 class Recipe(BaseModel):
-    id: float
+    id: int
     name: str
-    serving_size: float
-    servings: float
-    health_score: float
+    serving_size: float = Field(gt=0)
+    servings: float = Field(gt=0)
+    health_score: Optional[float]
     ingredients: List[str]
     quantity_ingredients: List[str]
     minutes: float
@@ -65,13 +65,14 @@ class NutritionDelta(BaseModel):
     fiber_g: float = 0.0
     sodium_mg: float = 0.0
     sugar_g: float = 0.0
-    score_health: float = 0.0
+    calcium_mg: float = 0.0
+    iron_mg: float = 0.0
+    magnesium_mg: float = 0.0
+    potassium_mg: float = 0.0
+    vitamin_c_mg: float = 0.0
 
-    calcium_mg: float = None
-    iron_mg: float = None
-    magnesium_mg: float = None
-    potassium_mg: float = None
-    vitamin_c_mg: float = None
+    health_score: float = 0.0
+
 
 
 

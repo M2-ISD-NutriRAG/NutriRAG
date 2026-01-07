@@ -155,13 +155,7 @@ class TransformService:
     ) -> NutritionDelta:
         """
         Compute recipe nutrition information for all ingredients
-
-        Parameters
-        ----------
-        ingredients_amounts : recipe ingredients quantity dict
-        nutrition_table : recipe ingredients nutrition dict
-        Returns
-        -------
+        Returns:
         NutritionDelta
             Total nutrients for the  recipe
         """
@@ -179,7 +173,7 @@ class TransformService:
                 known_weight += float(qty)
 
         if unknown_count > 0:
-            fill_qty = max(total_weight - known_weight, 0.0) / unknown_count * 0.5
+            fill_qty = max(total_weight - known_weight, 0.0) / unknown_count * 0.5 # 0.5 to follow group 1 logic appended to db
         else:
             fill_qty = 0.0
         
@@ -197,27 +191,30 @@ class TransformService:
             magnesium_mg=0.0,
             potassium_mg=0.0,
             vitamin_c_mg=0.0,
+            health_score=0.0
         )
         for name, nutrition in ingredients_nutrition.items():
             if nutrition is None:
                 continue
-            quantity = ingredients_quantity.get(name) if not None else fill_qty
+            quantity = ingredients_quantity.get(name)
+            if quantity is None:
+                quantity = fill_qty
             factor = float(quantity) / NUTRIENT_BASIS_GRAMS
 
-            recipe_nutrition.calories += nutrition.calories * factor
-            recipe_nutrition.protein_g += nutrition.protein_g * factor
-            recipe_nutrition.fat_g += nutrition.fat_g 
-            recipe_nutrition.saturated_fats_g += nutrition.saturated_fats_g * factor
-            recipe_nutrition.carb_g += nutrition.carb_g * factor
-            recipe_nutrition.fiber_g += nutrition.fiber_g * factor
-            recipe_nutrition.sugar_g += nutrition.sugar_g * factor
-            recipe_nutrition.sodium_mg += nutrition.sodium_mg * factor
+            recipe_nutrition.calories += nutrition.calories["ENERGY_KCAL"] * factor
+            recipe_nutrition.protein_g += nutrition["PROTEIN_G"] * factor
+            recipe_nutrition.fat_g += nutrition["FAT_G"] * factor
+            recipe_nutrition.saturated_fats_g += nutrition["SATURATED_FATS_G"] * factor
+            recipe_nutrition.carb_g += nutrition["CARB_G"] * factor
+            recipe_nutrition.fiber_g += nutrition["FIBER_G"] * factor
+            recipe_nutrition.sugar_g += nutrition["SUGAR_G"] * factor
+            recipe_nutrition.sodium_mg += nutrition["SODIUM_MG"] * factor
 
-            recipe_nutrition.calcium_mg += nutrition.calcium_mg * factor
-            recipe_nutrition.iron_mg += nutrition.iron_mg * factor
-            recipe_nutrition.magnesium_mg += nutrition.magnesium_mg * factor
-            recipe_nutrition.potassium_mg += nutrition.potassium_mg * factor
-            recipe_nutrition.vitamin_c_mg += nutrition.vitamin_c_mg * factor
+            recipe_nutrition.calcium_mg += nutrition["CALCIUM_MG"] * factor
+            recipe_nutrition.iron_mg += nutrition["IRON_MG"] * factor
+            recipe_nutrition.magnesium_mg += nutrition["MAGNESIUM_MG"] * factor
+            recipe_nutrition.potassium_mg += nutrition["POTASSIUM_MG"] * factor
+            recipe_nutrition.vitamin_c_mg += nutrition["VITAMIN_C_MG"] * factor
 
         return recipe_nutrition
     
@@ -712,7 +709,7 @@ class TransformService:
         self.ensure_pca_loaded()
         
         try:
-            # Step 1: Find ingredient to 'transform' depending on constrainsts if not received
+            # Step 1: Find ingredient to 'transform' depending on constraints if not received
             transformation_type = request.constraints.transformation
             if request.ingredients_to_remove is not None:
                 ingredients_to_substitute = request.ingredients_to_remove
@@ -753,11 +750,16 @@ class TransformService:
                 serving_size=recipe.serving_size,
                 servings=recipe.servings
             )
-            scaled_nutrition = self.scale_nutrition(
+            denom = (recipe.serving_size or 0) * (recipe.servings or 0)
+            if denom > 0:
+                scaled_nutrition = self.scale_nutrition(
                 new_recipe_nutrition,
-                factor=100.0 / (recipe.serving_size * recipe.servings)
-            )
+                factor=100.0 / denom
+                )
+            else :
+                scaled_nutrition = new_recipe_nutrition ## fallback servings null
             rhi_score = self.compute_rhi(scaled_nutrition)
+            new_recipe_nutrition.health_score = rhi_score
 
             print("Step 3 completed")
 
@@ -784,6 +786,7 @@ class TransformService:
                 serving_size=recipe.serving_size,
                 servings=recipe.servings
             )
+            original_nutrition.health_score = recipe.health_score
             response = TransformResponse(
                 recipe=new_recipe,
                 original_name=recipe.name,
