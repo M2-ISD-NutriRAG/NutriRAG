@@ -57,6 +57,7 @@ export interface ChatRequest {
   conversation_history?: ChatMessage[]
   user_profile?: UserProfile
   current_recipe_id?: string
+  conversation_id?: string
 }
 
 export interface ChatResponse {
@@ -64,5 +65,6 @@ export interface ChatResponse {
   intent: string
   data?: any
   suggestions?: string[]
+  conversation_id?: string
 }
 

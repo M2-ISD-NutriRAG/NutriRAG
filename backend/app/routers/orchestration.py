@@ -17,6 +17,8 @@ async def orchestrate(request: OrchestrationRequest):
     # - "Recette végétarienne riche en protéines" → Search agent
     # - "Rends cette recette plus saine" → Transform agent
     # - "Recette low-carb avec poulet, puis version plus protéinée" → Search + Transform
+
+    print(f"Received orchestration request: {request}")
     
     start_time = time()
     

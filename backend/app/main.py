@@ -11,6 +11,9 @@ from shared.snowflake.client import SnowflakeClient
 
 from app.routers import recipes, search, transform, analytics, orchestration
 
+from app.routers import auth
+from app.routers import chat
+
 # Global SnowflakeClient instance to avoid reconnection overhead
 _snowflake_client = None
 
@@ -27,6 +30,9 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"⚠️  Failed to connect to Snowflake: {e}")
         _snowflake_client = None
+
+    app.state.snowflake_client = _snowflake_client
+
     yield
     # Shutdown
     print("👋 Shutting down NutriRAG Backend...")
@@ -65,6 +71,8 @@ app.include_router(
 app.include_router(
     orchestration.router, prefix="/api/orchestrate", tags=["Orchestration - Équipe 5"]
 )
+app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
+app.include_router(chat.router, prefix="/api/chat", tags=["Conversation"])
 
 
 @app.get("/")
