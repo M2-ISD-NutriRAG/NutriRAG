@@ -1,7 +1,7 @@
 import os
 import sys
 import requests
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 from shared.snowflake.client import SnowflakeClient
 
 
