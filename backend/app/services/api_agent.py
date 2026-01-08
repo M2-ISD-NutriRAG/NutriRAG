@@ -1,9 +1,9 @@
 import os
 import sys
 import requests
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from shared.snowflake.client import SnowflakeClient
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+from shared.snowflake.client import SnowflakeClient
 
 
 class CortexAgentClient:
@@ -11,6 +11,12 @@ class CortexAgentClient:
         self.sf = snowflake_client
 
     def call_agent(self, prompt: str):
+        """
+        Call the Cortex Agent with a message.
+
+        Args:
+            prompt: The user's message (may include context)
+        """
         token = self.sf.get_jwt()
         account = self.sf.config["account"]
         db = self.sf.config["database"]
@@ -23,17 +29,25 @@ class CortexAgentClient:
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
             "Accept": "application/json",
-            "X-Snowflake-Authorization-Token-Type": "KEYPAIR_JWT"
+            "X-Snowflake-Authorization-Token-Type": "KEYPAIR_JWT",
         }
 
         body = {
-            "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}],
-            "include_thinking": False,
+            "messages": [
+                {"role": "user", "content": [{"type": "text", "text": prompt}]}
+            ],
+            "include_thinking": True,
             "tool_choice": {"type": "auto"},
         }
 
-        return requests.post(url, headers=headers, json=body, stream=True)
- 
+        return requests.post(
+            url,
+            headers=headers,
+            json=body,
+            stream=True,
+            timeout=(10, 300),  # 10s connection, 300s read timeout
+        )
+
 
 # Example usage:
 if __name__ == "__main__":
@@ -44,5 +58,6 @@ if __name__ == "__main__":
     print("Status:", r.status_code)
     print("---- STREAM START ----")
     for line in r.iter_lines(decode_unicode=True):
-        if line.startswith("data: "):
-            print(line[6:])
+        # if line.startswith("data: "):
+        # print(line[6:])
+        print(line)

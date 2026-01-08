@@ -46,6 +46,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
   timestamp: string
+  thinkingHistory?: ThinkingStatus[]  // Store thinking messages that occurred during response
   metadata?: {
     intent?: string
     data?: any
@@ -68,3 +69,47 @@ export interface ChatResponse {
   conversation_id?: string
 }
 
+// Streaming types
+export interface StreamingChatMessage extends ChatMessage {
+  isStreaming?: boolean
+  thinkingStatus?: ThinkingStatus
+}
+
+export interface ThinkingStatus {
+  status: string
+  message: string
+}
+
+export type StreamChunkType =
+  | 'conversation_id'
+  | 'thinking'
+  | 'text_delta'
+  | 'complete_response'
+  | 'tool_status'
+  | 'tool_use'
+  | 'done'
+  | 'error'
+
+export interface StreamChunk {
+  type: StreamChunkType
+  conversation_id?: string
+  status?: string
+  message?: string
+  text?: string
+  event?: string  // Used to distinguish between 'response.text.delta' and 'response.text'
+  tool_type?: string
+  tool_name?: string
+  tool_input?: Record<string, any>
+  tool_use_id?: string
+}
+
+export interface StreamingCallbacks {
+  onConversationId?: (conversationId: string) => void
+  onThinking?: (status: ThinkingStatus) => void
+  onTextDelta?: (text: string) => void
+  onCompleteResponse?: (text: string) => void
+  onToolStatus?: (status: string, message: string, toolType?: string) => void
+  onToolUse?: (toolName: string, toolInput: Record<string, any>, toolId: string) => void
+  onDone?: () => void
+  onError?: (error: string) => void
+}
