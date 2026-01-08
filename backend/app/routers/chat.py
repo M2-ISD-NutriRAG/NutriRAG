@@ -271,7 +271,7 @@ async def handle_chat_stream(
             response = agent_client.call_agent(message_text)
             current_event = None
 
-            for line in response.iter_lines(decode_unicode=True, chunk_size=1):
+            for line in response.iter_lines(decode_unicode=True):
                 if line.strip() == "":
                     continue
 
