@@ -4,8 +4,8 @@ import json
 import asyncio
 from fastapi import APIRouter, HTTPException, Header, Request, Depends
 from fastapi.responses import StreamingResponse
-from shared.snowflake.client import SnowflakeClient
 from app.services.api_agent import CortexAgentClient
+from app.services.conversation_manager import ConversationManager
 
 # from app.models.auth import StartAuthRequest
 router = APIRouter()
@@ -189,14 +189,85 @@ def handle_chat(
         params=(conv_id, "user", message_text),
     )
 
-    # ... Get AI Response ...
+    # Get conversation context and AI response
+    conv_manager = ConversationManager(db)
+    context = conv_manager.get_conversation_context(conv_id)
 
-    # HERE @Tiphaine
+    # Prepare message with context
+    if context:
+        full_message = context + message_text
+    else:
+        full_message = message_text
 
-    import random
+    try:
+        # Initialize CortexAgentClient and get response
+        agent_client = CortexAgentClient(snowflake_client=db)
+        response = agent_client.call_agent(full_message)
 
-    random_id = random.randint(1000, 9999)
-    ai_response = f"This is a mocked AI response with id {random_id}"
+        # Process the streaming response to get the complete content
+        ai_response_content = ""
+        current_event = None
+
+        for line in response.iter_lines(decode_unicode=True):
+            if line.strip() == "":
+                continue
+
+            if line.startswith("event: response.text.delta"):
+                current_event = "response.text.delta"
+                continue
+            elif line.startswith("event: response.text"):
+                current_event = "response.text"
+                continue
+            elif line.startswith("event: metadata"):
+                current_event = "metadata"
+                continue
+            elif line.startswith("event: done"):
+                break
+            elif line.startswith("data: "):
+                try:
+                    data = json.loads(line[6:])
+
+                    # Handle metadata events
+                    if (
+                        current_event == "metadata"
+                        and "role" in data
+                        and "message_id" in data
+                    ):
+                        thread_id = data.get("thread_id", 0)
+                        message_id = data["message_id"]
+                        role = data["role"]
+                        conv_manager.store_thread_metadata(
+                            conv_id, role, thread_id, message_id
+                        )
+
+                    # Handle text deltas
+                    elif (
+                        current_event == "response.text.delta"
+                        and "text" in data
+                    ):
+                        ai_response_content += data["text"]
+                    # Handle complete text response
+                    elif current_event == "response.text" and "content" in data:
+                        for content_item in data["content"]:
+                            if (
+                                content_item.get("type") == "text"
+                                and "text" in content_item
+                            ):
+                                if (
+                                    not ai_response_content
+                                ):  # Only use if no delta content
+                                    ai_response_content = content_item["text"]
+
+                except json.JSONDecodeError:
+                    continue
+
+        ai_response = (
+            ai_response_content.strip()
+            or "I apologize, but I couldn't generate a response."
+        )
+
+    except Exception as e:
+        ai_response = f"I apologize, but I encountered an error: {str(e)}"
 
     # Add AI response to conversation history
     db.execute(
@@ -264,19 +335,26 @@ async def handle_chat_stream(
             yield f"data: {json.dumps({'type': 'thinking', 'status': 'started', 'message': 'Processing your request...'})}\n\n"
             await asyncio.sleep(0)  # Force immediate yield
 
+            # Get conversation context for the agent
+            conv_manager = ConversationManager(db)
+            context = conv_manager.get_conversation_context(conv_id)
+
+            # Prepare message with context
+            if context:
+                full_message = context + message_text
+            else:
+                full_message = message_text
+
             # Initialize CortexAgentClient
             agent_client = CortexAgentClient(snowflake_client=db)
 
             # Get streaming response from CortexAgent
-            response = agent_client.call_agent(message_text)
+            response = agent_client.call_agent(full_message)
             current_event = None
 
             for line in response.iter_lines(decode_unicode=True):
                 if line.strip() == "":
                     continue
-
-                # Debug: print the raw line to help troubleshoot
-                print(f"Raw line: {repr(line)}")
 
                 # Parse Server-Sent Events format - capture all event types
                 if line.startswith("event: response.status"):
@@ -299,6 +377,9 @@ async def handle_chat_stream(
                     continue
                 elif line.startswith("event: response.text"):
                     current_event = "response.text"
+                    continue
+                elif line.startswith("event: metadata"):
+                    current_event = "metadata"
                     continue
                 elif line.startswith("event: done"):
                     break  # End of stream
@@ -334,6 +415,24 @@ async def handle_chat_stream(
                             and "message" in data
                         ):
                             yield f"data: {json.dumps({'type': 'thinking', 'event': current_event, 'status': data['status'], 'message': data['message']})}\n\n"
+
+                        # Handle metadata events (thread/message IDs)
+                        elif (
+                            current_event == "metadata"
+                            and "role" in data
+                            and "message_id" in data
+                        ):
+                            # Store thread metadata for conversation continuity
+                            # Note: thread_id may be available in some metadata events
+                            thread_id = data.get(
+                                "thread_id", 0
+                            )  # Default to 0 if not provided
+                            message_id = data["message_id"]
+                            role = data["role"]
+
+                            conv_manager.store_thread_metadata(
+                                conv_id, role, thread_id, message_id
+                            )
 
                         # Handle text deltas (incremental content)
                         elif (

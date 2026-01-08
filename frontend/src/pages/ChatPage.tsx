@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Card } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { MarkdownMessage } from '@/components/MarkdownMessage'
 import { chatService, type ChatMessage, type ThinkingStatus } from '@/services/chat.service'
 import { cn } from '@/lib/utils'
 
@@ -244,7 +245,7 @@ return (
                   <div
                     className="max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm border bg-primary text-primary-foreground border-primary"
                   >
-                    <p className="whitespace-pre-wrap">{message.content}</p>
+                    <MarkdownMessage content={message.content} isUserMessage={true} />
                   </div>
                 ) : (
                   <div className="max-w-[85%] space-y-2">
@@ -268,7 +269,7 @@ return (
                     )}
 
                     <div className="rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm border bg-card text-card-foreground border-border">
-                      <p className="whitespace-pre-wrap">{message.content}</p>
+                      <MarkdownMessage content={message.content} isUserMessage={false} />
                     </div>
                   </div>
                 )}
@@ -301,7 +302,7 @@ return (
                   {/* Streaming Content Display */}
                   {streamingContent && (
                     <div className="rounded-2xl bg-card text-card-foreground border-border border px-4 py-3 text-sm leading-relaxed shadow-sm">
-                      <p className="whitespace-pre-wrap">{streamingContent}</p>
+                      <MarkdownMessage content={streamingContent} isUserMessage={false} />
                       <span className="inline-block w-2 h-5 bg-primary animate-pulse ml-1"></span>
                     </div>
                   )}
