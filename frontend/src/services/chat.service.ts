@@ -69,11 +69,8 @@ export const chatService = {
         return;
       }
 
-      // Create a temporary form to send POST request with EventSource
-      // Since EventSource only supports GET, we need to work around this
+      // Use fetch API for POST with streaming SSE response
       const url = new URL('/api/chat/send-stream', apiClient.defaults.baseURL);
-
-      // Use fetch for POST with streaming response
       fetch(url.toString(), {
         method: 'POST',
         headers: {
