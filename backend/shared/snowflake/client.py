@@ -7,7 +7,7 @@ from snowflake.snowpark import Session
 import snowflake.connector
 from cryptography.hazmat.primitives import serialization
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import json
 import jwt
 
@@ -66,19 +66,18 @@ class SnowflakeClient:
         schema: Optional[str] = None,
         private_key_path: Optional[str] = None,
         autoconnect: bool = True,
-
-
-        schema_agent : Optional[str] = None,
-        agent :Optional[str] = None,
-        public_key_fp : Optional[str] = None,
-
-        token_cache_path : Optional[str] = None,
+        schema_agent: Optional[str] = None,
+        agent: Optional[str] = None,
+        public_key_fp: Optional[str] = None,
+        token_cache_path: Optional[str] = None,
     ) -> None:
         # Load .env file once
         load_dotenv()
 
         # Determine authentication method
-        private_key_path = private_key_path or os.getenv("SNOWFLAKE_PRIVATE_KEY_PATH")
+        private_key_path = private_key_path or os.getenv(
+            "SNOWFLAKE_PRIVATE_KEY_PATH"
+        )
         use_key_pair = private_key_path is not None
 
         self.config = {
@@ -88,11 +87,15 @@ class SnowflakeClient:
             "warehouse": warehouse or os.getenv("SNOWFLAKE_WAREHOUSE"),
             "database": database or os.getenv("SNOWFLAKE_DATABASE"),
             "schema": schema or os.getenv("SNOWFLAKE_SCHEMA"),
-            "schema_agent" : schema_agent or os.getenv("SNOWFLAKE_SERVICES_SCHEMA"),
-            "agent" : agent or os.getenv("AGENT_NAME"),
-            "public_key_fp" : public_key_fp or os.getenv("PUBLIC_KEY_FP"),
-            "token_cache_path" : token_cache_path or Path(os.getenv("PRIVATE_KEY_PATH")),
-            "private_key_jwt" : Path(os.getenv("SNOWFLAKE_PRIVATE_KEY_PATH")).read_text()
+            "schema_agent": schema_agent
+            or os.getenv("SNOWFLAKE_SERVICES_SCHEMA"),
+            "agent": agent or os.getenv("AGENT_NAME"),
+            "public_key_fp": public_key_fp or os.getenv("PUBLIC_KEY_FP"),
+            "token_cache_path": token_cache_path
+            or Path(os.getenv("PRIVATE_KEY_PATH")),
+            "private_key_jwt": Path(
+                os.getenv("SNOWFLAKE_PRIVATE_KEY_PATH")
+            ).read_text(),
         }
 
         # Add authentication - either key pair or password
@@ -101,7 +104,9 @@ class SnowflakeClient:
             self.config["private_key"] = _load_private_key(private_key_path)
         else:
             # Fall back to password authentication
-            self.config["password"] = password or os.getenv("SNOWFLAKE_PASSWORD")
+            self.config["password"] = password or os.getenv(
+                "SNOWFLAKE_PASSWORD"
+            )
             if not self.config["password"]:
                 raise ValueError(
                     "Either SNOWFLAKE_PRIVATE_KEY_PATH or SNOWFLAKE_PASSWORD environment variable must be set"
@@ -109,15 +114,24 @@ class SnowflakeClient:
 
         # Add OCSP fail open for certificate issues
         self.config["ocsp_fail_open"] = True
-        
+
         # Enable insecure mode inorder to upload local files to snowflake stage
         self.config["insecure_mode"] = True
 
         # Verify required fields
-        required_fields = ["user", "account", "role", "warehouse", "database", "schema"]
+        required_fields = [
+            "user",
+            "account",
+            "role",
+            "warehouse",
+            "database",
+            "schema",
+        ]
         missing = [k for k in required_fields if self.config.get(k) is None]
         if missing:
-            raise ValueError(f"Missing Snowflake config values: {', '.join(missing)}")
+            raise ValueError(
+                f"Missing Snowflake config values: {', '.join(missing)}"
+            )
 
         self._conn = None
         self._snowpark_session = None
@@ -133,7 +147,9 @@ class SnowflakeClient:
         try:
             self._conn = snowflake.connector.connect(**self.config)
         except Exception as e:
-            raise ConnectionError(f"Failed to connect to Snowflake: {str(e)}") from e
+            raise ConnectionError(
+                f"Failed to connect to Snowflake: {str(e)}"
+            ) from e
 
     def close(self) -> None:
         """Close both connector and Snowpark sessions if open."""
@@ -173,7 +189,9 @@ class SnowflakeClient:
             if passcode and "password" in session_config:
                 session_config["passcode"] = passcode
 
-            self._snowpark_session = Session.builder.configs(session_config).create()
+            self._snowpark_session = Session.builder.configs(
+                session_config
+            ).create()
 
         return self._snowpark_session
 
@@ -250,7 +268,6 @@ class SnowflakeClient:
                     cur.close()
         return {"ok": ok, "version": version}
 
-
     # -------------------------------------------------------
     # JWT TOKEN MANAGEMENT FOR CORTEX
     # -------------------------------------------------------
@@ -277,7 +294,7 @@ class SnowflakeClient:
 
     def _generate_jwt(self):
         now = datetime.now(timezone.utc)
-        exp = now.replace(hour=now.hour + 1)
+        exp = now + timedelta(hours=1)
 
         payload = {
             "iss": f"{self.config['account'].upper()}.{self.config['user'].upper()}.{self.config['public_key_fp']}",
@@ -286,7 +303,9 @@ class SnowflakeClient:
             "exp": exp,
         }
 
-        token = jwt.encode(payload, self.config['private_key_jwt'], algorithm="RS256")
+        token = jwt.encode(
+            payload, self.config["private_key_jwt"], algorithm="RS256"
+        )
         self._save_token_to_cache(token, exp)
         return token
 
