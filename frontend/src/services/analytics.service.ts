@@ -1,41 +1,41 @@
 import { apiClient } from '@/lib/api'
-import { AnalyticsUsage, PopularRecipesResponse } from '@shared/types'
 
-// Types pour le frontend (pas encore dans backend)
-export interface KPIData {
-  total_searches: number
-  total_transformations: number
-  active_users: number
-  avg_response_time: number
+export interface TopIngredient {
+  name: string;
+  count: number;
 }
 
-export interface UsageStats {
-  date: string
-  searches: number
-  transformations: number
-  users: number
+export interface BiggestWin {
+  original_name: string;
+  transformed_name: string;
+  health_score_delta: number;
+}
+
+// L'interface principale mise à jour
+export interface DashboardStats {
+  // Volume & Conversion
+  total_searches: number;
+  total_transformations: number;
+  conversion_rate: number;
+
+  // Nutrition & Santé
+  total_calories_saved: number;
+  total_protein_gained: number;      // Nouveau
+  avg_health_score_gain: number;
+
+  // Diversité & Contenu
+  ingredient_diversity_index: number; // Nouveau
+  top_ingredients: TopIngredient[];   // Nouveau
+  top_diet_constraint: string;
+
+  // Gamification
+  biggest_optimization: BiggestWin | null; // Nouveau
 }
 
 export const analyticsService = {
-  async getKPIs(): Promise<KPIData> {
-    const response = await apiClient.get('/api/analytics/kpi')
-    return response.data
-  },
-
-  async getUsageStats(period: string = '7d'): Promise<UsageStats[]> {
-    const response = await apiClient.get('/api/analytics/usage', {
-      params: { period }
-    })
-    return response.data
-  },
-
-  async getPopularRecipes(limit: number = 10): Promise<PopularRecipesResponse> {
-    const response = await apiClient.get('/api/analytics/popular', {
-      params: { limit }
-    })
-    return response.data
-  },
+  getDashboardData: async (userId: string = 'DOG'): Promise<DashboardStats> => {
+    // On suppose que l'endpoint ignore l'ID ou l'utilise via query param
+    const response = await apiClient.get(`api/analytics/kpi?user_id=${userId}`);
+    return response.data;
+  }
 }
-
-export default analyticsService
-

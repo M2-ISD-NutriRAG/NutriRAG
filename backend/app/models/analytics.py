@@ -1,4 +1,4 @@
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 from pydantic import BaseModel
 
 
@@ -28,8 +28,34 @@ class KPI(BaseModel):
     team: Optional[str] = None
 
 
-class KPIResponse(BaseModel):
-    # All KPIs
-    kpis: List[KPI]
-    timestamp: str
+class TopIngredient(BaseModel):
+    name: str
+    count: int
 
+
+class BiggestWin(BaseModel):
+    original_name: str
+    transformed_name: str
+    health_score_delta: float
+
+
+class KPIResponse(BaseModel):
+    # Métriques Générales
+    total_searches: int
+    total_transformations: int
+    conversion_rate: float
+
+    # Métriques Nutritionnelles Cumulées
+    total_calories_saved: float
+    total_protein_gained: float  # Nouveau
+    avg_health_score_gain: float
+
+    # Métriques Ingrédients & Diversité
+    ingredient_diversity_index: (
+        int  # Nouveau (Nombre d'ingrédients uniques explorés)
+    )
+    top_ingredients: List[TopIngredient]  # Nouveau
+
+    # Métriques "Fun" / Gamification
+    biggest_optimization: Optional[BiggestWin]  # Nouveau
+    top_diet_constraint: str

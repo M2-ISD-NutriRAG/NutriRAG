@@ -9,6 +9,8 @@ import { cn } from '@/lib/utils'
 
 import { useParams, useNavigate } from 'react-router-dom'
 
+import { LayoutDashboard } from 'lucide-react'
+
 const suggestions = [
   "Find me a healthy vegetarian recipe",
   "Transform this recipe into a low-carb version",
@@ -149,10 +151,22 @@ const handleSend = async (directMessage?: string) => {
 
 return (
     <div className="flex h-full flex-col bg-background">
+      <div className="absolute top-6 left-6 z-20">
+        <Button
+          variant="outline"
+          // Pas de prop 'size' ici, on gère la taille via className pour plus de contrôle
+          className="shadow-md border bg-background/95 backdrop-blur-sm hover:bg-accent/50 h-12 px-6 text-base font-medium transition-all hover:scale-105"
+          onClick={() => navigate('/dashboard')}
+        >
+          <LayoutDashboard className="mr-3 h-5 w-5" />
+          Dashboard
+        </Button>
+      </div>
+
       {/* Messages Area */}
       <ScrollArea ref={scrollRef} className="flex-1 p-4 relative">
         <div className="mx-auto max-w-3xl h-full">
-          
+
           {/* EMPTY STATE HERO SECTION */}
           {messages.length === 0 && !isThinking && (
             <div className="flex h-[70vh] flex-col items-center justify-center text-center animate-in fade-in zoom-in duration-500">
@@ -183,7 +197,7 @@ return (
                     <Sparkles className="h-4 w-4 text-amber-400" />
                   </div>
                 )}
-                
+
                 <div
                   className={cn(
                     'max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm border',
