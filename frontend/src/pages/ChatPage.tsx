@@ -40,18 +40,6 @@ export function ChatPage() {
   // Create a ref to track which ID the current messages belong to
   const loadedIdRef = useRef<string | undefined>(undefined);
 
-  // Force more frequent re-renders during streaming for smoother UI updates
-  useEffect(() => {
-    if (streamingContent && isThinking) {
-      // Use requestAnimationFrame for smooth updates
-      const frame = requestAnimationFrame(() => {
-        // This ensures the DOM is updated immediately for smoother streaming
-        setStreamingContent(prev => prev);
-      });
-      return () => cancelAnimationFrame(frame);
-    }
-  }, [streamingContent, isThinking]);
-
   // EFFECT: Auto-scroll to bottom when messages change
   useEffect(() => {
     if (scrollRef.current) {
