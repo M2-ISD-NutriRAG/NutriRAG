@@ -263,37 +263,84 @@ async def handle_chat_stream(
 
             # Get streaming response from CortexAgent
             response = agent_client.call_agent(message_text)
+            current_event = None
 
             for line in response.iter_lines(decode_unicode=True):
                 if line.strip() == "":
                     continue
 
-                # Parse Server-Sent Events format
+                # Parse Server-Sent Events format - capture all event types
                 if line.startswith("event: response.status"):
-                    continue  # Skip event line, data is on next line
+                    current_event = "response.status"
+                    continue
+                elif line.startswith("event: response.thinking.delta"):
+                    current_event = "response.thinking.delta"
+                    continue
+                elif line.startswith("event: response.thinking"):
+                    current_event = "response.thinking"
+                    continue
+                elif line.startswith("event: response.tool_result.status"):
+                    current_event = "response.tool_result.status"
+                    continue
+                elif line.startswith("event: response.tool_use"):
+                    current_event = "response.tool_use"
+                    continue
                 elif line.startswith("event: response.text.delta"):
-                    continue  # Skip event line, data is on next line
-                elif line.startswith("event: response"):
-                    continue  # Skip event line, data is on next line
+                    current_event = "response.text.delta"
+                    continue
+                elif line.startswith("event: response.text"):
+                    current_event = "response.text"
+                    continue
                 elif line.startswith("event: done"):
                     break  # End of stream
                 elif line.startswith("data: "):
                     try:
                         data = json.loads(line[6:])  # Remove "data: " prefix
 
-                        # Handle thinking/status updates
-                        if "status" in data and "message" in data:
-                            yield f"data: {json.dumps({'type': 'thinking', 'status': data['status'], 'message': data['message']})}\n\n"
+                        # Handle tool result status
+                        if (
+                            current_event == "response.tool_result.status"
+                            and "message" in data
+                            and "status" in data
+                        ):
+                            yield f"data: {json.dumps({'type': 'tool_status', 'event': current_event, 'status': data['status'], 'message': data['message'], 'tool_type': data.get('tool_type'), 'tool_use_id': data.get('tool_use_id')})}\n\n"
+
+                        # Handle tool usage
+                        elif (
+                            current_event == "response.tool_use"
+                            and "name" in data
+                            and "input" in data
+                        ):
+                            yield f"data: {json.dumps({'type': 'tool_use', 'event': current_event, 'tool_name': data['name'], 'tool_input': data['input'], 'tool_use_id': data.get('tool_use_id'), 'client_side_execute': data.get('client_side_execute'), 'content_index': data.get('content_index')})}\n\n"
+
+                        # Handle thinking/status updates (both delta and complete)
+                        elif (
+                            current_event
+                            in [
+                                "response.status",
+                                "response.thinking.delta",
+                                "response.thinking",
+                            ]
+                            and "status" in data
+                            and "message" in data
+                        ):
+                            yield f"data: {json.dumps({'type': 'thinking', 'event': current_event, 'status': data['status'], 'message': data['message']})}\n\n"
 
                         # Handle text deltas (incremental content)
-                        elif "text" in data and "content_index" in data:
+                        elif (
+                            current_event == "response.text.delta"
+                            and "text" in data
+                            and "content_index" in data
+                        ):
                             text_chunk = data["text"]
                             ai_response_content += text_chunk
-                            yield f"data: {json.dumps({'type': 'text_delta', 'text': text_chunk})}\n\n"
+                            yield f"data: {json.dumps({'type': 'text_delta', 'event': current_event, 'text': text_chunk, 'content_index': data.get('content_index')})}\n\n"
 
-                        # Handle final response
-                        elif "content" in data and isinstance(
-                            data["content"], list
+                        # Handle complete text response
+                        elif (
+                            current_event == "response.text"
+                            and "content" in data
+                            and isinstance(data["content"], list)
                         ):
                             for content_item in data["content"]:
                                 if (
@@ -307,7 +354,7 @@ async def handle_chat_stream(
                                         and not ai_response_content
                                     ):
                                         ai_response_content = final_content
-                                        yield f"data: {json.dumps({'type': 'complete_response', 'text': final_content})}\n\n"
+                                        yield f"data: {json.dumps({'type': 'complete_response', 'event': current_event, 'text': final_content})}\n\n"
 
                     except json.JSONDecodeError:
                         # Skip malformed JSON lines

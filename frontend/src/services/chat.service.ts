@@ -150,14 +150,28 @@ export const chatService = {
         break;
 
       case 'text_delta':
-        if (chunk.text && callbacks.onTextDelta) {
+        // Only process incremental deltas from text.delta events
+        if (chunk.text && chunk.event === 'response.text.delta' && callbacks.onTextDelta) {
           callbacks.onTextDelta(chunk.text);
         }
         break;
 
       case 'complete_response':
-        if (chunk.text && callbacks.onCompleteResponse) {
+        // Only process complete responses from response.text events
+        if (chunk.text && chunk.event === 'response.text' && callbacks.onCompleteResponse) {
           callbacks.onCompleteResponse(chunk.text);
+        }
+        break;
+
+      case 'tool_status':
+        if (chunk.status && chunk.message && callbacks.onToolStatus) {
+          callbacks.onToolStatus(chunk.status, chunk.message, chunk.tool_type);
+        }
+        break;
+
+      case 'tool_use':
+        if (chunk.tool_name && chunk.tool_input && chunk.tool_use_id && callbacks.onToolUse) {
+          callbacks.onToolUse(chunk.tool_name, chunk.tool_input, chunk.tool_use_id);
         }
         break;
 

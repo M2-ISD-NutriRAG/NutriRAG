@@ -31,6 +31,7 @@ export function ChatPage() {
   const [isThinking, setIsThinking] = useState(false) // For AI response
   const [streamingContent, setStreamingContent] = useState('') // For streaming message content
   const [thinkingStatus, setThinkingStatus] = useState<ThinkingStatus | null>(null) // For thinking display
+  const [thinkingHistory, setThinkingHistory] = useState<ThinkingStatus[]>([]) // Store thinking messages for current response
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const { id } = useParams();
@@ -39,13 +40,24 @@ export function ChatPage() {
   // Create a ref to track which ID the current messages belong to
   const loadedIdRef = useRef<string | undefined>(undefined);
 
+  // Force more frequent re-renders during streaming for smoother UI updates
+  useEffect(() => {
+    if (streamingContent && isThinking) {
+      // Use requestAnimationFrame for smooth updates
+      const frame = requestAnimationFrame(() => {
+        // This ensures the DOM is updated immediately for smoother streaming
+        setStreamingContent(prev => prev);
+      });
+      return () => cancelAnimationFrame(frame);
+    }
+  }, [streamingContent, isThinking]);
 
   // EFFECT: Auto-scroll to bottom when messages change
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [messages, isThinking, streamingContent, thinkingStatus])
+  }, [messages, isThinking, streamingContent, thinkingStatus, thinkingHistory])
 
   // EFFECT: Load conversation history when 'id' changes
   useEffect(() => {
@@ -94,8 +106,14 @@ const handleSend = async (directMessage?: string) => {
   setIsThinking(true);
   setStreamingContent(''); // Reset streaming content
   setThinkingStatus(null); // Reset thinking status
+  setThinkingHistory([]); // Clear previous thinking history
+
+  // Use a ref to track accumulated content for proper onDone handling
+  let accumulatedContent = '';
 
   try {
+    console.log('Starting streaming message...', { messageContent, conversationId: id });
+
     await chatService.sendMessageStream(
       {
         message: userMessage.content,
@@ -104,36 +122,46 @@ const handleSend = async (directMessage?: string) => {
       },
       {
         onConversationId: (conversationId) => {
+          console.log('Received conversation ID:', conversationId);
           if (!id) {
             loadedIdRef.current = conversationId;
             navigate(`/chat/${conversationId}`, { replace: true });
           }
         },
         onThinking: (status) => {
+          console.log('Thinking status:', status);
           setThinkingStatus(status);
+          setThinkingHistory(prev => [...prev, status]); // Add to thinking history
         },
         onTextDelta: (text) => {
-          setStreamingContent((prev) => prev + text);
+          console.log('Text delta:', text);
+          accumulatedContent += text;
+          setStreamingContent(accumulatedContent);
         },
         onCompleteResponse: (text) => {
+          console.log('Complete response:', text);
           // Fallback for complete response if deltas weren't received
-          if (!streamingContent) {
+          if (!accumulatedContent) {
+            accumulatedContent = text;
             setStreamingContent(text);
           }
         },
         onDone: () => {
-          // Add final message to messages array
+          console.log('Stream completed. Final content:', accumulatedContent);
+          // Add final message to messages array using accumulated content
           const assistantMessage: ChatMessage = {
             id: crypto.randomUUID(),
             role: 'assistant',
-            content: streamingContent || 'No response received',
+            content: accumulatedContent || 'No response received',
             timestamp: new Date().toISOString(),
+            thinkingHistory: thinkingHistory.length > 0 ? [...thinkingHistory] : undefined
           };
 
           setMessages((prev) => [...prev, assistantMessage]);
           setIsThinking(false);
           setStreamingContent('');
           setThinkingStatus(null);
+          setThinkingHistory([]); // Clear thinking history after saving
         },
         onError: (error) => {
           console.error('Streaming error:', error);
@@ -224,16 +252,38 @@ return (
                   </div>
                 )}
 
-                <div
-                  className={cn(
-                    'max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm border',
-                    message.role === 'user'
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'bg-card text-card-foreground border-border'
-                  )}
-                >
-                  <p className="whitespace-pre-wrap">{message.content}</p>
-                </div>
+                {message.role === 'user' ? (
+                  <div
+                    className="max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm border bg-primary text-primary-foreground border-primary"
+                  >
+                    <p className="whitespace-pre-wrap">{message.content}</p>
+                  </div>
+                ) : (
+                  <div className="max-w-[85%] space-y-2">
+                    {/* Show thinking history above assistant messages */}
+                    {message.thinkingHistory && message.thinkingHistory.length > 0 && (
+                      <div className="space-y-1">
+                        {message.thinkingHistory.map((thinking, thinkingIndex) => (
+                          <div key={thinkingIndex} className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs">
+                            <div className="flex items-center gap-2 text-amber-700">
+                              <div className="flex gap-1">
+                                <span className="w-1 h-1 bg-amber-400 rounded-full"></span>
+                                <span className="w-1 h-1 bg-amber-400 rounded-full"></span>
+                                <span className="w-1 h-1 bg-amber-400 rounded-full"></span>
+                              </div>
+                              <span className="font-medium capitalize">{thinking.status.replace(/_/g, ' ')}</span>
+                            </div>
+                            <p className="text-amber-600 mt-1">{thinking.message}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm border bg-card text-card-foreground border-border">
+                      <p className="whitespace-pre-wrap">{message.content}</p>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
 
