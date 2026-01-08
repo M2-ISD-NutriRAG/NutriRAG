@@ -11,6 +11,12 @@ class CortexAgentClient:
         self.sf = snowflake_client
 
     def call_agent(self, prompt: str):
+        """
+        Call the Cortex Agent with a message.
+
+        Args:
+            prompt: The user's message (may include context)
+        """
         token = self.sf.get_jwt()
         account = self.sf.config["account"]
         db = self.sf.config["database"]
