@@ -2,6 +2,7 @@ import traceback
 import pandas as pd
 import numpy as np
 import threading
+import logging
 from typing import Dict, List, Any, Optional, Tuple
 
 from snowflake.snowpark.functions import col, lower, trim, row_number
@@ -354,10 +355,6 @@ class TransformService:
     def load_pca_data(self):
         """Load PCA data from Snowflake or CSV as fallback"""
         try:
-            print(
-                " Chargement des données PCA depuis CSV (ingredients_with_clusters.csv)..."
-            )
-
             # Charger le fichier CSV
             # csv_path = "ingredients_with_clusters.csv"
             # df_csv = pd.read_csv(csv_path)
@@ -378,6 +375,7 @@ class TransformService:
                 Cluster_macro,
                 Cluster_micro
             FROM NUTRIRAG_PROJECT.ENRICHED.INGREDIENTS
+            LIMIT 100;
             """
             result_cluster = self.session.sql(query)
             df = pd.DataFrame(parse_query_result(result_cluster))
@@ -470,12 +468,10 @@ class TransformService:
                 ):
                     self.pca_data.at[idx, "is_vegetable"] = 1
 
-            print(
-                f"[1.4-_load_pca_data] ✅ Données CSV chargées: {len(self.pca_data)} ingrédients"
-            )
+            logging.info("Success: PCA ingredients coordinates successfully loaded.")
 
         except Exception as e:
-            print(f"[1.5-_load_pca_data] ❌ Erreur chargement CSV: {e}")
+            logging.error(f"Failure: PCA ingredients coordinates loading error. Error: {str(e)}. Traceback: {traceback.format_exc()}")
             self.pca_data = None
 
     def get_neighbors_pca(
@@ -500,7 +496,7 @@ class TransformService:
             Dict with the best substitutes 
         """
         if self.pca_data is None:
-            print("❌ PCA Data not available")
+            logging.warning("Failure: PCA ingredients coordinates missing.")
             return None
             
         # Clean ingredient name
@@ -514,12 +510,12 @@ class TransformService:
         ]
 
         if matching_rows.empty:
-            print(f"⚠️ Ingredient '{ingredient_name}' not found in PCA data")
+            logging.warning(f"Failure:  Ingredient '{ingredient_name}' not found in PCA data")
             return None
             
         # Take the first match
         row = matching_rows.iloc[0]
-        print(f"🔍 Ingredient found: {ingredient_name} → {row['Descrip']}")
+        logging.info(f"Success: Ingredient found: {ingredient_name} → {row['Descrip']}")
         
         # Copy data for filtering based on constraints
         df_filtered = self.pca_data.copy()
@@ -551,7 +547,6 @@ class TransformService:
                                 == ingredient_clean
                             )
                         ]
-                        print(f"🔧 Constraint applied: {constraint_name}")
         
         # PCA columns
         macro_cols = ['PCA_macro_1', 'PCA_macro_2', 'PCA_macro_3']
@@ -562,7 +557,7 @@ class TransformService:
         available_micro_cols = [col for col in micro_cols if col in df_filtered.columns]
         
         if not available_macro_cols and not available_micro_cols:
-            print("❌ No PCA columns available for distance calculation")
+            logging.warning(f"Failure:  No pca coordinates available in pca dataframe.")
             return None
 
         macro_vec = (
@@ -583,7 +578,7 @@ class TransformService:
         df_filtered = df_filtered[df_filtered['Descrip'] != row['Descrip']]
         
         if df_filtered.empty:
-            print("⚠️ No substitute found after applying constraints")
+            logging.warning("Failure: No substitute found after applying constraints")
             return None
         
         # Calculate global distances (macro + micro combination)
@@ -692,7 +687,7 @@ class TransformService:
         best_nutrition = NutritionDelta()
 
         if not candidats:
-            print("Pas de candidats pour le susbstitut")
+            logging.warning("Failure: No candidate found.")
             return None
         for candidat in candidats:
             if best_ingr is None:
@@ -723,7 +718,7 @@ class TransformService:
         if substitute:
             substitute_name = substitute["name"]
             
-            print(f"🎯 {ingredient} → {substitute_name} (PCA score: {substitute['global_score']:.3f})")
+            logging.info(f"Success: Found substitute for {ingredient} → {substitute_name} (PCA score: {substitute['global_score']:.3f})")
             return substitute_name, True, nutrition
         
         return ingredient, False, NutritionDelta()
@@ -799,7 +794,7 @@ class TransformService:
             return new_steps, notes
 
         except Exception as e:
-            print(f"⚠️ LLM error: {e}")
+            logging.error(f"Failure:  Error found with recipe adaptation steps with substitution transformation made by LLM. Error: {str(e)}. Traceback: {traceback.format_exc()}")
             # Fallback: simple manual adaptation
             adapted_steps = recipe.steps
             adapted_steps = [
@@ -879,7 +874,7 @@ class TransformService:
             return new_steps, notes
 
         except Exception as e:
-            print(f"⚠️ LLM error: {e}")
+            logging.error(f"Failure:  Error found with recipe adaptation steps for deletion transformation made by LLM. Error: {str(e)}. Traceback: {traceback.format_exc()}")
 
             # Fallback: naive removal of ingredient words in steps
             adapted_steps = list(recipe.steps)
@@ -907,7 +902,7 @@ class TransformService:
                 ingredients_to_transform = self._extract_ingredients_from_text(recipe.ingredients)
                 # TODO : code à rajouter 
 
-            print("Step 1 completed")
+            logging.info("Success: Step 1 finished (Ingredients to remove has been found).")
 
             transformations = {}
             transformation_count = 0
@@ -920,7 +915,7 @@ class TransformService:
                 serving_size=recipe.serving_size,
                 servings=recipe.servings,
                 health_score=new_recipe_score,
-                ingredients=new_ingredients,
+                ingredients=base_ingredients,
                 quantity_ingredients=recipe.quantity_ingredients,
                 minutes=recipe.minutes,
                 steps=recipe.steps,
@@ -943,11 +938,11 @@ class TransformService:
                         transformation_count += 1
                 new_ingredients = [transformations.get(ingredient, ingredient) for ingredient in recipe.ingredients]
                 new_recipe_score = new_recipe_nutrition.health_score
-                print("Step 2 completed")
+                logging.info("Success: Step 2 finished for Substitution (Subtitute ingredients found for eache ingredients to remove).")
                 # Step 3 : Adapt recipe step with LLM
                 if transformations:
                     new_recipe.steps, notes = self.adapt_recipe_with_llm(new_recipe, transformations)
-                print("Step 3 completed")
+                logging.info("Success: Step 3 finished for Substitution (LLM's adapted new_recipe steps successfully).")
 
             elif transformation_type == TransformationType.ADD:
                 # TODO
@@ -970,10 +965,10 @@ class TransformService:
                     scaled_nutrition = new_recipe_nutrition ## fallback servings null
                 new_recipe_score = self.compute_rhi(scaled_nutrition)
                 new_recipe_nutrition.health_score = new_recipe_score
-                print("Step 2 completed")
+                logging.info("Success: Step 2 finished for Deletion (Removed successfully unwanted ingredients and computed new health score).")
                 # Step 3 : Adapt recipe step with LLM
                 new_recipe.steps, notes= self.adapt_recipe_delete(recipe, ingredients_to_transform)
-                print("Step 3 completed")
+                logging.info("Success: Step 3 finished for Deletion (LLM's adapted new_recipe steps successfully).")
 
             # Step 4 : Build output
             original_nutrition = self.compute_recipe_nutrition_totals(
@@ -993,13 +988,11 @@ class TransformService:
                 success=success,
                 message="\n".join(notes),
             )
-            print("Step 4 completed")
+            logging.info("Success: Step 4 finished (TransformerResponse successfully built, returning it...).")
             return response
 
         except Exception as e:
-            print(f"Error in transformation process: {e}")
-            print("\nTraceback complet:")
-            traceback.print_exc()
+            logging.error(f"Failure: Transform function failed. Error: {str(e)}. Traceback: {traceback.format_exc()}")
             success = False
             response = TransformResponse(
                 recipe=recipe,
@@ -1011,5 +1004,5 @@ class TransformService:
                 success=success,
                 message=None,
             )
-
+        logging.error("Returning default response with input recipe.")
         return response
