@@ -670,7 +670,232 @@ class TransformService:
         return new_recipe_nutrition
     
 
-    def judge_substitute(self, candidats: List[Dict[str, Any]],recipe_ingredients: List[str], recipe_id: int, serving_size: float, servings: float) -> Tuple[str,NutritionDelta]:
+    def _identify_ingredients_to_remove(
+        self, 
+        recipe: Recipe, 
+        constraints: TransformConstraints
+    ) -> List[str]:
+        """
+        Algorithm to identify ingredients to remove based on nutritional constraints.
+        
+        Args:
+            recipe: Recipe object
+            constraints: TransformConstraints with nutritional goals
+            
+        Returns:
+            List of ingredient names to remove
+        """
+        ingredients_to_remove = []
+        
+        try:
+            # Fetch nutritional data for all ingredients
+            ingredients_nutrition = self.fetch_ingredients_nutrition(
+                recipe.id, 
+                recipe.ingredients
+            )
+            
+            # Define thresholds to identify "bad" ingredients
+            SUGAR_THRESHOLD = 10.0  # g per 100g
+            SODIUM_THRESHOLD = 500.0  # mg per 100g
+            SATURATED_FAT_THRESHOLD = 5.0  # g per 100g
+            CALORIE_THRESHOLD = 300.0  # kcal per 100g
+            CARB_THRESHOLD = 50.0  # g per 100g
+            
+            for ingredient in recipe.ingredients:
+                ing_key = ingredient.lower().strip()
+                nutrition = ingredients_nutrition.get(ing_key)
+                
+                if nutrition is None:
+                    continue
+                
+                should_remove = False
+                
+                # Check reduction constraints
+                if constraints.decrease_sugar and nutrition.get("SUGAR_G", 0) > SUGAR_THRESHOLD:
+                    should_remove = True
+                    #print(f" _identify_ingredients_to_remove_by_algo: {ingredient} identified for sugar reduction ({nutrition.get('SUGAR_G', 0):.1f}g)")
+                
+                if constraints.decrease_sodium and nutrition.get("SODIUM_MG", 0) > SODIUM_THRESHOLD:
+                    should_remove = True
+                    #print(f" _identify_ingredients_to_remove_by_algo: {ingredient} identified for sodium reduction ({nutrition.get('SODIUM_MG', 0):.1f}mg)")
+                
+                if constraints.decrease_calories and nutrition.get("ENERGY_KCAL", 0) > CALORIE_THRESHOLD:
+                    should_remove = True
+                    #print(f"_identify_ingredients_to_remove_by_algo: {ingredient} identified for calorie reduction ({nutrition.get('ENERGY_KCAL', 0):.1f}kcal)")
+                
+                if constraints.decrease_carbs and nutrition.get("CARB_G", 0) > CARB_THRESHOLD:
+                    should_remove = True
+                    #print(f"_identify_ingredients_to_remove_by_algo: {ingredient} identified for carbohydrate reduction ({nutrition.get('CARB_G', 0):.1f}g)")
+                
+                # Check dietary constraints (via PCA data if available)
+                if self.pca_data is not None:
+                    ingredient_clean = ingredient.lower().strip()
+                    matching_rows = self.pca_data[
+                        self.pca_data["Descrip"].str.lower().str.contains(ingredient_clean, na=False)
+                    ]
+                    
+                    if not matching_rows.empty:
+                        row = matching_rows.iloc[0]
+                        
+                        if constraints.no_lactose and row.get("is_lactose", 0) == 1:
+                            should_remove = True
+                            # print(f"_identify_ingredients_to_remove_by_algo: {ingredient} contains lactose")
+                        
+                        if constraints.no_gluten and row.get("is_gluten", 0) == 1:
+                            should_remove = True
+                            # print(f"_identify_ingredients_to_remove_by_algo: {ingredient} contains gluten")
+                        
+                        if constraints.no_nuts and row.get("contains_nuts", 0) == 1:
+                            should_remove = True
+                            # print(f"_identify_ingredients_to_remove_by_algo: {ingredient} contains nuts")
+                        
+                        if constraints.vegetarian and row.get("is_vegetarian", 0) == 0:
+                            should_remove = True
+                            # print(f"_identify_ingredients_to_remove_by_algo: {ingredient} is not vegetarian")
+                        
+                        if constraints.vegan and row.get("is_vegetable", 0) == 0:
+                            should_remove = True
+                            # print(f"_identify_ingredients_to_remove_by_algo: {ingredient} is not vegan")
+                
+                if should_remove:
+                    ingredients_to_remove.append(ingredient)
+            
+            # Limit the number of ingredients to remove (max 3 to not destroy the recipe)
+            if len(ingredients_to_remove) > 3:
+                print(f"_identify_ingredients_to_remove_by_algo: Limiting to 3 ingredients out of {len(ingredients_to_remove)} identified")
+                ingredients_to_remove = ingredients_to_remove[:3]
+            
+            return ingredients_to_remove
+            
+        except Exception as e:
+            print(f" Error in identification ingredients to remove: {e}")
+            traceback.print_exc()
+            return []
+    
+    def _identify_ingredients_to_remove_by_llm(
+        self, 
+        recipe: Recipe, 
+        constraints: TransformConstraints
+    ) -> List[str]:
+        """
+        LLM fallback to identify ingredients to remove if the algorithm fails.
+        
+        Args:
+            recipe: Recipe object
+            constraints: TransformConstraints with nutritional goals
+            
+        Returns:
+            List of ingredient names to remove
+        """
+        try:
+            # Build the prompt with active constraints
+            constraint_list = []
+            if constraints.no_lactose:
+                constraint_list.append("no lactose")
+            if constraints.no_gluten:
+                constraint_list.append("no gluten")
+            if constraints.no_nuts:
+                constraint_list.append("no nuts")
+            if constraints.vegetarian:
+                constraint_list.append("vegetarian")
+            if constraints.vegan:
+                constraint_list.append("vegan")
+            if constraints.decrease_sugar:
+                constraint_list.append("reduce sugar")
+            if constraints.decrease_sodium:
+                constraint_list.append("reduce sodium")
+            if constraints.decrease_calories:
+                constraint_list.append("reduce calories")
+            if constraints.decrease_carbs:
+                constraint_list.append("reduce carbohydrates")
+            if constraints.increase_protein:
+                constraint_list.append("increase protein")
+            
+            constraints_text = ", ".join(constraint_list) if constraint_list else "general health"
+            
+            base_prompt = f"""You are a nutritionist expert analyzing recipe ingredients.
+
+RECIPE: {recipe.name}
+INGREDIENTS: {', '.join(recipe.ingredients)}
+
+CONSTRAINTS: {constraints_text}
+
+TASK:
+Identify which ingredients should be REMOVED to meet the constraints.
+Select a MAXIMUM of 3 ingredients that have the most negative impact.
+
+IMPORTANT:
+- Only suggest removing ingredients that clearly violate the constraints
+- Do NOT suggest removing essential ingredients that define the dish
+- Be conservative - better to remove fewer ingredients than too many
+
+OUTPUT FORMAT:
+Provide ONLY a comma-separated list of ingredient names to remove.
+Example: sugar, butter, salt
+
+If no ingredients should be removed, output: NONE
+
+INGREDIENTS TO REMOVE:"""
+
+            prompt_escaped = base_prompt.replace("'", "''")
+            
+            llm_query = f"""
+                SELECT SNOWFLAKE.CORTEX.COMPLETE(
+                    'mixtral-8x7b',
+                   '{prompt_escaped}'
+                ) AS ingredients_to_remove
+            """
+            
+            llm_response = self.session.sql(llm_query)
+            llm_response = parse_query_result(llm_response)
+            response_text = llm_response[0]["INGREDIENTS_TO_REMOVE"].strip()
+            
+            # print(f"LLM Response: {response_text}")
+            
+            # Verify output format
+            if response_text.upper() == "NONE" or not response_text:
+                print("LLM: No ingredients to remove")
+                return []
+            
+            # Parse the ingredient list (handle different formats)
+            ingredients_to_remove = []
+            
+            # Clean the response from special characters and numbers
+            cleaned_response = response_text.replace("\n", ",").replace(";", ",")
+            
+            for item in cleaned_response.split(","):
+                # Clean each item
+                cleaned_item = item.strip()
+                # Remove leading numbers (e.g., "1. sugar" -> "sugar")
+                if cleaned_item and cleaned_item[0].isdigit():
+                    cleaned_item = cleaned_item.lstrip("0123456789.-) ").strip()
+                
+                if cleaned_item and len(cleaned_item) > 1:
+                    # Verify that the ingredient exists in the recipe (fuzzy matching)
+                    matched = False
+                    for recipe_ing in recipe.ingredients:
+                        if cleaned_item.lower() in recipe_ing.lower() or recipe_ing.lower() in cleaned_item.lower():
+                            ingredients_to_remove.append(recipe_ing)
+                            matched = True
+                            # print(f"LLM: {cleaned_item} → {recipe_ing}")
+                            break
+                    
+                    if not matched:
+                        print(f"LLM: Ingredient '{cleaned_item}' not found in recipe")
+            
+            # Limit to 3 maximum
+            if len(ingredients_to_remove) > 3:
+                print(f"LLM: Limiting to 3 ingredients out of {len(ingredients_to_remove)}")
+                ingredients_to_remove = ingredients_to_remove[:3]
+            
+            return ingredients_to_remove
+            
+        except Exception as e:
+            print(f"LLM error for ingredient identification: {e}")
+            traceback.print_exc()
+            return []
+
+    def judge_substitute(self, candidats, recipe_ingredients: List[str], recipe_id: int, serving_size: float, servings: float) -> Tuple[str,NutritionDelta]:
         """
         Final ingredient choice between list of candidats
 
@@ -848,16 +1073,41 @@ class TransformService:
 
             llm_response = self.session.sql(llm_query)
             llm_response = parse_query_result(llm_response)
-            parsed_steps = llm_response[0]["ADAPTED_STEPS"].strip().split("\n")
+            response_text = llm_response[0]["ADAPTED_STEPS"].strip()
+            
+            # Verification of LLM output format
+            if not response_text:
+                print("LLM returned an empty response")
+                return recipe.steps, []
+            
+            parsed_steps = response_text.split("\n")
 
             new_steps = []
             notes = []
+            
             for step in parsed_steps:
-                if len(step) > 0:
-                    if step[0].isdigit():
-                        new_steps.append(step)
-                    elif str.startswith(step.lower(), "note"):
-                        notes.append(step[6:].strip())
+                step_cleaned = step.strip()
+                if not step_cleaned:
+                    continue
+                
+                # Check if it's a numbered step (format: "1.", "1)", or just a digit at the beginning)
+                if step_cleaned and (step_cleaned[0].isdigit() or step_cleaned.startswith("-") or step_cleaned.startswith("*")):
+                    # Clean list formats
+                    cleaned_step = step_cleaned.lstrip("0123456789.-*) ").strip()
+                    if cleaned_step:
+                        new_steps.append(cleaned_step)
+                elif step_cleaned.lower().startswith("note"):
+                    # Extract the note after "Note:"
+                    note_content = step_cleaned.split(":", 1)[-1].strip()
+                    if note_content:
+                        notes.append(note_content)
+            
+            # Validation: if no steps were extracted, fallback to original steps
+            if not new_steps:
+                print("LLM: No valid steps extracted, using original steps")
+                return recipe.steps, notes
+            
+            print(f"LLM: {len(new_steps)} adapted steps, {len(notes)} notes")
             return new_steps, notes
 
         except Exception as e:
@@ -925,19 +1175,41 @@ class TransformService:
 
             llm_response = self.session.sql(llm_query)
             llm_response = parse_query_result(llm_response)
-            parsed_steps = llm_response[0]["ADAPTED_STEPS"].strip().split("\n")
+            response_text = llm_response[0]["ADAPTED_STEPS"].strip()
+            
+            # Verification of LLM output format
+            if not response_text:
+                print("LLM returned an empty response -> adapt_recipe_delete")
+                return recipe.steps, []
+            
+            parsed_steps = response_text.split("\n")
 
             new_steps: List[str] = []
             notes: List[str] = []
 
             for step in parsed_steps:
-                if step:
-                    if step[0].isdigit():
-                        new_steps.append(step)
-                    elif step.lower().startswith("note"):
-                        # handles "Note:" or "note:"
-                        notes.append(step.split(":", 1)[-1].strip())
-
+                step_cleaned = step.strip()
+                if not step_cleaned:
+                    continue
+                
+                # Check if it's a numbered step
+                if step_cleaned and (step_cleaned[0].isdigit() or step_cleaned.startswith("-") or step_cleaned.startswith("*")):
+                    # Clean list formats
+                    cleaned_step = step_cleaned.lstrip("0123456789.-*) ").strip()
+                    if cleaned_step:
+                        new_steps.append(cleaned_step)
+                elif step_cleaned.lower().startswith("note"):
+                    # Extract the note after "Note:"
+                    note_content = step_cleaned.split(":", 1)[-1].strip()
+                    if note_content:
+                        notes.append(note_content)
+            
+            # Validation: if no steps were extracted, fallback to original steps
+            if not new_steps:
+                print("LLM: No valid steps extracted, using original steps -> adapt_recipe_delete")
+                return recipe.steps, notes
+            
+            print(f"LLM: {len(new_steps)} adapted steps, {len(notes)} notes")
             return new_steps, notes
 
         except Exception as e:
@@ -966,8 +1238,19 @@ class TransformService:
             if ingredients_to_remove is not None:
                 ingredients_to_transform = ingredients_to_remove
             else:
-                ingredients_to_transform = self._extract_ingredients_from_text(recipe, constraints)
-                # TODO : code à rajouter 
+                # Algorithm in priority to identify ingredients
+                print("Step 1a: Identification by algorithm...")
+                ingredients_to_transform = self._identify_ingredients_to_remove_by_algo(recipe, constraints)
+                
+                # LLM fallback if the algorithm finds nothing
+                if not ingredients_to_transform:
+                    print("Step 1b: LLM fallback for identification...")
+                    ingredients_to_transform = self._identify_ingredients_to_remove_by_llm(recipe, constraints)
+                
+                if not ingredients_to_transform:
+                    print("No ingredients to transform identified")
+                else:
+                    print(f"Ingredients identified: {ingredients_to_transform}")
 
             logging.info("Success: Step 1 finished (Ingredients to remove has been found).")
 
