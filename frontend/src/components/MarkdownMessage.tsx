@@ -45,8 +45,8 @@ export function MarkdownMessage({ content, className = '', isUserMessage = false
           em: ({ children }) => (
             <em className={`italic ${textColor}`}>{children}</em>
           ),
-          code: ({ children, className: codeClassName }) => {
-            const isInline = !codeClassName?.includes('language-');
+          code: ({ children, className: languageClass }) => {
+            const isInline = !languageClass?.includes('language-');
             if (isInline) {
               return (
                 <code className={`${isUserMessage ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-muted text-foreground'} px-1 py-0.5 rounded text-sm font-mono`}>
