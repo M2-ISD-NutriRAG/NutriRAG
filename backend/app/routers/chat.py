@@ -1,6 +1,7 @@
 import hashlib
 import uuid
 import json
+import asyncio
 from fastapi import APIRouter, HTTPException, Header, Request, Depends
 from fastapi.responses import StreamingResponse
 from shared.snowflake.client import SnowflakeClient
@@ -257,6 +258,11 @@ async def handle_chat_stream(
         try:
             # Send initial status
             yield f"data: {json.dumps({'type': 'conversation_id', 'conversation_id': conv_id})}\n\n"
+            await asyncio.sleep(0)  # Force immediate yield
+
+            # Send thinking status to start streaming immediately
+            yield f"data: {json.dumps({'type': 'thinking', 'status': 'started', 'message': 'Processing your request...'})}\n\n"
+            await asyncio.sleep(0)  # Force immediate yield
 
             # Initialize CortexAgentClient
             agent_client = CortexAgentClient(snowflake_client=db)
@@ -265,9 +271,12 @@ async def handle_chat_stream(
             response = agent_client.call_agent(message_text)
             current_event = None
 
-            for line in response.iter_lines(decode_unicode=True):
+            for line in response.iter_lines(decode_unicode=True, chunk_size=1):
                 if line.strip() == "":
                     continue
+
+                # Debug: print the raw line to help troubleshoot
+                print(f"Raw line: {repr(line)}")
 
                 # Parse Server-Sent Events format - capture all event types
                 if line.startswith("event: response.status"):
@@ -335,6 +344,7 @@ async def handle_chat_stream(
                             text_chunk = data["text"]
                             ai_response_content += text_chunk
                             yield f"data: {json.dumps({'type': 'text_delta', 'event': current_event, 'text': text_chunk, 'content_index': data.get('content_index')})}\n\n"
+                            await asyncio.sleep(0)  # Force immediate yield
 
                         # Handle complete text response
                         elif (
@@ -372,6 +382,7 @@ async def handle_chat_stream(
 
             # Send completion signal
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            await asyncio.sleep(0)  # Force immediate yield
 
         except Exception as e:
             # Send error to client
@@ -393,10 +404,11 @@ async def handle_chat_stream(
 
     return StreamingResponse(
         generate_response(),
-        media_type="text/plain",
+        media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Headers": "Content-Type, Authorization",
         },

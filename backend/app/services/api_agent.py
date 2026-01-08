@@ -34,7 +34,13 @@ class CortexAgentClient:
             "tool_choice": {"type": "auto"},
         }
 
-        return requests.post(url, headers=headers, json=body, stream=True)
+        return requests.post(
+            url,
+            headers=headers,
+            json=body,
+            stream=True,
+            timeout=(10, 300),  # 10s connection, 300s read timeout
+        )
 
 
 # Example usage:
