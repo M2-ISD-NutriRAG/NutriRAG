@@ -152,13 +152,13 @@ class ConversationManager:
     def _get_search_context(self, conversation_id: str) -> str:
         """Get context from recent search results."""
         try:
+            # Simpler query - let application handle numbering
             search_results = self.client.execute(
                 """
-                SELECT RECIPE_ID, NAME, QUERY, ROW_NUMBER() OVER (PARTITION BY QUERY ORDER BY SEARCH_TIMESTAMP DESC) as rn
+                SELECT RECIPE_ID, NAME, QUERY
                 FROM ANALYTICS.HIST_SEARCH
                 WHERE conversation_id = %s
-                ORDER BY SEARCH_TIMESTAMP DESC
-                LIMIT 10
+                ORDER BY QUERY, SEARCH_TIMESTAMP DESC
                 """,
                 params=(conversation_id,),
                 fetch="all",
@@ -168,12 +168,12 @@ class ConversationManager:
                 context_parts = []
                 current_query = None
                 recipe_list = []
+                recipe_count = 0
 
                 for row in search_results:
                     recipe_id = row[0]
                     recipe_name = row[1]
                     query = row[2]
-                    row_num = row[3]
 
                     if recipe_id and recipe_name and query:
                         # Group recipes by query
@@ -184,10 +184,14 @@ class ConversationManager:
                                 )
                             current_query = query
                             recipe_list = []
+                            recipe_count = 0
 
-                        recipe_list.append(
-                            f"{row_num}. {recipe_name} (ID: {recipe_id})"
-                        )
+                        recipe_count += 1
+                        # Limit to top 3 per query
+                        if recipe_count <= 3:
+                            recipe_list.append(
+                                f"{recipe_count}. {recipe_name} (ID: {recipe_id})"
+                            )
 
                 # Add the last group
                 if recipe_list and current_query:

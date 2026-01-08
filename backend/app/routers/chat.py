@@ -356,12 +356,6 @@ async def handle_chat_stream(
                 if line.strip() == "":
                     continue
 
-                # Debug: print the raw line to help troubleshoot
-                if "metadata" in line.lower() or "thread" in line.lower():
-                    print(f"METADATA/THREAD LINE: {repr(line)}")
-                else:
-                    print(f"Raw line: {repr(line)}")
-
                 # Parse Server-Sent Events format - capture all event types
                 if line.startswith("event: response.status"):
                     current_event = "response.status"
