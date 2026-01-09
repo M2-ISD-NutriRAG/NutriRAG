@@ -1,10 +1,15 @@
 -- Deployment script for GET_RECIPE_BY_ID
-USE ROLE TRAINING_ROLE;
-USE WAREHOUSE NUTRIRAG_PROJECT;
-USE DATABASE NUTRIRAG_PROJECT;
-USE SCHEMA SERVICES;
+USE
+ROLE TRAINING_ROLE;
+USE
+WAREHOUSE NUTRIRAG_PROJECT;
+USE
+DATABASE NUTRIRAG_PROJECT;
+USE
+SCHEMA SERVICES;
 
-CREATE OR REPLACE PROCEDURE SERVICES.GET_RECIPE_BY_ID(RECIPE_ID NUMBER)
+CREATE
+OR REPLACE PROCEDURE SERVICES.GET_RECIPE_BY_ID(RECIPE_ID NUMBER)
 RETURNS OBJECT
 LANGUAGE PYTHON
 RUNTIME_VERSION = '3.10'
@@ -57,5 +62,6 @@ def get_recipe_by_id_handler(session, recipe_id: int):
             "status": "error",
             "recipe_id": recipe_id,
             "error": str(e),
+            "execution_time_ms": (time.time() - start_time) * 1000,
         }
 $$;

@@ -195,10 +195,12 @@ def handle_chat(
     # Conversation manager for context and recipe resolution
     conv_manager = ConversationManager(db)
 
-    # Try to resolve references like "the third recipe" using stored recipe_ids
-    recent_recipe_ids = conv_manager.get_recent_recipe_ids(conv_id)
+    # Try to resolve references like "the third recipe" or
+    # name-based references like "the breakfast hurry" using
+    # stored recipes (IDs and optional names)
+    recent_recipes = conv_manager.get_recent_recipes_for_reference(conv_id)
     resolved_recipe_id = get_recipe_id_from_reference(
-        message_text, recent_recipe_ids
+        message_text, recent_recipes
     )
 
     resolution_hint = ""
@@ -363,10 +365,12 @@ async def handle_chat_stream(
             # Conversation manager for context and recipe resolution
             conv_manager = ConversationManager(db)
 
-            # Try to resolve references like "the third recipe" using stored recipe_ids
-            recent_recipe_ids = conv_manager.get_recent_recipe_ids(conv_id)
+            # Try to resolve references like "the third recipe" or
+            # name-based references like "the breakfast hurry" using
+            # stored recipes (IDs and optional names)
+            recent_recipes = conv_manager.get_recent_recipes_for_reference(conv_id)
             resolved_recipe_id = get_recipe_id_from_reference(
-                message_text, recent_recipe_ids
+                message_text, recent_recipes
             )
 
             resolution_hint = ""
