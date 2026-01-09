@@ -16,6 +16,9 @@ OUTPUT_FILES = {
     "cleaned_ingredients": "cleaned_ingredients.csv",
     "cleaned_recipes": "Recipes_50k.csv",
     "ingredients_with_clusters": "ingredients_with_clusters.csv",
+    "tagged" : "ing_tagged_test.csv",
+    "parsing":"parsing_test.csv",
+    "matching":"matching_test.csv"
 }
 
 # Database configuration
@@ -30,6 +33,9 @@ SNOWFLAKE_CONFIG = {
     "cleaned_table": "RECIPES_SAMPLE_50K",
     "ingredients_parsing_table": "INGREDIENTS_QUANTITY",
     "ingredients_with_clusters_table": "INGREDIENTS_WITH_CLUSTERS",
+    "tagged" : "INGREDIENTS_TAGGED",
+    "parsing":"INGREDIENTS_QUANTITY",
+    "matching":"INGREDIENTS_MATCHING"
 }
 
 # Data processing parameters

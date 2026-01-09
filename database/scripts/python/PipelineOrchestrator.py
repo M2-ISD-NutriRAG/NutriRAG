@@ -86,11 +86,12 @@ class PipelineOrchestrator:
         self.logger.info("=" * 60)
 
         load_tasks = [
-            # ("ingredients_parsing", SNOWFLAKE_CONFIG['raw_schema'], SNOWFLAKE_CONFIG['ingredients_parsing_table']),
-            # TODO: ici rajouter le fichier csv de parsing
             ("cleaned_recipes", SNOWFLAKE_CONFIG['cleaned_schema'], SNOWFLAKE_CONFIG['cleaned_table']),
             ("cleaned_ingredients", SNOWFLAKE_CONFIG['raw_schema'], "CLEANED_INGREDIENTS"),
             ("ingredients_with_clusters", SNOWFLAKE_CONFIG['analytics_schema'], SNOWFLAKE_CONFIG['ingredients_with_clusters_table']),
+            ("matching", SNOWFLAKE_CONFIG['cleaned_schema'], SNOWFLAKE_CONFIG['matching']),
+            ("parsing", SNOWFLAKE_CONFIG['cleaned_schema'], SNOWFLAKE_CONFIG['parsing']),
+            ("tagged", SNOWFLAKE_CONFIG['cleaned_schema'], SNOWFLAKE_CONFIG['tagged']),
         ]
 
         try:
@@ -196,6 +197,7 @@ class PipelineOrchestrator:
                 database=SNOWFLAKE_CONFIG['database'],
                 raw_schema=SNOWFLAKE_CONFIG['raw_schema'],
                 cleaned_schema=SNOWFLAKE_CONFIG['cleaned_schema'],
+                analytics_schema = SNOWFLAKE_CONFIG['analytics_schema'],
                 enriched_schema=SNOWFLAKE_CONFIG.get('enriched_schema', 'ENRICHED')
             )
 
@@ -287,8 +289,6 @@ class PipelineOrchestrator:
         try:
             self.phase_0_setup_schema(connector) # create snowflake schema
             self.phase_1c_load_raw_data(connector, nrows) # fast load to snowflake
-            #self.extract_filters(connector) # extract dietary filters from tags
-            #self.phase_3_ingest_data(connector) # generate clean data to save to snowflake
             self.nutri_score(connector) # calculate nutrition scores
             self.logger.info("🎉 PIPELINE COMPLETED SUCCESSFULLY!")
         except Exception as e:
