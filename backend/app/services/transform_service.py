@@ -713,11 +713,11 @@ class TransformService:
                 # Check reduction constraints
                 if constraints.decrease_sugar and nutrition.get("SUGAR_G", 0) > SUGAR_THRESHOLD:
                     should_remove = True
-                    #print(f" _identify_ingredients_to_remove_by_algo: {ingredient} identified for sugar reduction ({nutrition.get('SUGAR_G', 0):.1f}g)")
+                    #print(f"_identify_ingredients_to_remove_by_algo: {ingredient} identified for sugar reduction ({nutrition.get('SUGAR_G', 0):.1f}g)")
                 
                 if constraints.decrease_sodium and nutrition.get("SODIUM_MG", 0) > SODIUM_THRESHOLD:
                     should_remove = True
-                    #print(f" _identify_ingredients_to_remove_by_algo: {ingredient} identified for sodium reduction ({nutrition.get('SODIUM_MG', 0):.1f}mg)")
+                    #print(f"_identify_ingredients_to_remove_by_algo: {ingredient} identified for sodium reduction ({nutrition.get('SODIUM_MG', 0):.1f}mg)")
                 
                 if constraints.decrease_calories and nutrition.get("ENERGY_KCAL", 0) > CALORIE_THRESHOLD:
                     should_remove = True
@@ -768,7 +768,7 @@ class TransformService:
             return ingredients_to_remove
             
         except Exception as e:
-            print(f" Error in identification ingredients to remove: {e}")
+            print(f" Error in identifying ingredients to remove: {e}")
             traceback.print_exc()
             return []
     
@@ -815,27 +815,27 @@ class TransformService:
             
             base_prompt = f"""You are a nutritionist expert analyzing recipe ingredients.
 
-RECIPE: {recipe.name}
-INGREDIENTS: {', '.join(recipe.ingredients)}
-
-CONSTRAINTS: {constraints_text}
-
-TASK:
-Identify which ingredients should be REMOVED to meet the constraints.
-Select a MAXIMUM of 3 ingredients that have the most negative impact.
-
-IMPORTANT:
-- Only suggest removing ingredients that clearly violate the constraints
-- Do NOT suggest removing essential ingredients that define the dish
-- Be conservative - better to remove fewer ingredients than too many
-
-OUTPUT FORMAT:
-Provide ONLY a comma-separated list of ingredient names to remove.
-Example: sugar, butter, salt
-
-If no ingredients should be removed, output: NONE
-
-INGREDIENTS TO REMOVE:"""
+                RECIPE: {recipe.name}
+                INGREDIENTS: {', '.join(recipe.ingredients)}
+            
+                CONSTRAINTS: {constraints_text}
+            
+                TASK:
+                Identify which ingredients should be REMOVED to meet the constraints.
+                Select a MAXIMUM of 3 ingredients that have the most negative impact.
+            
+                IMPORTANT:
+                - Only suggest removing ingredients that clearly violate the constraints
+                - Do NOT suggest removing essential ingredients that define the dish
+                - Be conservative - better to remove fewer ingredients than too many
+            
+                OUTPUT FORMAT:
+                Provide ONLY a comma-separated list of ingredient names to remove.
+                Example: sugar, butter, salt
+            
+                If no ingredients should be removed, output: NONE
+            
+                INGREDIENTS TO REMOVE:"""
 
             prompt_escaped = base_prompt.replace("'", "''")
             
@@ -895,22 +895,22 @@ INGREDIENTS TO REMOVE:"""
             traceback.print_exc()
             return []
 
-    def judge_substitute(self, candidats, recipe_ingredients: List[str], recipe_id: int, serving_size: float, servings: float) -> Tuple[str,NutritionDelta]:
+    def judge_substitute(self, candidates, recipe_ingredients: List[str], recipe_id: int, serving_size: float, servings: float) -> Tuple[str,NutritionDelta]:
         """
-        Final ingredient choice between list of candidats
+        Final ingredient choice between list of candidates
 
         Args:
-            candidats: list of possible ingredients to substitute with (extracted from get_neighbors_pca() )
+            candidates: list of possible ingredients to substitute with (extracted from get_neighbors_pca() )
             recipe_id, serving_size, servings, recipe_ingredients: recipe information
         Returns:
             ingredient_id
         """
-        if not candidats:
-            logging.warning("Failure: No candidate found.")
+        if not candidates:
+            logging.warning("Failure: No candidatee found.")
             return None
         best_ing = None
         best_nutrition = NutritionDelta()
-        for cand in candidats:
+        for cand in candidates:
             if best_ing is None:
                 best_ing = cand
             else:
@@ -936,10 +936,10 @@ INGREDIENTS TO REMOVE:"""
         result = self.get_neighbors_pca(ingredient, contraintes)
 
         if not result or not result.get("best_substitutes"):
-            return ingredient, False
+            return ingredient, False, NutritionDelta()
 
-        candidats = result["best_substitutes"]
-        substitute, nutrition = self.judge_substitute(candidats, recipe_ingredients, recipe_id, serving_size, servings)
+        candidates = result["best_substitutes"]
+        substitute, nutrition = self.judge_substitute(candidates, recipe_ingredients, recipe_id, serving_size, servings)
 
         if substitute:
             substitute_name = substitute["name"]
@@ -1091,8 +1091,7 @@ INGREDIENTS TO REMOVE:"""
                     continue
                 
                 # Check if it's a numbered step (format: "1.", "1)", or just a digit at the beginning)
-                if step_cleaned and (step_cleaned[0].isdigit() or step_cleaned.startswith("-") or step_cleaned.startswith("*")):
-                    # Clean list formats
+                if step_cleaned[0].isdigit() or step_cleaned.startswith("-") or step_cleaned.startswith("*"):                    # Clean list formats
                     cleaned_step = step_cleaned.lstrip("0123456789.-*) ").strip()
                     if cleaned_step:
                         new_steps.append(cleaned_step)
@@ -1193,8 +1192,8 @@ INGREDIENTS TO REMOVE:"""
                     continue
                 
                 # Check if it's a numbered step
-                if step_cleaned and (step_cleaned[0].isdigit() or step_cleaned.startswith("-") or step_cleaned.startswith("*")):
-                    # Clean list formats
+
+                if step_cleaned[0].isdigit() or step_cleaned.startswith("-") or step_cleaned.startswith("*"):                    # Clean list formats
                     cleaned_step = step_cleaned.lstrip("0123456789.-*) ").strip()
                     if cleaned_step:
                         new_steps.append(cleaned_step)
