@@ -9,6 +9,10 @@ class InitExperience:
     def __init__(self, config: Dict):
         self.experience_id = config["Experiment_id"]
         self.raw_data_table_name = config["raw_data_table_name"]
+        self.number_row_analyse = config.get("number_row_analyse", None)
+        self.eval_with_llm_or_ground_truth = config.get(
+            "eval_with_llm_or_ground_truth", "llm"
+        )
 
         self.config = config
 
@@ -31,9 +35,9 @@ class InitExperience:
         self.embedding_models = {
             "embedding_models": config["embedding_models"],
             "top_k": config["top_k"],
-            "columns_to_clean": config["columns_to_clean"],
-            "columns_embedding": config["columns_embedding"],
+            "embedding_config": config["embedding_config"],
             "data_columns": config["data_columns"],
+            "ID_column": config["ID_column"],
         }
 
         self.llm = {
@@ -43,12 +47,7 @@ class InitExperience:
             "temperature": config["temperature"],
             "num_docs_per_call": config["number_doc_per_call"],
             "max_retries_llm_calls": config["max_retries_llm_calls"],
-            "json_schema_with_justification": config[
-                "llm_json_format_with_justification"
-            ],
-            "json_schema_without_justification": config[
-                "llm_json_format_without_justification"
-            ],
+            "llm_json_schema": config["llm_json_schema"],
         }
 
         self.override_flags = {
@@ -75,11 +74,10 @@ class InitExperience:
     def move_files_to_experience(self):
         file_moves = {
             "config_file_path": "config",
-            "input_recipies_file": "raw_data",
+            "input_raw_data_file_path": "raw_data",
             "ground_truth_file_path": "eval_data",
             "query_test_file_path": "eval_data",
-            "eval_prompt_with_justification_file_path": "prompts",
-            "eval_prompt_without_justification_file_path": "prompts",
+            "eval_prompt_file_path": "prompts",
         }
 
         for config_key, target_dir in file_moves.items():
@@ -88,46 +86,51 @@ class InitExperience:
 
     def set_file_paths(self):
         self.paths = {
-            "config_file": self.dirs["config"]
+            "config_file_path": self.dirs["config"]
             / Path(self.config["config_file_path"]).name,
-            "raw_data_file": self.dirs["raw_data"]
-            / Path(self.config["input_recipies_file"]).name,
-            "embedding_data_file": self.dirs["embedding_data"]
-            / self.config["output_recipies_embedding_file"],
-            "ground_truth_file": self.dirs["eval_data"]
+            "input_raw_data_file_path": self.dirs["raw_data"]
+            / Path(self.config["input_raw_data_file_path"]).name,
+            "input_raw_data_cache_file_path": self.config[
+                "input_raw_data_cache_file_path"
+            ],
+            "output_recipes_embedding_file_path": self.dirs["embedding_data"]
+            / Path(self.config["output_recipes_embedding_file_path"]).name,
+            "ground_truth_file_path": self.dirs["eval_data"]
             / Path(self.config["ground_truth_file_path"]).name,
-            "query_test_file": self.dirs["eval_data"]
+            "query_test_file_path": self.dirs["eval_data"]
             / Path(self.config["query_test_file_path"]).name,
-            "eval_prompt_with_justification": self.dirs["prompts"]
-            / Path(self.config["eval_prompt_with_justification_file_path"]).name,
-            "eval_prompt_without_justification": self.dirs["prompts"]
-            / Path(self.config["eval_prompt_without_justification_file_path"]).name,
-            "eval_llm_ground_truth_file": self.dirs["llm_metrics"]
+            "eval_prompt_file_path": self.dirs["prompts"]
+            / Path(self.config["eval_prompt_file_path"]).name,
+            "eval_llm_ground_truth_file_path": self.dirs["llm_metrics"]
             / Path(self.config["eval_llm_ground_truth_file_path"]).name,
-            "input_embedding_cache_file": self.config[
+            "input_embedding_cache_file_path": self.config[
                 "input_embedding_cache_file_path"
             ],
-            "topk_model_query_retrived_documents_file": self.dirs["temp_data"]
+            "output_topk_model_query_retrieved_documents_file_path": self.dirs[
+                "temp_data"
+            ]
             / Path(
-                self.config["output_topk_model_query_retrieved_documents_file"]
+                self.config["output_topk_model_query_retrieved_documents_file_path"]
             ).name,
-            "retrived_query_documents_relevance_file": self.dirs["temp_data"]
-            / Path(self.config["output_retrived_documents_relevence_file"]).name,
-            "output_topk_model_query_retrieved_documents_relevance_file": self.dirs[
+            "output_retrived_documents_relevance_file_path": self.dirs["temp_data"]
+            / Path(self.config["output_retrived_documents_relevence_file_path"]).name,
+            "output_topk_model_query_retrieved_documents_relevance_file_path": self.dirs[
                 "embedding_metrics"
             ]
             / Path(
                 self.config[
-                    "output_topk_model_query_retrieved_documents_relevance_file"
+                    "output_topk_model_query_retrieved_documents_relevance_file_path"
                 ]
             ).name,
-            "output_retrived_documents_metrics_file": self.dirs["embedding_metrics"]
-            / Path(self.config["output_retrived_documents_metrics_file"]).name,
-            "output_retrived_documents_aggregated_metrics_file": self.dirs[
+            "output_retrived_documents_metrics_file_path": self.dirs[
+                "embedding_metrics"
+            ]
+            / Path(self.config["output_retrived_documents_metrics_file_path"]).name,
+            "output_retrived_documents_aggregated_metrics_file_path": self.dirs[
                 "embedding_metrics"
             ]
             / Path(
-                self.config["output_retrived_documents_aggregated_metrics_file"]
+                self.config["output_retrived_documents_aggregated_metrics_file_path"]
             ).name,
         }
 

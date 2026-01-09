@@ -3,6 +3,7 @@ import os
 import pandas as pd
 from tqdm import tqdm
 from typing import List, Dict, Tuple, TypedDict, Any
+import pdb
 
 from shared.snowflake.client import SnowflakeClient
 from experiments.utils.llm import evaluate_documents_with_llm
@@ -20,7 +21,7 @@ class EvalLLMJudge:
         llm_model_context_windows: int,
         llm_model_max_output_token: int,
         llm_model_temperature: float,
-        json_schema: Dict[str, any],
+        llm_json_schema: Dict[str, any],
         number_doc_per_call: int,
         eval_llm_ground_truth_file_path: str,
         max_retries_llm_calls: int = 3,
@@ -32,7 +33,10 @@ class EvalLLMJudge:
 
         # Load ground truth
         with open(query_test_file_path, "r", encoding="utf-8") as f:
-            self.ground_truth = json.load(f)
+            self.ground_truth_dict = {
+                query: {int(doc_id): score for doc_id, score in doc_scores.items()}
+                for query, doc_scores in json.load(f).items()
+            }
 
         # Load prompt template
         with open(prompt_file_path, "r", encoding="utf-8") as f:
@@ -44,13 +48,13 @@ class EvalLLMJudge:
         self.llm_model_temperature = llm_model_temperature
         self.max_retries_llm_calls = max_retries_llm_calls
 
-        self.json_schema = json_schema
+        self.llm_json_schema = llm_json_schema
 
         self.number_doc_per_call = number_doc_per_call
 
         self.eval_llm_ground_truth_file_path = eval_llm_ground_truth_file_path
 
-        self.llm_results = []
+        self.llm_results_dict = {}
 
         self.override_llm_eval = override_llm_eval
 
@@ -64,18 +68,33 @@ class EvalLLMJudge:
                 f"LLM evaluation file {self.eval_llm_ground_truth_file_path} already exists. Skipping LLM evaluation."
             )
             with open(self.eval_llm_ground_truth_file_path, "r", encoding="utf-8") as f:
-                self.llm_results = json.load(f)
+                self.llm_results_file_dict = json.load(f)
+                self.llm_results_dict = {
+                    query: {
+                        int(doc_id): {
+                            "relevance_score": relevance_score_justification.get(
+                                "relevance_score", 0.0
+                            ),
+                            "justification": relevance_score_justification.get(
+                                "justification", ""
+                            ),
+                        }
+                        for doc_id, relevance_score_justification in doc_scores.items()
+                    }
+                    for query, doc_scores in self.llm_results_file_dict.items()
+                    if isinstance(doc_scores, dict)
+                }
             return
 
-        for query in tqdm(self.ground_truth, desc="Processing queries"):
-            query_text = query["query_text"]
+        for query in tqdm(self.ground_truth_dict, desc="Processing queries"):
+
+            print("query", query)
 
             # Build doc entries for the prompt
             doc_entries = []
-            for document in query["relevance_documents"]:
-                doc_id = document["ID"]
+            for document_id in self.ground_truth_dict[query].keys():
                 recipe_row = self.raw_data_recipes[
-                    self.raw_data_recipes["ID"] == doc_id
+                    self.raw_data_recipes["ID"] == int(document_id)
                 ]
                 if recipe_row.empty:
                     continue
@@ -88,39 +107,40 @@ class EvalLLMJudge:
                     else:
                         recipe_info[col_name] = value
 
-                doc_entries.append({"ID": int(doc_id), "recipe_info": recipe_info})
+                doc_entries.append({"ID": int(document_id), "recipe_info": recipe_info})
 
             # Get relevance judgments from LLM
             relevance_judgments = evaluate_documents_with_llm(
                 doc_entries=doc_entries,
                 number_doc_per_call=self.number_doc_per_call,
-                query_text=query_text,
+                query_text=query,
                 prompt_template=self.prompt_template,
                 llm_model=self.llm_model,
                 llm_model_temperature=self.llm_model_temperature,
                 llm_model_max_output_token=self.llm_model_max_output_token,
-                json_schema=self.json_schema,
+                llm_json_schema=self.llm_json_schema,
                 max_retries=self.max_retries_llm_calls,
             )
 
-            query_doc_relevance_dict = {
-                "query_text": query_text,
-                "relevance_judgments": relevance_judgments,
-            }
+            self.llm_results_dict.setdefault(query, {})
 
-            self.llm_results.append(query_doc_relevance_dict)
+            for doc in relevance_judgments:
+                self.llm_results_dict[query][doc["ID"]] = {
+                    "relevance_score": float(doc.get("relevance_score", 0.0)),
+                    "justification": doc.get("justification", ""),
+                }
 
     def main(self):
         """Main method to run the evaluation"""
         self.calculate_llm_relevance_all_queries()
 
         coherence_avg_per_query, per_query_scores = compare_ground_truth_vs_llm(
-            ground_truth=self.ground_truth,
-            llm_results=self.llm_results,
+            ground_truth=self.ground_truth_dict,
+            llm_results=self.llm_results_dict,
         )
         print(f"Overall coherence score: {coherence_avg_per_query}")
 
-        self.llm_results.append({"COHERENCE_SCORE_AVG_QUERY": coherence_avg_per_query})
+        self.llm_results_dict["COHERENCE_SCORE_AVG_QUERY"] = coherence_avg_per_query
 
         with open(self.eval_llm_ground_truth_file_path, "w", encoding="utf-8") as f:
-            json.dump(self.llm_results, f, indent=4)
+            json.dump(self.llm_results_dict, f, indent=4)

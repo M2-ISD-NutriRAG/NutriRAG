@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import pdb
 
 from typing import List, Dict, Tuple, TypedDict, Any
 
@@ -22,40 +23,47 @@ def load_embedding_models(
     return dict(zip(embedding_model_list, model_list))
 
 
-def compute_embedding(model: SentenceTransformer, texts: list[str]) -> torch.Tensor:
+def compute_embedding(
+    model: SentenceTransformer, text_list: list[str], batch_size: int = 256
+) -> torch.Tensor:
     """
     Compute normalized embeddings for a list of texts using the specified model.
 
     Args:
         model (SentenceTransformer): The pre-trained sentence transformer model to use.
-        texts (list[str]): A list of input texts to compute embeddings for.
+        texts_list (list[str]): A list of input texts to compute embeddings for.
+        batch_size (int): The number of texts to process in each batch.
 
     Returns:
         torch.Tensor: A tensor containing the normalized embeddings for the input texts.
     """
 
-    if torch.cuda.is_available():
-        device = "cuda"
-    else:
-        device = "cpu"
-
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     model = model.to(device)
 
-    # Compute embeddings
-    embeddings = model.encode(texts, convert_to_tensor=True, device=device)
+    embeddings = []
 
-    # Normalize embeddings to unit length
-    normalized_embeddings = normalize(embeddings, p=2, dim=1)
+    for i in tqdm(
+        range(0, len(text_list), batch_size), desc="Computing embeddings chunks"
+    ):
+        batch_texts = text_list[i : i + batch_size]
+        batch_embeddings = model.encode(
+            batch_texts,
+            convert_to_tensor=True,
+            device=device,
+            normalize_embeddings=True,
+        ).cpu()
+        embeddings.append(batch_embeddings)
 
-    return normalized_embeddings.cpu()
+    return torch.cat(embeddings, dim=0)
 
 
 def retrieve_documents(
     query: str,
     model: SentenceTransformer,
-    documents: list,
+    documents: List[Any],
     df: pd.DataFrame,
-    columns_to_select: list,
+    columns_to_select: List[str],
     top_k: int,
 ) -> Dict[str, Any]:
     """
@@ -69,17 +77,14 @@ def retrieve_documents(
     model = model.to(device)
 
     # Generate query embedding
-    query_embedding = model.encode([query], convert_to_tensor=True, device=device)
-    query_embedding = normalize(query_embedding, p=2, dim=1)
+    query_embedding = model.encode(
+        [query], convert_to_tensor=True, device=device, normalize_embeddings=True
+    )
 
     # Build document embedding tensor
-    document_embeddings = torch.stack(
-        [
-            torch.tensor(doc, dtype=query_embedding.dtype, device=device)
-            for doc in documents
-        ]
+    document_embeddings = torch.tensor(
+        np.array(documents), dtype=torch.float32, device=device
     )
-    document_embeddings = normalize(document_embeddings, p=2, dim=1)
 
     # Compute cosine similarity
     cosine_scores = torch.matmul(query_embedding, document_embeddings.T).squeeze(0)

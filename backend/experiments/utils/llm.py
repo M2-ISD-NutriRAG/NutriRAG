@@ -23,7 +23,7 @@ def build_prompt(
     prompt_template: str, query_text: str, doc_entries: List[Dict[str, Any]]
 ) -> str:
     """
-    Build a prompt by safely injecting a query text and document entries.
+    Build a prompt by injecting a query text and document entries.
 
     Args:
         prompt_template (str): the base prompt
@@ -157,7 +157,7 @@ def evaluate_documents_with_llm(
     number_doc_per_call: int,
     llm_model: str,
     llm_model_max_output_token: int,
-    json_schema: Dict[str, Any],
+    llm_json_schema: Dict[str, Any],
     llm_model_temperature: float,
     doc_entries: List[Dict],
     query_text: str,
@@ -192,7 +192,7 @@ def evaluate_documents_with_llm(
                     client=SnowflakeClient(),
                     model=llm_model,
                     prompt=prompt,
-                    response_format=json_schema,
+                    response_format=llm_json_schema,
                     temperature=llm_model_temperature,
                     max_tokens=llm_model_max_output_token,
                 )

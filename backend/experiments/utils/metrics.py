@@ -1,47 +1,35 @@
-import numpy as np
-
 from typing import List, Dict, Tuple, TypedDict, Any
-
-
-class Document(TypedDict):
-    ID: int
-    relevance_score: float
-
-
-class Query(TypedDict):
-    query_text: str
-    relevance_documents: List[Document]
+import pdb
 
 
 def compare_ground_truth_vs_llm(
-    ground_truth: List[Query], llm_results: List[Query]
+    ground_truth: Dict[str, Dict[int, float]],
+    llm_results: Dict[str, Dict[int, Dict[str, Any]]],
 ) -> Tuple[float, float, List[float]]:
     """
     Computes how close LLM relevance scores are to the ground truth.
 
     Args:
-        ground_truth (Dict[str, list]): Dictionary mapping each query to a list of relevant documents.
-            Each document is a dict containing:
+        ground_truth (Dict[str, Dict[int, float]]): Dictionary mapping each query to a dictionary of relevant documents and their relevance scores.
+        llm_results (Dict[str, Dict[int, Dict[str, Any]]]): Dictionary mapping each query to a dictionary of documents and their LLM-assigned relevance scores.
+            Each document is represented as:
             {
-                "query_text": "a vegan dessert that require minimum time to prepare",
-                "relevance_judgments": [
+                "a vegan dessert that require minimum time to prepare" :
                 {
-                    "ID": 515586,
-                    "relevance_score": 1
+                    515586 : 1,
+                    123456 : 0.5,
+                    ...
                 }
-                ]
             },
         llm_results (Dict[str, list]): Dictionary mapping each query to a list of LLM relevance judgments.
             Each document is a dict containing:
             {
-                "query_text": "a vegan dessert that require minimum time to prepare",
-                "relevance_judgments": [
+                "a vegan dessert that require minimum time to prepare" :
                 {
-                    "ID": 515586,
-                    "relevance_score": 1,
-                    "justification": "..."
+                    515586 : {"relevance_score": 1, "justification": "..."},
+                    123456 : {"relevance_score": 0.25, "justification": "..."},
+                    ...
                 }
-                ]
             },
 
     Returns:
@@ -54,24 +42,22 @@ def compare_ground_truth_vs_llm(
 
     for gt_query, llm_query in zip(ground_truth, llm_results):
 
-        gt_scores = {
-            d["ID"]: d["relevance_score"] for d in gt_query["relevance_documents"]
-        }
+        gt_scores = {id: score for id, score in ground_truth[gt_query].items()}
         llm_scores = {
-            d["ID"]: d["relevance_score"] for d in llm_query["relevance_judgments"]
+            id: score["relevance_score"] for id, score in llm_results[llm_query].items()
         }
 
-        all_IDs = set(gt_scores.keys()) | set(llm_scores.keys())
+        all_IDs = set(gt_scores.keys()) & set(llm_scores.keys())
 
         diffs = []
         for ID in all_IDs:
-            gt = gt_scores.get(ID, 0)  # missing → assume 0
+            gt = gt_scores.get(ID, 0)
             llm = llm_scores.get(ID, 0)
             diff = 1 - abs(gt - llm)
             diffs.append(diff)
             doc_diffs.append(diff)
 
-        query_avg = sum(diffs) / len(diffs)
+        query_avg = sum(diffs) / len(diffs) if diffs else 0.0
         query_diffs.append(query_avg)
 
     # score per query and overall
@@ -90,11 +76,12 @@ def calculate_precision_at_k(retrieved_docs, k):
 
 def calculate_recall_at_k(retrieved_docs, expected_relevant_docs, k):
     """Calculate Recall@K."""
-
     if k == 0:
         return 0.0
 
-    total_relevant_in_pool = sum(score for score in expected_relevant_docs.values())
+    total_relevant_in_pool = sum(
+        info["relevance_score"] for info in expected_relevant_docs.values()
+    )
 
     if total_relevant_in_pool == 0:
         return 0.0
@@ -110,6 +97,8 @@ def calculate_ap_at_k(retrieved_docs, k):
     sum_precisions = 0.0
 
     for i, doc in enumerate(retrieved_docs[:k], 1):
+        if doc["relevance_score"] <= 0.5:
+            continue
         relevant_count += doc["relevance_score"]
         precision_at_i = relevant_count / i
         sum_precisions += precision_at_i

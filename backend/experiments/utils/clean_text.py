@@ -1,14 +1,14 @@
 import re
 
 
-def clean_columns_to_embedd(tag_value: any, col_name: str) -> str:
+def clean_columns_to_embedd(text: str, start_text: str) -> str:
     """
     Format text of the columns used for embedding
 
     Args:
-        tag_value (any): The input value to clean. Can be a string, list, number, or None.
+        text (str): The input value to clean. Can be a string, list, number, or None.
                         Will be converted to string before processing.
-        col_name (str): The label/prefix to add before the cleaned text
+        start_text (str): The label/prefix to add before the cleaned text
                        (e.g., "NAME", "TAGS", "INGREDIENTS").
 
     Returns:
@@ -16,10 +16,10 @@ def clean_columns_to_embedd(tag_value: any, col_name: str) -> str:
              Returns empty string if input is None or empty.
     """
 
-    if tag_value is None or tag_value == "":
+    if text is None or text == "":
         return ""
 
-    text = str(tag_value)
+    text = str(text)
 
     # Remove list brackets and quotes
     text = re.sub(r"[\[\]'\"]", "", text)
@@ -42,4 +42,4 @@ def clean_columns_to_embedd(tag_value: any, col_name: str) -> str:
     text = text.strip()
 
     # Return formatted text
-    return f"{col_name}: {text}."
+    return f"{start_text}: {text}."

@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 from tqdm import tqdm
 from typing import List, Dict, Tuple, TypedDict, Any
+import pdb
 
 from shared.snowflake.client import SnowflakeClient
 from experiments.utils.llm import evaluate_documents_with_llm
@@ -24,61 +25,78 @@ class EvalEmbeddingModels:
     def __init__(
         self,
         client: SnowflakeClient,
-        embedding_data_file_path: str,
-        data_columns: List[str],
-        eval_query_test_file_path: str,
-        embedding_model_list: List[str],
-        prompt_file_path: str,
-        llm_model: str,
-        llm_model_context_windows: int,
-        llm_model_max_output_token: int,
-        llm_model_temperature: float,
-        json_schema: Dict[str, any],
-        number_doc_per_call: int,
-        max_retries_llm_calls: int,
-        top_k: List[int],
-        output_retrived_documents_file_path: str,
-        output_retrived_query_documents_relevance_file: str,
-        output_topk_model_query_retrieved_documents_relevance_file: str,
-        output_retrived_documents_metrics_file_path: str,
-        output_retrived_documents_aggregated_metrics_file_path: str,
+        embedding_data_file_path: str = None,
+        data_columns: List[str] = [
+            "NAME",
+            "TAGS",
+            "INGREDIENTS",
+            "STEPS",
+            "DESCRIPTION",
+        ],
+        id_column: str = "ID",
+        eval_query_test_file_path: str = None,
+        ground_truth_file_path: str = None,
+        eval_with_llm_or_ground_truth: str = "llm",
+        embedding_model_list: List[str] = [],
+        prompt_file_path: str = None,
+        llm_model: str = "mistral-large2",
+        llm_model_context_windows: int = 64000,
+        llm_model_max_output_token: int = 8192,
+        llm_model_temperature: float = 0.0,
+        llm_json_schema: Dict[str, any] = None,
+        number_doc_per_call: int = 20,
+        max_retries_llm_calls: int = 3,
+        top_k: List[int] = [1, 5, 10],
+        output_retrived_documents_file_path: str = None,
+        output_retrived_documents_relevance_file_path: str = None,
+        output_topk_model_query_retrieved_documents_relevance_file_path: str = None,
+        output_retrived_documents_metrics_file_path: str = None,
+        output_retrived_documents_aggregated_metrics_file_path: str = None,
         override_documents_retrival: bool = False,
         override_embedding_eval: bool = False,
     ):
 
-        self.client = client
+        self.client = client or SnowflakeClient()
 
+        self.eval_with_llm_or_ground_truth = eval_with_llm_or_ground_truth
+
+        # load embedding data
         self.df_recipes_embedding = pd.read_csv(embedding_data_file_path)
 
+        # data columns and id column
         self.data_columns = data_columns
+        self.id_column = id_column
 
-        # Load the test queries
-        with open(eval_query_test_file_path, "r", encoding="utf-8") as f:
-            self.query_test = json.load(f)
+        if "llm" in self.eval_with_llm_or_ground_truth.lower():
+            with open(eval_query_test_file_path, "r", encoding="utf-8") as f:
+                self.ground_truth_dict = {item: {} for item in json.load(f)}
+            with open(prompt_file_path, "r", encoding="utf-8") as f:
+                self.prompt_template = f.read()
 
-        self.embedding_model_dict = load_embedding_models(embedding_model_list)
+            print("loaded queries and prompt template for LLM evaluation.")
 
-        # Load prompt template
-        with open(prompt_file_path, "r", encoding="utf-8") as f:
-            self.prompt_template = f.read()
+            self.output_retrived_query_documents_relevance_file_path = (
+                output_retrived_documents_relevance_file_path
+            )
 
-        # model parameters
-        self.llm_model = llm_model
-        self.llm_model_context_windows = llm_model_context_windows
-        self.llm_model_max_output_token = llm_model_max_output_token
-        self.llm_model_temperature = llm_model_temperature
-        self.max_retries_llm_calls = max_retries_llm_calls
-        self.json_schema = json_schema
-        self.number_doc_per_call = number_doc_per_call
+            # model parameters
+            self.llm_model = llm_model
+            self.llm_model_context_windows = llm_model_context_windows
+            self.llm_model_max_output_token = llm_model_max_output_token
+            self.llm_model_temperature = llm_model_temperature
+            self.max_retries_llm_calls = max_retries_llm_calls
+            self.llm_json_schema = llm_json_schema
+            self.number_doc_per_call = number_doc_per_call
 
-        self.top_k = top_k
+        if "ground_truth" in self.eval_with_llm_or_ground_truth.lower():
+            with open(ground_truth_file_path, "r", encoding="utf-8") as f:
+                self.ground_truth_dict = json.load(f)
+            print("Loaded ground truth data for evaluation.")
 
+        # output_files
         self.output_retrived_documents_file_path = output_retrived_documents_file_path
-        self.output_retrived_query_documents_relevance_file = (
-            output_retrived_query_documents_relevance_file
-        )
-        self.output_topk_model_query_retrieved_documents_relevance_file = (
-            output_topk_model_query_retrieved_documents_relevance_file
+        self.output_topk_model_query_retrieved_documents_relevance_file_path = (
+            output_topk_model_query_retrieved_documents_relevance_file_path
         )
         self.output_retrived_documents_metrics_file_path = (
             output_retrived_documents_metrics_file_path
@@ -87,13 +105,17 @@ class EvalEmbeddingModels:
             output_retrived_documents_aggregated_metrics_file_path
         )
 
-        self.retrived_model_query_docs_dict = {}
-        self.query_retrived_docs_dict = {}
+        self.embedding_model_list = embedding_model_list
+        self.top_k = top_k
 
-        self.llm_results_dict = {}  # LLM relevance results
+        self.retrived_model_query_docs_dict = (
+            {}
+        )  # retrived documents dict per top_k, model, config, query
+        self.query_retrived_docs_dict = {}  # retrived documents per query dict
 
-        self.retrived_model_query_docs_metrics_list = []  # metrics
-        self.retrived_model_query_docs_metrics_agg_dict = {}
+        self.retrived_model_query_docs_metrics_list = (
+            []
+        )  # metrics list per top k, model, config, query
 
         self.override_documents_retrival = override_documents_retrival
         self.override_embedding_eval = override_embedding_eval
@@ -133,6 +155,9 @@ class EvalEmbeddingModels:
 
             return
 
+        # load embedding models
+        embedding_model_dict = load_embedding_models(self.embedding_model_list)
+
         embeddings_cols = [
             col for col in self.df_recipes_embedding.columns if col.endswith("_EMB")
         ]
@@ -145,25 +170,23 @@ class EvalEmbeddingModels:
             for emb_col in tqdm(
                 embeddings_cols, desc="(model, Embedding) configurations"
             ):
-                for query in self.query_test:
+                # Convert embedding column to a list of numpy arrays
+                documents = self.df_recipes_embedding[emb_col].tolist()
 
-                    # Convert embedding column to a list of numpy arrays
-                    documents = (
-                        self.df_recipes_embedding[emb_col].apply(np.array).to_list()
-                    )
+                for query in self.ground_truth_dict:
 
                     # Build model name + config name from column name
                     model_name = "/".join(emb_col.split("/")[:-1])
                     config_name = emb_col.split("/")[-1].replace("_EMB", "")
 
-                    model = self.embedding_model_dict[model_name]
+                    model = embedding_model_dict[model_name]
 
                     retrieved_documents_list = retrieve_documents(
                         query=query,
                         model=model,
                         documents=documents,
                         df=self.df_recipes_embedding,
-                        columns_to_select=self.data_columns,
+                        columns_to_select=[self.id_column] + self.data_columns,
                         top_k=k,
                     )
 
@@ -185,8 +208,11 @@ class EvalEmbeddingModels:
                 for config_dict in model_dict.values():
                     for query, docs in config_dict.items():
                         for doc in docs:
-                            clean_doc = {col: doc[col] for col in self.data_columns}
-                            doc_id = clean_doc["ID"]
+                            clean_doc = {
+                                col: doc[col]
+                                for col in [self.id_column] + self.data_columns
+                            }
+                            doc_id = clean_doc[self.id_column]
 
                             if doc_id in seen.get(query, set()):
                                 continue
@@ -202,24 +228,24 @@ class EvalEmbeddingModels:
 
         # Check if the file exists
         if (
-            os.path.exists(self.output_retrived_query_documents_relevance_file)
+            os.path.exists(self.output_retrived_query_documents_relevance_file_path)
             and not (self.override_documents_retrival)
             and not (self.override_embedding_eval)
         ):
             print(
-                f"Loading cached results from {self.output_retrived_query_documents_relevance_file} ..."
+                f"Loading cached results from {self.output_retrived_query_documents_relevance_file_path} ..."
             )
             with open(
-                self.output_retrived_query_documents_relevance_file,
+                self.output_retrived_query_documents_relevance_file_path,
                 "r",
                 encoding="utf-8",
             ) as f:
-                self.llm_results_dict = json.load(f)
+                self.ground_truth_dict = json.load(f)
 
-            # Convert string keys back to integers
-            self.llm_results_dict = {
+            self.ground_truth_dict = {
                 query: {int(doc_id): score for doc_id, score in doc_scores.items()}
-                for query, doc_scores in self.llm_results_dict.items()
+                for query, doc_scores in self.ground_truth_dict.items()
+                if isinstance(doc_scores, dict)
             }
             return
 
@@ -233,9 +259,9 @@ class EvalEmbeddingModels:
             # Build doc entries for the prompt
             doc_entries = []
             for document in self.query_retrived_docs_dict[query]:
-                doc_id = document["ID"]
+                doc_id = document[self.id_column]
                 recipe_row = self.df_recipes_embedding[
-                    self.df_recipes_embedding["ID"] == doc_id
+                    self.df_recipes_embedding[self.id_column] == doc_id
                 ]
                 if recipe_row.empty:
                     continue
@@ -248,7 +274,9 @@ class EvalEmbeddingModels:
                     else:
                         recipe_info[col_name] = value
 
-                doc_entries.append({"ID": int(doc_id), "recipe_info": recipe_info})
+                doc_entries.append(
+                    {self.id_column: int(doc_id), "recipe_info": recipe_info}
+                )
 
             # Get relevance judgments from LLM
             relevance_judgments = evaluate_documents_with_llm(
@@ -259,21 +287,24 @@ class EvalEmbeddingModels:
                 llm_model=self.llm_model,
                 llm_model_temperature=self.llm_model_temperature,
                 llm_model_max_output_token=self.llm_model_max_output_token,
-                json_schema=self.json_schema,
+                llm_json_schema=self.llm_json_schema,
                 max_retries=self.max_retries_llm_calls,
             )
 
-            self.llm_results_dict.setdefault(query, {})
+            self.ground_truth_dict.setdefault(query, {})
 
             for doc in relevance_judgments:
-                self.llm_results_dict[query][doc["ID"]] = float(
-                    doc.get("relevance_score", 0.0)
-                )
+                self.ground_truth_dict[query][doc["ID"]] = {
+                    "relevance_score": float(doc.get("relevance_score", 0.0)),
+                    "justification": doc.get("justification", ""),
+                }
 
         with open(
-            self.output_retrived_query_documents_relevance_file, "w", encoding="utf-8"
+            self.output_retrived_query_documents_relevance_file_path,
+            "w",
+            encoding="utf-8",
         ) as f:
-            json.dump(self.llm_results_dict, f, indent=4)
+            json.dump(self.ground_truth_dict, f, indent=4)
 
     def map_documents_relevance_to_retrived_documents(self):
         """Map relevance scores back to the retrived documents."""
@@ -286,13 +317,21 @@ class EvalEmbeddingModels:
                         for doc in docs:
                             doc_id = doc.get("ID")
 
+                            # Get the relevance info (dict with score and justification)
+                            relevance_info = self.ground_truth_dict.get(query, {}).get(
+                                doc_id, {"relevance_score": 0.0, "justification": ""}
+                            )
+
                             # attach relevance score if available
-                            doc["relevance_score"] = self.llm_results_dict[query].get(
-                                doc_id, 0.0
+                            doc["relevance_score"] = relevance_info.get(
+                                "relevance_score", 0.0
+                            )
+                            doc["justification"] = relevance_info.get(
+                                "justification", ""
                             )
 
         with open(
-            self.output_topk_model_query_retrieved_documents_relevance_file,
+            self.output_topk_model_query_retrieved_documents_relevance_file_path,
             "w",
             encoding="utf-8",
         ) as f:
@@ -311,7 +350,7 @@ class EvalEmbeddingModels:
                 for config_name, queries_data in configs_data.items():
                     for query_string, retrieved_docs in queries_data.items():
 
-                        expected_retrived_docs = self.llm_results_dict[query_string]
+                        expected_retrived_docs = self.ground_truth_dict[query_string]
 
                         precision = calculate_precision_at_k(retrieved_docs, k_value)
                         recall = calculate_recall_at_k(
@@ -377,8 +416,12 @@ class EvalEmbeddingModels:
         self.load_embeddings()
         self.calculate_retrived_documents()
         self.get_query_retrived_documents()
-        self.calculate_retrived_documents_relevance()
-        self.map_documents_relevance_to_retrived_documents()
 
+        print("Evaluation method:", self.eval_with_llm_or_ground_truth)
+
+        if "llm" in self.eval_with_llm_or_ground_truth.lower():
+            self.calculate_retrived_documents_relevance()
+
+        self.map_documents_relevance_to_retrived_documents()
         self.evaluate_retrieval()
         self.aggregate_metrics()
