@@ -764,20 +764,18 @@ class TransformService:
         try:
             prompt_escaped = base_prompt.replace("'", "''")
 
-            llm_query = """
+            llm_query = f"""
                 SELECT SNOWFLAKE.CORTEX.COMPLETE(
                     'mixtral-8x7b',
-                    %s
+                    '{prompt_escaped}'
                 ) AS ingredient_to_substitute
             """
+            llm_response = self.session.sql(llm_query).collect()
 
-            llm_response = self.client.execute(
-                llm_query,
-                params=(prompt_escaped,),
-                fetch="all"
-            )
-
-            result = llm_response[0][0].strip()
+            parsed_response = parse_query_result(llm_response)
+            if not parsed_response:
+                return []
+            result = str(parsed_response[0]).strip()
 
             if result.upper() == "NONE":
                 return []
@@ -785,7 +783,10 @@ class TransformService:
             return [result]
 
         except Exception as e:
-            print(f"LLM ingredient extraction error: {e}")
+            logging.error(
+                f"Failure: Error found with ingredient extraction made by LLM. "
+                f"Error: {str(e)}. Traceback: {traceback.format_exc()}"
+            )
             return []
 
 
@@ -965,7 +966,7 @@ class TransformService:
             if ingredients_to_remove is not None:
                 ingredients_to_transform = ingredients_to_remove
             else:
-                ingredients_to_transform = self._extract_ingredients_from_text(recipe,constraints)
+                ingredients_to_transform = self._extract_ingredients_from_text(recipe, constraints)
                 # TODO : code à rajouter 
 
             logging.info("Success: Step 1 finished (Ingredients to remove has been found).")
