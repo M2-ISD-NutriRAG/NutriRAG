@@ -7,10 +7,61 @@ from shared.snowflake.client import SnowflakeClient
 
 
 class ConversationManager:
-    """Manages conversation history and context for agent interactions."""
+    # Manages conversation history and context for agent interactions
 
     def __init__(self, snowflake_client: SnowflakeClient):
         self.client = snowflake_client
+
+    def create_or_get_thread(self, conversation_id: str, agent_client):
+        # Create a new thread for a conversation if it doesn't exist, or get the existing thread_id.
+        # Args:
+        #     conversation_id: The conversation ID
+        #     agent_client: CortexAgentClient instance for creating threads
+        # Returns:
+        #     Thread ID (integer) or None if thread creation fails (will use non-threaded mode)
+
+        # Check if this conversation already has a thread
+        thread_info = self.get_thread_info(conversation_id)
+        if thread_info:
+            print(f"Reusing existing thread: {thread_info[0]}")
+            return thread_info[0]  # Return existing thread_id
+
+        # Create a new thread
+        thread_id = agent_client.create_thread(origin_application="NutriRAG")
+        if thread_id is None:
+            print(f"Warning: Failed to create thread for conversation {conversation_id}. Continuing without thread support.")
+            return None
+
+        # Store the thread_id in the most recent user message immediately
+        # This ensures the next message in the conversation can find and reuse this thread
+        try:
+            result = self.client.execute(
+                """
+                SELECT id FROM MESSAGES
+                WHERE conversation_id = %s
+                  AND role = 'user'
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                params=(conversation_id,),
+                fetch="one"
+            )
+            
+            if result:
+                msg_id = result[0]
+                self.client.execute(
+                    """
+                    UPDATE MESSAGES
+                    SET thread_id = %s
+                    WHERE id = %s
+                    """,
+                    params=(thread_id, msg_id),
+                )
+                # print(f"Stored thread_id {thread_id} for conversation {conversation_id}")
+        except Exception as e:
+            print(f"Warning: Could not store initial thread_id: {str(e)}")
+
+        return thread_id
 
     def get_conversation_context(self, conversation_id: str) -> str:
         """
@@ -93,7 +144,7 @@ class ConversationManager:
             Tuple of (thread_id, parent_message_id) or None if no thread exists
         """
         try:
-            # Get the latest assistant message with thread info
+            # First, try to get the latest assistant message with both thread_id and message_id
             result = self.client.execute(
                 """
                 SELECT thread_id, message_id
@@ -110,10 +161,27 @@ class ConversationManager:
             )
 
             if result:
-                return (
-                    result[0],
-                    result[1],
-                )  # thread_id, message_id (to use as parent_message_id)
+                # print(f"Found thread info with message_id: thread_id={result[0]}, message_id={result[1]}")
+                return (result[0], result[1])  # thread_id, message_id (to use as parent_message_id)
+            
+            # If no assistant message with message_id, check if we have any message with thread_id
+            # This means we created the thread but haven't received any assistant responses yet
+            result = self.client.execute(
+                """
+                SELECT thread_id
+                FROM MESSAGES
+                WHERE conversation_id = %s
+                  AND thread_id IS NOT NULL
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                params=(conversation_id,),
+                fetch="one",
+            )
+            
+            if result:
+                # print(f"Found thread_id without message_id: thread_id={result[0]}, will use parent_message_id=0")
+                return (result[0], 0)  # thread_id exists, but use 0 as parent_message_id (first message)
 
         except Exception as e:
             print(f"Warning: Could not retrieve thread info: {str(e)}")
@@ -133,19 +201,34 @@ class ConversationManager:
             message_id: Message ID from Cortex API
         """
         try:
-            # Update the most recent message of this role with thread metadata
-            self.client.execute(
+            # Find the most recent message ID for this role that doesn't have metadata yet
+            result = self.client.execute(
                 """
-                UPDATE MESSAGES
-                SET thread_id = %s, message_id = %s
+                SELECT id FROM MESSAGES
                 WHERE conversation_id = %s
                   AND role = %s
                   AND thread_id IS NULL
                 ORDER BY created_at DESC
                 LIMIT 1
                 """,
-                params=(thread_id, message_id, conversation_id, role),
+                params=(conversation_id, role),
+                fetch="one"
             )
+            
+            if result:
+                msg_id = result[0]
+                # Update with thread metadata
+                self.client.execute(
+                    """
+                    UPDATE MESSAGES
+                    SET thread_id = %s, message_id = %s
+                    WHERE id = %s
+                    """,
+                    params=(thread_id, message_id, msg_id),
+                )
+                # print(f"Stored thread metadata: thread_id={thread_id}, message_id={message_id}, role={role}")
+            else:
+                print(f"Warning: No message found to update for role={role}, conversation_id={conversation_id}")
         except Exception as e:
             print(f"Warning: Could not store thread metadata: {str(e)}")
 
