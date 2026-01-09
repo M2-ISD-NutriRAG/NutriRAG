@@ -723,6 +723,72 @@ class TransformService:
         
         return ingredient, False, NutritionDelta()
 
+    def _extract_ingredients_from_recipe(self, recipe: Recipe, constraints: TransformConstraints) -> List[str]:
+        """
+        Use LLM to select the most important ingredient to substitute
+        based on full recipe context and constraints.
+        """
+
+        base_prompt = f"""
+        You are a culinary and nutrition expert.
+
+        You are given a full recipe and a set of dietary and nutritional constraints.
+
+        YOUR TASK:
+        - Analyze the recipe as a whole (name, ingredients, quantities, and steps).
+        - Identify ONE ingredient that is the most problematic with respect to the constraints.
+        - If multiple ingredients violate constraints, select the one that:
+        1) Violates the most constraints, OR
+        2) Is the most central ingredient in the recipe.
+        - If no ingredient should be substituted, answer exactly: NONE.
+
+        IMPORTANT RULES:
+        - Answer ONLY with the ingredient name.
+        - No explanation.
+        - No punctuation.
+        - No extra text.
+
+        RECIPE:
+        Name: {recipe.name}
+        Ingredients: {recipe.ingredients}
+        Quantities: {recipe.quantity_ingredients}
+        Steps:
+        {chr(10).join(recipe.steps)}
+
+        CONSTRAINTS:
+        {constraints.__dict__}
+
+        ANSWER:
+        """
+
+        try:
+            prompt_escaped = base_prompt.replace("'", "''")
+
+            llm_query = """
+                SELECT SNOWFLAKE.CORTEX.COMPLETE(
+                    'mixtral-8x7b',
+                    %s
+                ) AS ingredient_to_substitute
+            """
+
+            llm_response = self.client.execute(
+                llm_query,
+                params=(prompt_escaped,),
+                fetch="all"
+            )
+
+            result = llm_response[0][0].strip()
+
+            if result.upper() == "NONE":
+                return []
+
+            return [result]
+
+        except Exception as e:
+            print(f"LLM ingredient extraction error: {e}")
+            return []
+
+
     def adapt_recipe_with_llm(self, recipe: Recipe, substitutions: Dict) -> str:
         """
         Adapt the recipe steps with substitutions via LLM
@@ -899,7 +965,7 @@ class TransformService:
             if ingredients_to_remove is not None:
                 ingredients_to_transform = ingredients_to_remove
             else:
-                ingredients_to_transform = self._extract_ingredients_from_text(recipe.ingredients)
+                ingredients_to_transform = self._extract_ingredients_from_text(recipe,constraints)
                 # TODO : code à rajouter 
 
             logging.info("Success: Step 1 finished (Ingredients to remove has been found).")
