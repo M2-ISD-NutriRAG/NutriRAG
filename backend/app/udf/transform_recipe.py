@@ -902,35 +902,32 @@ class TransformService:
         new_recipe_nutrition.health_score = rhi_score
         return new_recipe_nutrition
     
-
-    def judge_substitute(self, candidats, recipe_ingredients: List[str], recipe_id: int, serving_size: float, servings: float) -> Tuple[str,NutritionDelta]:
+    def judge_substitute(self, candidats: List[Dict[str, Any]],recipe_ingredients: List[str], recipe_id: int, serving_size: float, servings: float) -> Tuple[str,NutritionDelta]:
         """
         Final ingredient choice between list of candidats
 
         Args:
             candidats: list of possible ingredients to substitute with (extracted from get_neighbors_pca() )
-
+            recipe_id, serving_size, servings, recipe_ingredients: recipe information
         Returns:
             ingredient_id
         """
-        best_ingr = None
-        best_nutrition = NutritionDelta()
-
         if not candidats:
             print("Pas de candidats pour le susbstitut")
             return None
-        for candidat in candidats:
-            if best_ingr is None:
-                best_ingr = candidat
+        best_ing = None
+        best_nutrition = NutritionDelta()
+        for cand in candidats:
+            if best_ing is None:
+                best_ing = cand
             else:
-                candidat_nutrition = self.get_health_score(recipe_ingredients + [candidat], recipe_id, serving_size, servings)
-                best_current_score = self.get_health_score(recipe_ingredients + [best_ingr], recipe_id, serving_size, servings)
+                candidat_nutrition = self.get_health_score(recipe_ingredients + [cand["name"]], recipe_id, serving_size, servings)
+                best_current_score = self.get_health_score(recipe_ingredients + [best_ing["name"]], recipe_id, serving_size, servings)
                 if candidat_nutrition.health_score > best_current_score.health_score:
-                    best_ingr = candidat
+                    best_ing = cand
                     best_nutrition = candidat_nutrition
-        return best_ingr, best_nutrition
+        return best_ing, best_nutrition
 
-    
     def substitute_ingr(self, ingredient: str, contraintes: TransformConstraints, recipe_ingredients: List[str], recipe_id: int, serving_size: float, servings: float) -> Tuple[str, bool, NutritionDelta]:
         """
         Finds a substitute for the given ingredient using PCA in priority
@@ -942,8 +939,13 @@ class TransformService:
         Returns:
             Tuple (substituted_ingredient, substitution_performed)
         """
-        candidats = self.get_neighbors_pca(ingredient, contraintes)
-        substitute , nutrition = self.judge_substitute(candidats, recipe_ingredients, recipe_id, serving_size, servings)
+        result = self.get_neighbors_pca(ingredient, contraintes)
+
+        if not result or not result.get("best_substitutes"):
+            return ingredient, False
+
+        candidats = result["best_substitutes"]
+        substitute, nutrition = self.judge_substitute(candidats, recipe_ingredients, recipe_id, serving_size, servings)
 
         if substitute:
             substitute_name = substitute["name"]
@@ -952,7 +954,7 @@ class TransformService:
             return substitute_name, True, nutrition
         
         return ingredient, False, NutritionDelta()
-    
+
     def adapt_recipe_with_llm(self, recipe: Recipe, substitutions: Dict) -> Tuple[List[str], List[str]]:
         """
         Adapt the recipe steps with substitutions via LLM
