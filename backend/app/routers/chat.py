@@ -6,10 +6,6 @@ from fastapi import APIRouter, HTTPException, Header, Request, Depends
 from fastapi.responses import StreamingResponse
 from app.services.api_agent import CortexAgentClient
 from app.services.conversation_manager import ConversationManager
-from app.utils.recipe_metadata_utils import (
-    extract_metadata_from_event_stream,
-    get_recipe_id_from_reference,
-)
 
 # from app.models.auth import StartAuthRequest
 router = APIRouter()
@@ -192,43 +188,35 @@ def handle_chat(
         params=(conv_id, "user", message_text),
     )
 
-    # Conversation manager for context and recipe resolution
-    conv_manager = ConversationManager(db)
-
-    # Try to resolve references like "the third recipe" or
-    # name-based references like "the breakfast hurry" using
-    # stored recipes (IDs and optional names)
-    recent_recipes = conv_manager.get_recent_recipes_for_reference(conv_id)
-    resolved_recipe_id = get_recipe_id_from_reference(
-        message_text, recent_recipes
-    )
-
-    resolution_hint = ""
-    if resolved_recipe_id is not None:
-        resolution_hint = (
-            "RESOLVED_RECIPE_REFERENCE:\n"
-            f"The user is referring to recipe with ID {resolved_recipe_id}. "
-            "This ID comes from the most recent search results listed above.\n"
-            "You MUST NOT call the search tool again just to rediscover this recipe. "
-            "Instead, call the get_recipe_by_id tool with this recipe_id and use the returned recipe object for any detail or transform operations.\n\n"
-        )
-
     # Get conversation context and AI response
-    context = conv_manager.get_conversation_context(conv_id)
-
-    # Prepare message with context and optional resolution hint
-    full_message_parts = []
-    if context:
-        full_message_parts.append(context)
-    if resolution_hint:
-        full_message_parts.append(resolution_hint)
-    full_message_parts.append(message_text)
-    full_message = "".join(full_message_parts)
-
+    conv_manager = ConversationManager(db)
+    
+    # Initialize CortexAgentClient and get response
+    agent_client = CortexAgentClient(snowflake_client=db)
+    
+    # Get or create thread for conversation continuity
+    thread_id = conv_manager.create_or_get_thread(conv_id, agent_client)
+    
+    # Only use manual context if threads are not available
+    if thread_id is None:
+        context = conv_manager.get_conversation_context(conv_id)
+        full_message = context + message_text if context else message_text
+    else:
+        # Thread handles context automatically - just send the message
+        full_message = message_text
+    
     try:
-        # Initialize CortexAgentClient and get response
-        agent_client = CortexAgentClient(snowflake_client=db)
-        response = agent_client.call_agent(full_message)
+        # Get parent_message_id if continuing a conversation (only if thread exists)
+        parent_message_id = None
+        if thread_id is not None:
+            thread_info = conv_manager.get_thread_info(conv_id)
+            parent_message_id = thread_info[1] if thread_info else 0
+        
+        response = agent_client.call_agent(
+            full_message, 
+            thread_id=thread_id, 
+            parent_message_id=parent_message_id
+        )
 
         # Process the streaming response to get the complete content
         ai_response_content = ""
@@ -253,18 +241,20 @@ def handle_chat(
                 try:
                     data = json.loads(line[6:])
 
-                    # Handle metadata events
-                    if (
-                        current_event == "metadata"
-                        and "role" in data
-                        and "message_id" in data
-                    ):
-                        thread_id = data.get("thread_id", 0)
-                        message_id = data["message_id"]
-                        role = data["role"]
-                        conv_manager.store_thread_metadata(
-                            conv_id, role, thread_id, message_id
-                        )
+                    # Handle metadata events - check for nested structure
+                    if current_event == "metadata":
+                        # Metadata can be nested: {'metadata': {'message_id': ..., 'role': ...}}
+                        metadata_obj = data.get("metadata", data)
+                        if "role" in metadata_obj and "message_id" in metadata_obj:
+                            # Use the thread_id we already have from create_or_get_thread
+                            # The metadata event might not include it
+                            metadata_thread_id = thread_id if thread_id is not None else metadata_obj.get("thread_id", 0)
+                            message_id = metadata_obj["message_id"]
+                            role = metadata_obj["role"]
+#                             print(f"Storing metadata: thread_id={metadata_thread_id}, message_id={message_id}, role={role}")
+                            conv_manager.store_thread_metadata(
+                                conv_id, role, metadata_thread_id, message_id
+                            )
 
                     # Handle text deltas
                     elif (
@@ -339,7 +329,7 @@ async def handle_chat_stream(
             ),
         )
 
-    # Store the user's message in the conversation history (like non-streaming endpoint)
+    # Save user message
     db.execute(
         f"""
         INSERT INTO MESSAGES (conversation_id, role, content)
@@ -347,11 +337,32 @@ async def handle_chat_stream(
     """,
         params=(conv_id, "user", message_text),
     )
+    
+    # Create a placeholder assistant message immediately so metadata can be stored during streaming
+    db.execute(
+        f"""
+        INSERT INTO MESSAGES (conversation_id, role, content)
+        VALUES (%s, %s, %s)
+    """,
+        params=(conv_id, "assistant", "..."),
+    )
+    
+    # Get the ID of the placeholder message we just created
+    assistant_msg_result = db.execute(
+        f"""
+        SELECT id FROM MESSAGES
+        WHERE conversation_id = %s AND role = 'assistant'
+        ORDER BY created_at DESC
+        LIMIT 1
+    """,
+        params=(conv_id,),
+        fetch="one"
+    )
+    assistant_msg_id = assistant_msg_result[0] if assistant_msg_result else None
 
     async def generate_response():
         """Generator function for streaming response."""
         ai_response_content = ""
-        collected_events = []  # Track events for metadata extraction
 
         try:
             # Send initial status
@@ -362,45 +373,35 @@ async def handle_chat_stream(
             yield f"data: {json.dumps({'type': 'thinking', 'status': 'started', 'message': 'Processing your request...'})}\n\n"
             await asyncio.sleep(0)  # Force immediate yield
 
-            # Conversation manager for context and recipe resolution
+            # Get conversation context for the agent
             conv_manager = ConversationManager(db)
-
-            # Try to resolve references like "the third recipe" or
-            # name-based references like "the breakfast hurry" using
-            # stored recipes (IDs and optional names)
-            recent_recipes = conv_manager.get_recent_recipes_for_reference(conv_id)
-            resolved_recipe_id = get_recipe_id_from_reference(
-                message_text, recent_recipes
-            )
-
-            resolution_hint = ""
-            if resolved_recipe_id is not None:
-                # Build a short, explicit hint for the agent to avoid re-search
-                resolution_hint = (
-                    "RESOLVED_RECIPE_REFERENCE:\n"
-                    f"The user is referring to recipe with ID {resolved_recipe_id}. "
-                    "This ID comes from the most recent search results listed above.\n"
-                    "You MUST NOT call the search tool again just to rediscover this recipe. "
-                    "Instead, call the get_recipe_by_id tool with this recipe_id and use the returned recipe object for any detail or transform operations.\n\n"
-                )
-
-            # Get conversation context for the agent (includes previous recipes)
-            context = conv_manager.get_conversation_context(conv_id)
-
-            # Prepare message with context and optional resolution hint
-            full_message_parts = []
-            if context:
-                full_message_parts.append(context)
-            if resolution_hint:
-                full_message_parts.append(resolution_hint)
-            full_message_parts.append(message_text)
-            full_message = "".join(full_message_parts)
-
+            
             # Initialize CortexAgentClient
             agent_client = CortexAgentClient(snowflake_client=db)
 
+            # Get or create thread for conversation continuity
+            thread_id = conv_manager.create_or_get_thread(conv_id, agent_client)
+            
+            # Only use manual context if threads are not available
+            if thread_id is None:
+                context = conv_manager.get_conversation_context(conv_id)
+                full_message = context + message_text if context else message_text
+            else:
+                # Thread handles context automatically - just send the message
+                full_message = message_text
+            
+            # Get parent_message_id if continuing a conversation (only if thread exists)
+            parent_message_id = None
+            if thread_id is not None:
+                thread_info = conv_manager.get_thread_info(conv_id)
+                parent_message_id = thread_info[1] if thread_info else 0
+
             # Get streaming response from CortexAgent
-            response = agent_client.call_agent(full_message)
+            response = agent_client.call_agent(
+                full_message,
+                thread_id=thread_id,
+                parent_message_id=parent_message_id
+            )
             current_event = None
 
             for line in response.iter_lines(decode_unicode=True):
@@ -416,9 +417,6 @@ async def handle_chat_stream(
                     continue
                 elif line.startswith("event: response.thinking"):
                     current_event = "response.thinking"
-                    continue
-                elif line.startswith("event: response.tool_result"):
-                    current_event = "response.tool_result"
                     continue
                 elif line.startswith("event: response.tool_result.status"):
                     current_event = "response.tool_result.status"
@@ -449,33 +447,12 @@ async def handle_chat_stream(
                         ):
                             yield f"data: {json.dumps({'type': 'tool_status', 'event': current_event, 'status': data['status'], 'message': data['message'], 'tool_type': data.get('tool_type'), 'tool_use_id': data.get('tool_use_id')})}\n\n"
 
-                        # Handle tool results (the actual output from tools like search)
-                        elif (
-                            current_event == "response.tool_result"
-                            and "content" in data
-                        ):
-                            # Track tool results for metadata extraction
-                            collected_events.append({
-                                'type': 'tool_result',
-                                'tool_name': data.get('tool_name'),
-                                'content': data.get('content'),
-                                'tool_use_id': data.get('tool_use_id')
-                            })
-
                         # Handle tool usage
                         elif (
                             current_event == "response.tool_use"
                             and "name" in data
                             and "input" in data
                         ):
-                            # Track tool use events for metadata
-                            collected_events.append({
-                                'type': 'tool_use',
-                                'tool_name': data['name'],
-                                'tool_input': data['input'],
-                                'tool_use_id': data.get('tool_use_id')
-                            })
-
                             yield f"data: {json.dumps({'type': 'tool_use', 'event': current_event, 'tool_name': data['name'], 'tool_input': data['input'], 'tool_use_id': data.get('tool_use_id'), 'client_side_execute': data.get('client_side_execute'), 'content_index': data.get('content_index')})}\n\n"
 
                         # Handle thinking/status updates (both delta and complete)
@@ -491,23 +468,21 @@ async def handle_chat_stream(
                         ):
                             yield f"data: {json.dumps({'type': 'thinking', 'event': current_event, 'status': data['status'], 'message': data['message']})}\n\n"
 
-                        # Handle metadata events (thread/message IDs)
-                        elif (
-                            current_event == "metadata"
-                            and "role" in data
-                            and "message_id" in data
-                        ):
-                            # Store thread metadata for conversation continuity
-                            # Note: thread_id may be available in some metadata events
-                            thread_id = data.get(
-                                "thread_id", 0
-                            )  # Default to 0 if not provided
-                            message_id = data["message_id"]
-                            role = data["role"]
+                        # Handle metadata events (thread/message IDs) - check for nested structure
+                        elif current_event == "metadata":
+                            # Metadata can be nested: {'metadata': {'message_id': ..., 'role': ...}}
+                            metadata_obj = data.get("metadata", data)
+                            if "role" in metadata_obj and "message_id" in metadata_obj:
+                                # Use the thread_id we already have from create_or_get_thread
+                                # The metadata event might not include it
+                                metadata_thread_id = thread_id if thread_id is not None else metadata_obj.get("thread_id", 0)
+                                message_id = metadata_obj["message_id"]
+                                role = metadata_obj["role"]
+                                # print(f"Storing metadata: thread_id={metadata_thread_id}, message_id={message_id}, role={role}")
 
-                            conv_manager.store_thread_metadata(
-                                conv_id, role, thread_id, message_id
-                            )
+                                conv_manager.store_thread_metadata(
+                                    conv_id, role, metadata_thread_id, message_id
+                                )
 
                         # Handle text deltas (incremental content)
                         elif (
@@ -544,29 +519,25 @@ async def handle_chat_stream(
                         # Skip malformed JSON lines
                         continue
 
-            # Save AI response to database with metadata
-            if ai_response_content.strip():
-                # Extract recipe metadata from collected events
-                metadata = extract_metadata_from_event_stream(collected_events)
-                
-                if metadata:
-                    # Store message with metadata and use TO_VARIANT to convert the JSON string to VARIANT
-                    metadata_json = json.dumps(metadata)
-                    db.execute(
-                        """
-                        INSERT INTO MESSAGES (conversation_id, role, content, metadata)
-                        SELECT %s, %s, %s, PARSE_JSON(%s)
-                        """,
-                        params=(conv_id, "assistant", ai_response_content.strip(), metadata_json),
-                    )
-                else:
-                    db.execute(
-                        """
-                        INSERT INTO MESSAGES (conversation_id, role, content)
-                        VALUES (%s, %s, %s)
-                        """,
-                        params=(conv_id, "assistant", ai_response_content.strip()),
-                    )
+            # Save AI response to database (update the placeholder)
+            if ai_response_content.strip() and assistant_msg_id:
+                db.execute(
+                    f"""
+                    UPDATE MESSAGES
+                    SET content = %s
+                    WHERE id = %s
+                """,
+                    params=(ai_response_content.strip(), assistant_msg_id),
+                )
+            elif ai_response_content.strip():
+                # Fallback: insert if we don't have the msg_id
+                db.execute(
+                    f"""
+                    INSERT INTO MESSAGES (conversation_id, role, content)
+                    VALUES (%s, %s, %s)
+                """,
+                    params=(conv_id, "assistant", ai_response_content.strip()),
+                )
 
             # Send completion signal
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
@@ -577,18 +548,29 @@ async def handle_chat_stream(
             error_msg = f"Error getting AI response: {str(e)}"
             yield f"data: {json.dumps({'type': 'error', 'message': error_msg})}\n\n"
 
-            # Save error response to database
-            db.execute(
-                f"""
-                INSERT INTO MESSAGES (conversation_id, role, content)
-                VALUES (%s, %s, %s)
-            """,
-                params=(
-                    conv_id,
-                    "assistant",
-                    f"Sorry, I encountered an error: {str(e)}",
-                ),
-            )
+            # Update placeholder with error message
+            if assistant_msg_id:
+                db.execute(
+                    f"""
+                    UPDATE MESSAGES
+                    SET content = %s
+                    WHERE id = %s
+                """,
+                    params=(f"Sorry, I encountered an error: {str(e)}", assistant_msg_id),
+                )
+            else:
+                # Fallback: insert error message
+                db.execute(
+                    f"""
+                    INSERT INTO MESSAGES (conversation_id, role, content)
+                    VALUES (%s, %s, %s)
+                """,
+                    params=(
+                        conv_id,
+                        "assistant",
+                        f"Sorry, I encountered an error: {str(e)}",
+                    ),
+                )
 
     return StreamingResponse(
         generate_response(),
