@@ -1,18 +1,67 @@
 import os
 import sys
-from typing import List, Dict, Optional, Tuple, Any
-import json
+from typing import List, Dict, Optional, Tuple
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 from shared.snowflake.client import SnowflakeClient
-from app.utils.recipe_metadata_utils import build_recipe_context_prompt
 
 
 class ConversationManager:
-    """Manages conversation history and context for agent interactions."""
+    # Manages conversation history and context for agent interactions
 
     def __init__(self, snowflake_client: SnowflakeClient):
         self.client = snowflake_client
+
+    def create_or_get_thread(self, conversation_id: str, agent_client):
+        # Create a new thread for a conversation if it doesn't exist, or get the existing thread_id.
+        # Args:
+        #     conversation_id: The conversation ID
+        #     agent_client: CortexAgentClient instance for creating threads
+        # Returns:
+        #     Thread ID (integer) or None if thread creation fails (will use non-threaded mode)
+
+        # Check if this conversation already has a thread
+        thread_info = self.get_thread_info(conversation_id)
+        if thread_info:
+            print(f"Reusing existing thread: {thread_info[0]}")
+            return thread_info[0]  # Return existing thread_id
+
+        # Create a new thread
+        thread_id = agent_client.create_thread(origin_application="NutriRAG")
+        if thread_id is None:
+            print(f"Warning: Failed to create thread for conversation {conversation_id}. Continuing without thread support.")
+            return None
+
+        # Store the thread_id in the most recent user message immediately
+        # This ensures the next message in the conversation can find and reuse this thread
+        try:
+            result = self.client.execute(
+                """
+                SELECT id FROM MESSAGES
+                WHERE conversation_id = %s
+                  AND role = 'user'
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                params=(conversation_id,),
+                fetch="one"
+            )
+            
+            if result:
+                msg_id = result[0]
+                self.client.execute(
+                    """
+                    UPDATE MESSAGES
+                    SET thread_id = %s
+                    WHERE id = %s
+                    """,
+                    params=(thread_id, msg_id),
+                )
+                # print(f"Stored thread_id {thread_id} for conversation {conversation_id}")
+        except Exception as e:
+            print(f"Warning: Could not store initial thread_id: {str(e)}")
+
+        return thread_id
 
     def get_conversation_context(self, conversation_id: str) -> str:
         """
@@ -27,12 +76,7 @@ class ConversationManager:
         """
         context_parts = []
 
-        # Get recipe IDs from recent messages with metadata
-        recipe_context = self._get_recipe_context_from_metadata(conversation_id)
-        if recipe_context:
-            context_parts.append(recipe_context)
-
-        # Get recent search results from HIST_SEARCH for additional context
+        # Get recent search results for context
         search_context = self._get_search_context(conversation_id)
         if search_context:
             context_parts.append(
@@ -82,277 +126,8 @@ class ConversationManager:
                     messages.append({"role": row[0], "content": row[1]})
                 return messages
 
-        except Exception:
-            raise
-
-        return []
-
-    def _get_recipe_context_from_metadata(self, conversation_id: str) -> str:
-        """
-        Get recipe context from message metadata (recently shown recipes).
-        This allows the agent to reference recipes by position without re-searching.
-        
-        Args:
-            conversation_id: The conversation ID
-            
-        Returns:
-            Formatted context string with recipe IDs, or empty string
-        """
-        try:
-            # Get the most recent assistant message with search metadata
-            result = self.client.execute(
-                """
-                SELECT metadata
-                FROM MESSAGES
-                WHERE conversation_id = %s
-                  AND role = 'assistant'
-                  AND metadata IS NOT NULL
-                ORDER BY created_at DESC
-                LIMIT 1
-                """,
-                params=(conversation_id,),
-                fetch="one",
-            )
-
-            if result and result[0]:
-                metadata = json.loads(result[0]) if isinstance(result[0], str) else result[0]
-                
-                # Check if this has recipe_ids directly stored
-                if metadata.get("type") == "search_results" and metadata.get("recipe_ids"):
-                    # Recipe IDs are already in metadata - optimal case!
-                    return build_recipe_context_prompt(
-                        metadata["recipe_ids"],
-                        metadata.get("query")
-                    )
-                
-                # Fallback: if only search_executed, get IDs from HIST_SEARCH
-                elif metadata.get("type") == "search_executed":
-                    recipe_ids = self._get_recent_recipe_ids_from_hist_search(
-                        conversation_id,
-                        metadata.get("query")
-                    )
-                    
-                    if recipe_ids:
-                        return build_recipe_context_prompt(
-                            recipe_ids,
-                            metadata.get("query")
-                        )
-
-        except Exception:
-            raise
-
-        return ""
-
-    def get_recent_recipe_ids(self, conversation_id: str) -> List[int]:
-        """Return the list of recipe IDs from the most recent search in this conversation.
-
-        Prefer IDs stored directly in MESSAGES.metadata (type = 'search_results').
-        Fallback to HIST_SEARCH if only a query is stored (type = 'search_executed').
-        """
-        try:
-            result = self.client.execute(
-                """
-                SELECT metadata
-                FROM MESSAGES
-                WHERE conversation_id = %s
-                  AND role = 'assistant'
-                  AND metadata IS NOT NULL
-                ORDER BY created_at DESC
-                LIMIT 1
-                """,
-                params=(conversation_id,),
-                fetch="one",
-            )
-
-            if result and result[0]:
-                metadata = json.loads(result[0]) if isinstance(result[0], str) else result[0]
-
-                if metadata.get("type") == "search_results" and metadata.get("recipe_ids"):
-                    return [int(rid) for rid in metadata["recipe_ids"]]
-
-                if metadata.get("type") == "search_executed":
-                    return self._get_recent_recipe_ids_from_hist_search(
-                        conversation_id,
-                        metadata.get("query"),
-                    )
-
-        except Exception:
-            raise
-
-        return []
-
-    def get_recent_recipes_for_reference(self, conversation_id: str) -> List[Dict[str, Any]]:
-        """Return recent recipes (IDs and optional names) for resolving user references.
-
-        This is similar to get_recent_recipe_ids but also attempts to include recipe
-        names when available so that references like "the breakfast hurry" can be
-        resolved without asking the user for a numeric position.
-        """
-        try:
-            result = self.client.execute(
-                """
-                SELECT metadata
-                FROM MESSAGES
-                WHERE conversation_id = %s
-                  AND role = 'assistant'
-                  AND metadata IS NOT NULL
-                ORDER BY created_at DESC
-                LIMIT 1
-                """,
-                params=(conversation_id,),
-                fetch="one",
-            )
-
-            if result and result[0]:
-                metadata = json.loads(result[0]) if isinstance(result[0], str) else result[0]
-
-                if metadata.get("type") == "search_results":
-                    # Prefer structured recipes with names when present
-                    recipes_meta = metadata.get("recipes")
-                    if isinstance(recipes_meta, list) and recipes_meta:
-                        recipes: List[Dict[str, Any]] = []
-                        for rec in recipes_meta:
-                            if not isinstance(rec, dict) or "id" not in rec:
-                                continue
-                            try:
-                                rid = int(rec["id"])
-                            except (TypeError, ValueError):
-                                continue
-                            recipes.append({
-                                "id": rid,
-                                "name": rec.get("name"),
-                            })
-                        if recipes:
-                            return recipes
-
-                    # Fallback: recipe_ids only
-                    recipe_ids = metadata.get("recipe_ids") or []
-                    return [
-                        {"id": int(rid), "name": None}
-                        for rid in recipe_ids
-                        if rid is not None
-                    ]
-
-                if metadata.get("type") == "search_executed":
-                    return self._get_recent_recipes_from_hist_search(
-                        conversation_id,
-                        metadata.get("query"),
-                    )
-
-        except Exception:
-            raise
-
-        # Final fallback: derive from HIST_SEARCH without a specific query
-        return self._get_recent_recipes_from_hist_search(conversation_id)
-
-    def _get_recent_recipe_ids_from_hist_search(
-        self,
-        conversation_id: str,
-        query: Optional[str] = None
-    ) -> List[int]:
-        """
-        Get recipe IDs from HIST_SEARCH table for the most recent search.
-        
-        Args:
-            conversation_id: The conversation ID
-            query: Optional query filter to match specific search
-            
-        Returns:
-            List of recipe IDs in order
-        """
-        try:
-            if query:
-                # Get recipes for a specific query
-                result = self.client.execute(
-                    """
-                    SELECT RECIPE_ID
-                    FROM ANALYTICS.HIST_SEARCH
-                    WHERE conversation_id = %s
-                      AND QUERY = %s
-                    ORDER BY SEARCH_TIMESTAMP DESC, RECIPE_ID
-                    LIMIT 10
-                    """,
-                    params=(conversation_id, query),
-                    fetch="all",
-                )
-            else:
-                # Get recipes from the most recent search
-                result = self.client.execute(
-                    """
-                    SELECT RECIPE_ID
-                    FROM ANALYTICS.HIST_SEARCH
-                    WHERE conversation_id = %s
-                    ORDER BY SEARCH_TIMESTAMP DESC, RECIPE_ID
-                    LIMIT 10
-                    """,
-                    params=(conversation_id,),
-                    fetch="all",
-                )
-
-            if result:
-                return [int(row[0]) for row in result if row[0]]
-
-        except Exception:
-            raise
-
-        return []
-
-    def _get_recent_recipes_from_hist_search(
-        self,
-        conversation_id: str,
-        query: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
-        """Get recent recipes (IDs and names) from HIST_SEARCH for reference resolution.
-
-        Args:
-            conversation_id: The conversation ID
-            query: Optional query filter to match specific search
-
-        Returns:
-            List of dicts with keys: id (int) and name (str | None)
-        """
-        try:
-            if query:
-                result = self.client.execute(
-                    """
-                    SELECT RECIPE_ID, NAME
-                    FROM ANALYTICS.HIST_SEARCH
-                    WHERE conversation_id = %s
-                      AND QUERY = %s
-                    ORDER BY SEARCH_TIMESTAMP DESC, RECIPE_ID
-                    LIMIT 10
-                    """,
-                    params=(conversation_id, query),
-                    fetch="all",
-                )
-            else:
-                result = self.client.execute(
-                    """
-                    SELECT RECIPE_ID, NAME
-                    FROM ANALYTICS.HIST_SEARCH
-                    WHERE conversation_id = %s
-                    ORDER BY SEARCH_TIMESTAMP DESC, RECIPE_ID
-                    LIMIT 10
-                    """,
-                    params=(conversation_id,),
-                    fetch="all",
-                )
-
-            recipes: List[Dict[str, Any]] = []
-            if result:
-                for row in result:
-                    rid = row[0]
-                    name = row[1] if len(row) > 1 else None
-                    if rid is not None:
-                        try:
-                            recipes.append({"id": int(rid), "name": name})
-                        except (TypeError, ValueError):
-                            continue
-
-            return recipes
-
-        except Exception:
-            raise
+        except Exception as e:
+            print(f"Warning: Could not retrieve recent messages: {str(e)}")
 
         return []
 
@@ -369,7 +144,7 @@ class ConversationManager:
             Tuple of (thread_id, parent_message_id) or None if no thread exists
         """
         try:
-            # Get the latest assistant message with thread info
+            # First, try to get the latest assistant message with both thread_id and message_id
             result = self.client.execute(
                 """
                 SELECT thread_id, message_id
@@ -386,13 +161,30 @@ class ConversationManager:
             )
 
             if result:
-                return (
-                    result[0],
-                    result[1],
-                )  # thread_id, message_id (to use as parent_message_id)
+                # print(f"Found thread info with message_id: thread_id={result[0]}, message_id={result[1]}")
+                return (result[0], result[1])  # thread_id, message_id (to use as parent_message_id)
+            
+            # If no assistant message with message_id, check if we have any message with thread_id
+            # This means we created the thread but haven't received any assistant responses yet
+            result = self.client.execute(
+                """
+                SELECT thread_id
+                FROM MESSAGES
+                WHERE conversation_id = %s
+                  AND thread_id IS NOT NULL
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                params=(conversation_id,),
+                fetch="one",
+            )
+            
+            if result:
+                # print(f"Found thread_id without message_id: thread_id={result[0]}, will use parent_message_id=0")
+                return (result[0], 0)  # thread_id exists, but use 0 as parent_message_id (first message)
 
-        except Exception:
-            raise
+        except Exception as e:
+            print(f"Warning: Could not retrieve thread info: {str(e)}")
 
         return None
 
@@ -409,21 +201,36 @@ class ConversationManager:
             message_id: Message ID from Cortex API
         """
         try:
-            # Update the most recent message of this role with thread metadata
-            self.client.execute(
+            # Find the most recent message ID for this role that doesn't have metadata yet
+            result = self.client.execute(
                 """
-                UPDATE MESSAGES
-                SET thread_id = %s, message_id = %s
+                SELECT id FROM MESSAGES
                 WHERE conversation_id = %s
                   AND role = %s
                   AND thread_id IS NULL
                 ORDER BY created_at DESC
                 LIMIT 1
                 """,
-                params=(thread_id, message_id, conversation_id, role),
+                params=(conversation_id, role),
+                fetch="one"
             )
-        except Exception:
-            raise
+            
+            if result:
+                msg_id = result[0]
+                # Update with thread metadata
+                self.client.execute(
+                    """
+                    UPDATE MESSAGES
+                    SET thread_id = %s, message_id = %s
+                    WHERE id = %s
+                    """,
+                    params=(thread_id, message_id, msg_id),
+                )
+                # print(f"Stored thread metadata: thread_id={thread_id}, message_id={message_id}, role={role}")
+            else:
+                print(f"Warning: No message found to update for role={role}, conversation_id={conversation_id}")
+        except Exception as e:
+            print(f"Warning: Could not store thread metadata: {str(e)}")
 
     def _get_search_context(self, conversation_id: str) -> str:
         """Get context from recent search results."""
@@ -477,7 +284,8 @@ class ConversationManager:
 
                 return "; ".join(context_parts)
 
-        except Exception:
-            raise
+        except Exception as e:
+            # Log the error but don't fail the request
+            print(f"Warning: Could not retrieve search context: {str(e)}")
 
         return ""
