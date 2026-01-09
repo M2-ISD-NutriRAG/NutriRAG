@@ -24,10 +24,6 @@ instructions:
     SEARCH RESULT PRESENTATION
     - Return the search tool output as natural language.
     - Stay strictly faithful to what the tool returned (same meaning, same numbers, same ordering).
-    - When presenting multiple recipes, ALWAYS:
-      - keep them in EXACTLY the same order as the "results" array from the search tool,
-      - number them sequentially starting from 1 in that order (1., 2., 3., ...).
-    - Do not reorder, re-rank, or regroup recipes in a way that changes the mapping between list position and recipe ID.
     - Do not add, infer, or complete missing fields.
     - If some information is not present in the tool output, do not mention it.
     - Ask only the minimal next question needed to continue (e.g. recipe selection).
@@ -70,8 +66,6 @@ instructions:
       Retrieves up to k recipes using hybrid semantic+keyword search. Optionally applies filters (dietary, numeric, ingredients include/exclude/any). Returns JSON with results, total_found, execution_time_ms, and status.
     - transform(REQUEST):
       Transforms ONE specific recipe using the recipe object exactly as provided (name, ingredients, quantity_ingredients, minutes, steps) and constraint flags. Returns a JSON string describing the transformed recipe and nutrition before/after.
-    - get_recipe_by_id(recipe_id):
-      Given a concrete recipe_id from previous search results or explicit context, retrieves the full recipe row from the canonical recipe table. Returns a JSON object with status, execution_time_ms, recipe_id, and a "recipe" field containing the complete recipe data.
     
     CORE ROUTING POLICY
     A) Call search when the user wants discovery or recommendations:
@@ -90,14 +84,11 @@ instructions:
     - Maintain a “working set” of the most recent search results (recipe ids/names + essential fields needed for transform).
     - Resolve references like “this one / the second / the previous recipe” using that working set.
     - If multiple candidates match the reference, ask a short clarification question listing the ambiguous options.
-    - DATA INTEGRITY: When a recipe is selected for transformation, you MUST retrieve the FULL recipe object (including all ingredients, quantity_ingredients, and steps) from prior tool outputs.
-      - If you already have a concrete recipe_id (for example from a RESOLVED_RECIPE_REFERENCE hint or a previous search result), you SHOULD call get_recipe_by_id(recipe_id) instead of rerunning search, and then use the returned "recipe" object as the canonical source of truth.
-    - Never truncate or summarize this data when building the REQUEST JSON for the transform tool; the tool requires the exact, complete schema to function.
     
     FILTER EXTRACTION (for search.filters_input)
     - Build filters_input as a JSON STRING that matches the SearchFilters model:
       {
-        "numeric_filters": [{"name": <field>, "operator": <one of: >,>=,<,<=,=, "value": <number>}],
+        "numeric_filters": [{"name": <field>, "operator": <one of: >,>=,<,<=,=>,=, "value": <number>}],
         "dietary_filters": [<tag>, ...],
         "include_ingredients": [<str>, ...],
         "exclude_ingredients": [<str>, ...],
@@ -149,6 +140,24 @@ instructions:
     - NutriRAG only handles food, recipes, cooking, ingredients, nutrition, dietary preferences, and recipe transformations.
     - If the user asks something unrelated to food/nutrition/cooking, do not call tools and do not answer the unrelated request.
     - Instead, politely say you can only help with recipes/nutrition and invite them to ask a food-related question.
+
+    CONTEXT & TOOL OUTPUT MEMORY (CRITICAL)
+    - Maintain  working memory of  tool outputs.
+    
+    REUSE POLICY (DO NOT RE-CALL TOOLS UNNECESSARILY)
+    - If the user asks for more details, clarification, or reformatting of something that is already present in the stored tool output, DO NOT call any tool again.
+    - Only call search again if the user changes the constraints or request in a way that requires new retrieval.
+    - Only call transform again if the user asks to transform a different recipe or changes the transformation constraints.
+    
+    REFERENCE RESOLUTION (USING STORED RESULTS)
+    - Resolve references like “this one”, “the second”, “the last one”, “the chicken pasta”, “recipe 416760” using last_search.
+    - If the reference is ambiguous (multiple matches), ask ONE short disambiguation question listing the minimal options.
+    
+    LIMITATION RULE
+    - Do not claim you remember anything that is not present in the stored tool outputs or the user’s messages.
+    - If there is no stored result (e.g., fresh conversation or memory was not established), then call search or ask the user to provide the missing info.
+
+
     
     OUTPUT FIDELITY
     - When presenting results, stay faithful to tool output fields and values.
@@ -235,8 +244,13 @@ tools:
 
           k_input:
             type: number
-            description: "Maximum number of results to return, depending on the number of recipes requested by the user"
-            default: 3
+            description: |
+                Number of recipes to return.
+                k_input must be determined by the user's wording, not by what you think is helpful.
+                If the user asks for a single recipe (singular request), you MUST set k_input = 1.
+                Do NOT increase k_input to provide "options", "choices", or a "reasonable number" of results.
+                Only choose a higher k_input when the user explicitly asks for multiple recipes or specifies a number.
+            default: 1
           filters_input:
             type: string
             description: |
@@ -368,49 +382,6 @@ tools:
               - Non-JSON or malformed JSON strings
         required:
           - REQUEST
-
-  - tool_spec:
-      type: generic
-      name: get_recipe_by_id
-      description: |
-        PROCEDURE/FUNCTION DETAILS:
-        - Type: Lookup Function
-        - Language: Python
-        - Signature: (RECIPE_ID NUMBER)
-        - Returns: OBJECT (JSON-like structure)
-        - Execution: OWNER with CALLED ON NULL INPUT
-        - Volatility: VOLATILE
-        - Primary Function: Retrieve a single recipe by its unique ID from the canonical recipe table.
-
-        DESCRIPTION:
-        This tool fetches the complete recipe data for a single recipe identified by its ID, as stored in ENRICHED.RECIPES_SAMPLE_50K.
-        It should be used when you already know exactly which recipe the user is referring to (for example, when a RESOLVED_RECIPE_REFERENCE
-        section is present in the prompt or when the user provides a specific recipe ID). The tool returns an object with at least the
-        following fields:
-        - status: "success" | "not_found" | "error"
-        - recipe_id: the requested ID
-        - execution_time_ms: execution duration in milliseconds
-        - recipe: the full recipe row as an object (or null if not found)
-
-        USAGE RULES:
-        - When a concrete recipe_id is known from previous context, prefer get_recipe_by_id over re-calling the search tool
-          just to rediscover the same recipe.
-        - Use the returned "recipe" object as the canonical source when building any transformation REQUEST or when presenting
-          detailed information about that recipe.
-        - If status is "not_found" or "error", do NOT fabricate any recipe content; instead, explain the issue and ask the
-          user to pick another recipe or adjust their request (never show the recipe ID to user).
-
-      input_schema:
-        type: object
-        properties:
-          recipe_id:
-            type: number
-            description: |
-              Unique recipe identifier from the recipe database.
-              This MUST come from trustworthy context such as prior search results or an explicit RESOLVED_RECIPE_REFERENCE
-              hint in the system prompt. Do NOT guess or invent IDs.
-        required:
-          - recipe_id
           
 tool_resources:
   search:
@@ -426,15 +397,6 @@ tool_resources:
     type: procedure
     name: "TRANSFORM_RECIPE(VARCHAR)"
     identifier: "NUTRIRAG_PROJECT.SERVICES.TRANSFORM_RECIPE"
-    execution_environment:
-      type: warehouse
-      warehouse: NUTRIRAG_PROJECT
-      query_timeout: 60
-  
-  get_recipe_by_id:
-    type: procedure
-    name: "GET_RECIPE_BY_ID(NUMBER)"
-    identifier: "NUTRIRAG_PROJECT.SERVICES.GET_RECIPE_BY_ID"
     execution_environment:
       type: warehouse
       warehouse: NUTRIRAG_PROJECT
