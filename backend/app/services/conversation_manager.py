@@ -83,7 +83,7 @@ class ConversationManager:
                 return messages
 
         except Exception:
-            pass
+            raise
 
         return []
 
@@ -139,7 +139,7 @@ class ConversationManager:
                         )
 
         except Exception:
-            pass
+            raise
 
         return ""
 
@@ -177,7 +177,7 @@ class ConversationManager:
                     )
 
         except Exception:
-            pass
+            raise
 
         return []
 
@@ -229,7 +229,7 @@ class ConversationManager:
                 return [int(row[0]) for row in result if row[0]]
 
         except Exception:
-            pass
+            raise
 
         return []
 
@@ -269,7 +269,7 @@ class ConversationManager:
                 )  # thread_id, message_id (to use as parent_message_id)
 
         except Exception:
-            pass
+            raise
 
         return None
 
@@ -300,7 +300,7 @@ class ConversationManager:
                 params=(thread_id, message_id, conversation_id, role),
             )
         except Exception:
-            pass
+            raise
 
     def _get_search_context(self, conversation_id: str) -> str:
         """Get context from recent search results."""
@@ -355,7 +355,6 @@ class ConversationManager:
                 return "; ".join(context_parts)
 
         except Exception:
-            # Swallow errors to avoid breaking context generation
-            pass
+            raise
 
         return ""
