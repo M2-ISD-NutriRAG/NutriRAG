@@ -398,7 +398,7 @@ tools:
         - Use the returned "recipe" object as the canonical source when building any transformation REQUEST or when presenting
           detailed information about that recipe.
         - If status is "not_found" or "error", do NOT fabricate any recipe content; instead, explain the issue and ask the
-          user to pick another recipe or adjust their request.
+          user to pick another recipe or adjust their request (never show the recipe ID to user).
 
       input_schema:
         type: object

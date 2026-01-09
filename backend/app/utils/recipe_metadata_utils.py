@@ -89,12 +89,13 @@ def extract_metadata_from_event_stream(events: List[Dict[str, Any]]) -> Optional
     Returns:
         Metadata dictionary with recipe_ids and query, or None
     """
-    # Map each search tool_use_id to its query and collected recipe IDs,
+    # Map each search tool_use_id to its query and collected recipe IDs/names,
     # so we can keep the correct order per search and avoid mixing
     # multiple searches together.
     search_order: List[Any] = []  # tool_use_ids in chronological order
     search_queries_by_id: Dict[Any, str] = {}
     recipe_ids_by_search: Dict[Any, List[int]] = {}
+    recipes_by_search: Dict[Any, List[Dict[str, Any]]] = {}
     last_search_tool_use_id: Optional[Any] = None
 
     for event in events:
@@ -112,8 +113,9 @@ def extract_metadata_from_event_stream(events: List[Dict[str, Any]]) -> Optional
                     search_order.append(tool_use_id)
                 if search_query:
                     search_queries_by_id[tool_use_id] = search_query
-                # Ensure we have a list ready for recipe IDs for this search
+                # Ensure we have a list ready for recipe IDs and recipes for this search
                 recipe_ids_by_search.setdefault(tool_use_id, [])
+                recipes_by_search.setdefault(tool_use_id, [])
 
         # Look for tool results and associate them to the right search
         if event_type == "tool_result":
@@ -133,6 +135,7 @@ def extract_metadata_from_event_stream(events: List[Dict[str, Any]]) -> Optional
                 continue
 
             target_list = recipe_ids_by_search.setdefault(target_search_id, [])
+            target_recipes = recipes_by_search.setdefault(target_search_id, [])
 
             # Content is typically a list: [{'json': {...}, ...}]
             if isinstance(content, list):
@@ -144,16 +147,36 @@ def extract_metadata_from_event_stream(events: List[Dict[str, Any]]) -> Optional
                             # Could have 'result' field with JSON string
                             result_field = json_content.get("result")
                             if isinstance(result_field, str):
-                                extracted = extract_recipe_ids_from_tool_output(
-                                    result_field
-                                )
-                                if extracted:
-                                    target_list.extend(extracted)
+                                # Try to parse nested JSON to get IDs and names
+                                try:
+                                    nested_data = json.loads(result_field)
+                                    if isinstance(nested_data, dict) and "results" in nested_data:
+                                        for recipe in nested_data.get("results", []):
+                                            if "id" in recipe:
+                                                rid = int(recipe["id"])
+                                                target_list.append(rid)
+                                                # Capture optional name for better reference resolution
+                                                rec_entry: Dict[str, Any] = {"id": rid}
+                                                if "name" in recipe:
+                                                    rec_entry["name"] = recipe["name"]
+                                                target_recipes.append(rec_entry)
+                                except json.JSONDecodeError:
+                                    # Fallback to ID-only extraction
+                                    extracted = extract_recipe_ids_from_tool_output(
+                                        result_field
+                                    )
+                                    if extracted:
+                                        target_list.extend(extracted)
                             # Or direct results
                             elif "results" in json_content:
                                 for recipe in json_content.get("results", []):
                                     if "id" in recipe:
-                                        target_list.append(int(recipe["id"]))
+                                        rid = int(recipe["id"])
+                                        target_list.append(rid)
+                                        rec_entry = {"id": rid}
+                                        if "name" in recipe:
+                                            rec_entry["name"] = recipe["name"]
+                                        target_recipes.append(rec_entry)
 
                         # Try 'text' field (alternate format)
                         if "text" in item:
@@ -176,12 +199,17 @@ def extract_metadata_from_event_stream(events: List[Dict[str, Any]]) -> Optional
             ids = recipe_ids_by_search.get(tool_use_id, [])
             if ids:
                 query = search_queries_by_id.get(tool_use_id, "")
-                return {
+                recipes = recipes_by_search.get(tool_use_id, [])
+                metadata: Dict[str, Any] = {
                     "type": "search_results",
                     "query": query,
                     "recipe_ids": ids[:10],  # Preserve order, limit to first 10
                     "total_found": len(ids),
                 }
+                # Include structured recipes (id + optional name) when available
+                if recipes:
+                    metadata["recipes"] = recipes[:10]
+                return metadata
 
         # If we had searches but couldn't extract any IDs, still record the last query
         last_tool_use_id = search_order[-1]
@@ -261,7 +289,8 @@ def parse_recipe_reference(user_message: str) -> Optional[int]:
     }
     
     for ordinal, position in ordinal_map.items():
-        if ordinal in text:
+        pattern = r'\b' + re.escape(ordinal) + r'\b'
+        if re.search(pattern, text):
             return position
     
     # Pattern 2: "number 3", "recipe number 5", "#3", "recipe 3"
@@ -282,24 +311,147 @@ def parse_recipe_reference(user_message: str) -> Optional[int]:
 
 def get_recipe_id_from_reference(
     user_message: str,
-    recent_recipe_ids: List[int]
+    recent_recipes: List[Any],
 ) -> Optional[int]:
-    """
-    Get the actual recipe ID based on a user's reference.
-    
+    """Resolve a recipe ID from a user's reference.
+
+    Handles both positional references ("the second one", "recipe 3") and
+    fuzzy name references (e.g., "the breakfast hurry") using the list of
+    recent recipes (each with an ID and optional name).
+
     Args:
         user_message: The user's message (e.g., "show me the second one")
-        recent_recipe_ids: List of recipe IDs from recent search results
-        
+        recent_recipes: List of recent recipes from search results. Each entry
+            may be either an int recipe ID or a dict with keys:
+              - id: int
+              - name: Optional[str]
+
     Returns:
-        The actual recipe ID, or None if reference cannot be resolved
+        The resolved recipe ID, or None if the reference cannot be resolved.
     """
+    if not recent_recipes:
+        return None
+
+    # First: try to resolve explicit numeric/ordinal references
     position = parse_recipe_reference(user_message)
-    
-    if position is not None and recent_recipe_ids:
-        # Convert 1-indexed position to 0-indexed
-        index = position - 1
-        if 0 <= index < len(recent_recipe_ids):
-            return recent_recipe_ids[index]
-    
+
+    if position is not None:
+        index = position - 1  # Convert 1-indexed to 0-indexed
+        if 0 <= index < len(recent_recipes):
+            entry = recent_recipes[index]
+            if isinstance(entry, dict):
+                rid = entry.get("id")
+                if rid is not None:
+                    try:
+                        return int(rid)
+                    except (TypeError, ValueError):
+                        return None
+            else:
+                try:
+                    return int(entry)
+                except (TypeError, ValueError):
+                    return None
+
+    # Second: try to resolve by (partial) recipe name match
+    # Normalise recent_recipes into a list of {id, name}
+    normalized: List[Dict[str, Any]] = []
+    for entry in recent_recipes:
+        if isinstance(entry, dict):
+            if "id" not in entry:
+                continue
+            try:
+                rid = int(entry["id"])
+            except (TypeError, ValueError):
+                continue
+            normalized.append({"id": rid, "name": entry.get("name")})
+        else:
+            # We have an ID only; this can still be used if we later
+            # expand to include names, but for now it's ID-only.
+            try:
+                rid = int(entry)
+            except (TypeError, ValueError):
+                continue
+            normalized.append({"id": rid, "name": None})
+
+    # Tokenise user message
+    text_tokens = re.findall(r"\w+", user_message.lower())
+    text_tokens_set = set(text_tokens)
+
+    # Basic stopword list to ignore uninformative words in recipe names
+    stopwords = {
+        "the",
+        "a",
+        "an",
+        "of",
+        "in",
+        "on",
+        "for",
+        "and",
+        "with",
+        "to",
+        "from",
+        "recipe",
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six",
+        "seven",
+        "eight",
+        "nine",
+        "ten",
+        "about",
+        "this",
+        "that",
+        "these",
+        "those",
+        # Many recipes start with generic words like "Breakfast";
+        # excluding them reduces ambiguous matches.
+        "breakfast",
+        "lunch",
+        "dinner",
+        "brunch",
+        "idea",
+        "ideas",
+    }
+
+    best_match_id: Optional[int] = None
+    best_score: float = 0.0
+    multiple_best: bool = False
+
+    for rec in normalized:
+        name = rec.get("name")
+        if not name:
+            continue
+
+        name_tokens = [
+            t
+            for t in re.findall(r"\w+", name.lower())
+            if t not in stopwords
+        ]
+        if not name_tokens:
+            continue
+
+        overlap = sum(1 for t in name_tokens if t in text_tokens_set)
+        if overlap == 0:
+            continue
+
+        score = overlap / len(name_tokens)
+
+        if score > best_score:
+            best_score = score
+            best_match_id = rec["id"]
+            multiple_best = False
+        elif score == best_score and best_match_id is not None and rec["id"] != best_match_id:
+            # More than one recipe has the same best score -> ambiguous
+            multiple_best = True
+
+    # Require a reasonably strong match and no ambiguity
+    if best_match_id is not None and best_score >= 0.6 and not multiple_best:
+        try:
+            return int(best_match_id)
+        except (TypeError, ValueError):
+            return None
+
     return None
