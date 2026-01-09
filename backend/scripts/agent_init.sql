@@ -26,8 +26,7 @@ instructions:
     - Stay strictly faithful to what the tool returned (same meaning, same numbers, same ordering).
     - When presenting multiple recipes, ALWAYS:
       - keep them in EXACTLY the same order as the "results" array from the search tool,
-      - number them sequentially starting from 1 in that order (1., 2., 3., ...), and
-      - include the recipe's numeric ID explicitly in the text, e.g. "1) Swiss Scrambled Eggs (ID: 401113)".
+      - number them sequentially starting from 1 in that order (1., 2., 3., ...).
     - Do not reorder, re-rank, or regroup recipes in a way that changes the mapping between list position and recipe ID.
     - Do not add, infer, or complete missing fields.
     - If some information is not present in the tool output, do not mention it.
