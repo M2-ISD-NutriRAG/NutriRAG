@@ -520,9 +520,6 @@ class TransformService:
         # Copy data for filtering based on constraints
         df_filtered = self.pca_data.copy()
 
-        # 03/12 ajout filtrage sur category_llm
-        # df_filtered = df_filtered[df_filtered['Category_LLM'] == row['Category_LLM']]
-
         # Apply constraint filters
         if constraints:
             CONSTRAINT_TO_COLUMN = {
@@ -673,42 +670,58 @@ class TransformService:
         return new_recipe_nutrition
     
 
-    def judge_substitute(self, candidats: List[Dict[str, Any]]):
+    def judge_substitute(self, candidats: List[Dict[str, Any]],recipe_ingredients: List[str], recipe_id: int, serving_size: float, servings: float) -> Tuple[str,NutritionDelta]:
+        """
+        Final ingredient choice between list of candidats
+
+        Args:
+            candidats: list of possible ingredients to substitute with (extracted from get_neighbors_pca() )
+            recipe_id, serving_size, servings, recipe_ingredients: recipe information
+        Returns:
+            ingredient_id
+        """
         if not candidats:
-            print("Pas de candidats pour le substitut")
+            logging.warning("Failure: No candidate found.")
             return None
-    
-        best = None
+        best_ing = None
+        best_nutrition = NutritionDelta()
         for cand in candidats:
-            if best is None:
-                best = cand
+            if best_ing is None:
+                best_ing = cand
             else:
-                # If you keep get_health_score:
-                if self.get_health_score(cand["name"]) > self.get_health_score(best["name"]):
-                    best = cand
-    
-                # OR simpler for now: pick the smallest PCA distance
-                # if cand["global_score"] < best["global_score"]:
-                #     best = cand
-    
-        return best
+                candidat_nutrition = self.get_health_score(recipe_ingredients + [cand["name"]], recipe_id, serving_size, servings)
+                best_current_score = self.get_health_score(recipe_ingredients + [best_ing["name"]], recipe_id, serving_size, servings)
+                if candidat_nutrition.health_score > best_current_score.health_score:
+                    best_ing = cand
+                    best_nutrition = candidat_nutrition    
+        return best_ing, best_nutrition
 
     
-    def substitute_ingr(self, ingredient: str, contraintes: TransformConstraints) -> Tuple[str, bool]:
+    def substitute_ingr(self, ingredient: str, contraintes: TransformConstraints, recipe_ingredients: List[str], recipe_id: int, serving_size: float, servings: float) -> Tuple[str, bool, NutritionDelta]:
+        """
+        Finds a substitute for the given ingredient using PCA in priority
+        
+        Args:
+            ingredient: ingredient to substitute
+            contraintes: nutritional constraints
+        
+        Returns:
+            Tuple (substituted_ingredient, substitution_performed)
+        """
         result = self.get_neighbors_pca(ingredient, contraintes)
 
         if not result or not result.get("best_substitutes"):
             return ingredient, False
 
-        candidats = result["best_substitutes"]            # <-- list[dict]
-        substitute = self.judge_substitute(candidats)     # <-- pass list, not dict
+        candidats = result["best_substitutes"]
+        substitute, nutrition = self.judge_substitute(candidats, recipe_ingredients, recipe_id, serving_size, servings)
 
         if substitute:
             substitute_name = substitute["name"]
-            print(f"🎯 {ingredient} → {substitute_name} (PCA score: {substitute['global_score']:.3f})")
-            return substitute_name, True
-
-        return ingredient, False
+            logging.info(f"Success: Found substitute for {ingredient} → {substitute_name} (PCA score: {substitute['global_score']:.3f})")
+            return substitute_name, True, nutrition
+        
+        return ingredient, False, NutritionDelta()
 
     def adapt_recipe_with_llm(self, recipe: Recipe, substitutions: Dict) -> str:
         """
