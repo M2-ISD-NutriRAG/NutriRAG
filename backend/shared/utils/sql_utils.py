@@ -32,7 +32,7 @@ def load_sql_file(sql_file_path: Path) -> str:
     if not sql_file_path.exists():
         raise FileNotFoundError(f"SQL file not found: {sql_file_path}")
 
-    with open(sql_file_path, "r") as f:
+    with open(sql_file_path, "r", encoding="utf-8") as f:
         return f.read()
 
 
