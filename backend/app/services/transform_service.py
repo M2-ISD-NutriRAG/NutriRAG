@@ -44,6 +44,14 @@ INGREDIENTS_MATCHED_TABLE_NAME = "NUTRIRAG_PROJECT.RAW.INGREDIENTS_MATCHING"
 INGREDIENTS_NUTRIMENTS_TABLE_NAME = "NUTRIRAG_PROJECT.RAW.CLEANED_INGREDIENTS"
 INGREDIENTS_TAGGED_TABLE_NAME = "NUTRIRAG_PROJECT.CLEANED.INGREDIENTS_TAGGED"
 
+ADD_CONSTRAINT_TO_NUTRIENT = {
+    "increase_protein": "PROTEIN_G",
+    "increase_fiber": "FIBER_G",
+    "decrease_sodium": "SODIUM_MG",
+    "decrease_sugar": "SUGAR_G",
+    "decrease_calories": "ENERGY_KCAL",
+}
+
 
 class TransformService:
     _pca_data_cache = None
@@ -1007,8 +1015,11 @@ class TransformService:
     ) -> Tuple[str, NutritionDelta]:
         """
         Final ingredient choice between list of candidates
+        Final ingredient choice between list of candidates
 
         Args:
+            candidates: list of possible ingredients to substitute with (extracted from get_neighbors_pca() )
+            recipe_id, serving_size, servings, recipe_ingredients: recipe information
             candidates: list of possible ingredients to substitute with (extracted from get_neighbors_pca() )
             recipe_id, serving_size, servings, recipe_ingredients: recipe information
         Returns:
@@ -1475,6 +1486,8 @@ class TransformService:
         except Exception as e:
             print(f"LLM error for ingredient identification: {e}")
             traceback.print_exc()
+            print(f"LLM error for ingredient identification: {e}")
+            traceback.print_exc()
             return []
 
     def adapt_recipe_with_llm(self, recipe: Recipe, substitutions: Dict) -> str:
@@ -1534,6 +1547,7 @@ class TransformService:
             """
 
             llm_response = self.session.sql(llm_query)
+            logging.info(f"LLM response: {llm_response}")
             logging.info(f"LLM response: {llm_response}")
             llm_response = parse_query_result(llm_response)
             response_text = llm_response[0]["ADAPTED_STEPS"].strip()
@@ -1722,6 +1736,7 @@ class TransformService:
         success = True
 
         try:
+            notes = []
             notes = []
             # Step 1: Find ingredient to 'transform' depending on constraints if not received
             transformation_type = constraints.transformation
@@ -1914,14 +1929,119 @@ class TransformService:
                     "Success: Step 3 finished for Substitution (LLM's adapted new_recipe steps successfully)."
                 )
 
+            # elif transformation_type == TransformationType.ADD:
+            #     # TODO
+            #     pass
             elif transformation_type == TransformationType.ADD:
-                # TODO
-                pass
 
-            elif (
-                transformation_type == TransformationType.DELETE
-                and ingredients_to_transform
-            ):
+                # 1 Identifier la contrainte ADD active
+                active_constraint = self._get_active_add_constraint(constraints)
+                if not active_constraint:
+                    notes.append("No ADD constraint provided.")
+                    new_recipe_nutrition = self._zero_nutrition()
+                    new_recipe_score = recipe.health_score
+                    new_recipe.health_score = new_recipe_score
+
+                else:
+                    # 2 Nutriment cible à optimiser
+                    target_nutrient = self._map_add_constraint_to_nutrient(active_constraint)
+                    if not target_nutrient:
+                        notes.append(f"Unsupported ADD constraint: {active_constraint}")
+                        new_recipe_nutrition = self._zero_nutrition()
+                        new_recipe_score = recipe.health_score
+                        new_recipe.health_score = new_recipe_score
+
+                    else:
+                        # 3 Nutrition actuelle de la recette
+                        base_nutrition = self.get_health_score(
+                            recipe.ingredients,
+                            recipe.id,
+                            recipe.serving_size,
+                            recipe.servings
+                        )
+
+                        # 4 Déterminer les rôles nutritionnels déjà présents
+                        recipe_tags = self.fetch_ingredients_tags(recipe.id, recipe.ingredients)
+                        existing_roles = set()
+                        for ing in recipe.ingredients:
+                            tags = recipe_tags.get((ing or "").strip().lower())
+                            role = self._infer_role_from_tags(tags)
+                            existing_roles.add(role)
+
+                        # 5 Charger PCA si nécessaire
+                        if self.pca_data is None:
+                            self.load_pca_data()
+
+                        df = self.pca_data.copy()
+
+                        # 6 Appliquer les contraintes alimentaires
+                        if constraints.no_lactose:
+                            df = df[df["is_lactose"] == 0]
+                        if constraints.no_gluten:
+                            df = df[df["is_gluten"] == 0]
+                        if constraints.no_nuts:
+                            df = df[df["contains_nuts"] == 0]
+                        if constraints.vegetarian:
+                            df = df[df["is_vegetarian"] == 1]
+                        if constraints.vegan:
+                            df = df[df["is_vegetable"] == 1]
+
+                        # 7 Filtrage nutritionnel guidé par la contrainte
+                        median_value = df[target_nutrient].median()
+                        if active_constraint.startswith("increase"):
+                            df = df[df[target_nutrient] > median_value]
+                        else:  # decrease_xxx
+                            df = df[df[target_nutrient] < median_value]
+
+                        # 8 Anti-redondance culinaire + constitution des candidats
+                        candidates = []
+                        for _, row in df.iterrows():
+                            cand_name = row["Descrip"]
+
+                            cand_tags = {
+                                "IS_SEAFOOD": row.get("is_seafood", False),
+                                "IS_GRAIN": row.get("is_gluten", False),
+                                "IS_SWEETENER": row.get("is_sweetener", False),
+                                "IS_VEGETABLE": row.get("is_vegetable", False),
+                                "IS_VEGETARIAN": row.get("is_vegetarian", True),
+                            }
+
+                            cand_role = self._infer_role_from_tags(cand_tags)
+
+                            if cand_role not in existing_roles:
+                                candidates.append({"name": cand_name})
+
+                            if len(candidates) >= 15:
+                                break
+
+                        # 9️⃣ Sélection finale par gain marginal de RHI
+                        best_ing, best_nutrition = self.judge_substitute(
+                            candidates,
+                            recipe.ingredients,
+                            recipe.id,
+                            recipe.serving_size,
+                            recipe.servings
+                        )
+
+                        if best_ing:
+                            added_ingredient = best_ing["name"]
+                            new_ingredients = recipe.ingredients + [added_ingredient]
+                            new_recipe.ingredients = new_ingredients
+
+                            new_recipe_nutrition = best_nutrition
+                            new_recipe_score = best_nutrition.health_score
+                            new_recipe.health_score = new_recipe_score
+
+                            notes.append(f"Added ingredient: {added_ingredient}")
+
+                        else:
+                            new_recipe_nutrition = base_nutrition
+                            new_recipe_score = base_nutrition.health_score
+                            new_recipe.health_score = new_recipe_score
+                            notes.append("No suitable ingredient found to add.")
+
+
+            elif transformation_type == TransformationType.DELETE and ingredients_to_transform:
                 log_msg = "Start(Step 2): Transformation Delete ingredient recognized, starting process."
                 logging.info(log_msg)
                 self.log_msg.append(log_msg)
