@@ -27,6 +27,7 @@ import sys
 from dotenv import load_dotenv
 
 from PipelineOrchestrator import PipelineOrchestrator
+from SnowflakeUtils import SnowflakeUtils
 
 # Load environment variables from .env file
 load_dotenv()
@@ -98,12 +99,14 @@ def main():
 
         # Process individual phases if requested
         if args.setup_only:
-            orchestrator.phase_0_setup_schema()
+            connector = SnowflakeUtils()
+            orchestrator.phase_0_setup_schema(connector)
             logger.info("🎉 SETUP COMPLETED SUCCESSFULLY!")
             return
 
         if args.ingest_only:
-            orchestrator.phase_3_ingest_data()
+            connector = SnowflakeUtils()
+            orchestrator.phase_3_ingest_data(connector)
             logger.info("🎉 DATA INGESTION COMPLETED SUCCESSFULLY!")
             return
 
