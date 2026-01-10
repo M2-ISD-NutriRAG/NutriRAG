@@ -3,15 +3,42 @@
 Generate semantic embeddings for recipe data using GPU-accelerated Snowflake notebooks.
 
 ## Table of Contents
-1. [Quick Start](#quick-start)
-2. [What It Does](#what-it-does)
-3. [Python Usage](#python-usage)
-4. [Direct Snowflake SQL](#direct-snowflake-sql)
+1. [Output Database Structure](#output-database-structure)
+2. [Quick Start](#quick-start)
+3. [What It Does](#what-it-does)
+4. [Usage](#usage)
 5. [Parameters](#parameters)
-6. [Embedding Models](#embedding-models)
-7. [Advanced Configuration](#advanced-configuration)
-8. [Troubleshooting](#troubleshooting)
-9. [Quick Reference](#quick-reference)
+6. [Quick Reference](#quick-reference)
+
+---
+
+## Output Database Structure
+
+The vector database service creates a new table with all columns from your source table plus two additional columns:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| *(source columns)* | *(original types)* | All columns from the source table are preserved |
+| `VECTOR` | `VECTOR(FLOAT, <dim>)` | Semantic embedding vector (dimension depends on model) |
+| `TEXT_TO_EMBED` | `VARCHAR` | Concatenated text from all embedded columns |
+
+**Example Output Schema:**
+```sql
+-- For a recipe source table, the output might look like:
+ID               NUMBER
+NAME             VARCHAR
+INGREDIENTS      VARCHAR
+STEPS            VARCHAR
+DESCRIPTION      VARCHAR
+TAGS             VARCHAR
+MINUTES          NUMBER
+N_STEPS          NUMBER
+N_INGREDIENTS    NUMBER
+VECTOR           VECTOR(FLOAT, 384)  -- Dimension varies by model
+TEXT_TO_EMBED    VARCHAR             -- "Name: ... Ingredients: ... Steps: ..."
+```
+
+The `VECTOR` column enables semantic search and similarity matching, while `TEXT_TO_EMBED` shows exactly what text was used to generate each embedding.
 
 ---
 
@@ -33,7 +60,6 @@ service = CreateVectorDatabaseService(
 
 # Create the vector database
 service.create_vector_database()
-
 print("Vector embeddings created successfully!")
 ```
 
@@ -44,15 +70,36 @@ print("Vector embeddings created successfully!")
 The Create Vector Database Service generates semantic embeddings for your recipe data, enabling powerful vector search capabilities. It:
 
 - Reads recipes from your Snowflake table
-- Generates embeddings using embeddings models
-- Stores embeddings in a dedicated table
+- Combines specified columns into meaningful text representations
+- Generates embeddings using state-of-the-art embedding models
+- Stores embeddings alongside original data in a dedicated table
+- Preserves all source columns for easy reference and filtering
 
 ---
 
-## Python Usage
+## Usage
 
-### Custom Configuration
+### Python: Basic Usage with Defaults
 ```python
+from shared.snowflake.client import SnowflakeClient
+from app.services.create_vector_database_service import CreateVectorDatabaseService
+
+# Connect to Snowflake
+client = SnowflakeClient()
+
+# Use defaults (first time setup)
+service = CreateVectorDatabaseService(
+    snowflake_client=client,
+    setup=True  # Only needed first time
+)
+
+# Create vector database
+service.create_vector_database()
+```
+
+### Python: Custom Configuration
+```python
+# Custom configuration for different use cases
 service = CreateVectorDatabaseService(
     snowflake_client=client,
     source_table="ENRICHED.MY_RECIPES",
@@ -60,25 +107,41 @@ service = CreateVectorDatabaseService(
     id_column="RECIPE_ID",
     columns_to_embed=["TITLE", "INGREDIENTS", "INSTRUCTIONS", "TAGS"],
     embedding_model="BAAI/bge-small-en-v1.5",
-    setup=True
+    setup=True  # Creates stage and uploads notebook if needed
 )
 
 service.create_vector_database()
 ```
 
-### Using Different Embedding Models
+### Python: Using Different Embedding Models
+You can use any embedding model available in `sentence-transformers`:
 
-you can use any emebdding models that exist in snetence-transformer
+```python
+# Small, fast model (384 dimensions)
+service = CreateVectorDatabaseService(
+    snowflake_client=client,
+    embedding_model="thenlper/gte-small"
+)
 
----
+# Medium quality model (768 dimensions)
+service = CreateVectorDatabaseService(
+    snowflake_client=client,
+    embedding_model="BAAI/bge-small-en-v1.5"
+)
 
-## Direct Snowflake SQL
+# High quality model (1024 dimensions)
+service = CreateVectorDatabaseService(
+    snowflake_client=client,
+    embedding_model="BAAI/bge-large-en-v1.5"
+)
+```
 
-### Manual Execution 
+### Snowflake SQL: Manual Execution
 
 If you prefer to execute the notebook directly in Snowflake:
+
 ```sql
--- Step 1: Create the notebook
+-- Step 1: Create the notebook (one-time setup)
 CREATE OR REPLACE NOTEBOOK create_vector_db
     FROM @VECTORS.create_vector_db_notebook_stage
     MAIN_FILE = 'create_vector_db.ipynb'
@@ -91,7 +154,7 @@ CREATE OR REPLACE NOTEBOOK create_vector_db
 ALTER NOTEBOOK create_vector_db 
     ADD LIVE VERSION FROM LAST;
 
--- Step 3: Execute the notebook
+-- Step 3: Execute the notebook with parameters
 EXECUTE NOTEBOOK create_vector_db(
     'ENRICHED.RECIPES_SAMPLE_50K',           -- Source table
     'VECTORS.RECIPES_50K_EMBEDDINGS',        -- Output table
@@ -100,6 +163,11 @@ EXECUTE NOTEBOOK create_vector_db(
     'thenlper/gte-small'                     -- Embedding model
 );
 ```
+
+**Important Notes for SQL Execution:**
+- Column names in `columns_to_embed` must be comma-separated with **NO SPACES**
+- The notebook execution may take several minutes depending on dataset size
+- GPU compute pool must be available and properly configured
 
 ---
 
@@ -117,8 +185,18 @@ EXECUTE NOTEBOOK create_vector_db(
 | `output_table` | `str` | `"VECTORS.RECIPES_50K_VECTOR_EMBEDDING"` | Where to store embeddings |
 | `id_column` | `str` | `"ID"` | Unique identifier column |
 | `columns_to_embed` | `List[str]` | `["NAME", "INGREDIENTS", "STEPS", "DESCRIPTION"]` | Columns to combine for embeddings |
-| `embedding_model` | `str` | `"thenlper/gte-small"` | Embedding model to use |
+| `embedding_model` | `str` | `"thenlper/gte-small"` | Embedding model from sentence-transformers |
 
+### Model Selection Guide
+
+| Model | Dimensions | Speed | Quality | Use Case |
+|-------|-----------|-------|---------|----------|
+| `thenlper/gte-small` | 384 | Fast | Good | Production, large datasets |
+| `BAAI/bge-small-en-v1.5` | 384 | Fast | Good | Balanced performance |
+| `BAAI/bge-base-en-v1.5` | 768 | Medium | Better | Higher quality needs |
+| `BAAI/bge-large-en-v1.5` | 1024 | Slow | Best | Maximum quality |
+
+---
 
 ## Quick Reference
 
@@ -135,3 +213,27 @@ CreateVectorDatabaseService(
 )
 ```
 
+### Common Workflows
+
+**Development/Testing:**
+```python
+service = CreateVectorDatabaseService(
+    snowflake_client=client,
+    source_table="ENRICHED.RECIPES_SAMPLE_1K",  # Smaller dataset
+    output_table="VECTORS.TEST_EMBEDDINGS",
+    setup=True
+)
+service.create_vector_database()
+```
+
+**Production:**
+```python
+service = CreateVectorDatabaseService(
+    snowflake_client=client,
+    source_table="ENRICHED.RECIPES_FULL",
+    output_table="VECTORS.PRODUCTION_EMBEDDINGS",
+    embedding_model="BAAI/bge-base-en-v1.5",  # Higher quality
+    setup=False  # Stage already created
+)
+service.create_vector_database()
+```
