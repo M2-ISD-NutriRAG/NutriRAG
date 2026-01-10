@@ -16,9 +16,9 @@ OUTPUT_FILES = {
     "cleaned_ingredients": "cleaned_ingredients.csv",
     "cleaned_recipes": "Recipes_50k.csv",
     "ingredients_with_clusters": "ingredients_with_clusters.csv",
-    "tagged" : "ing_tagged_test.csv",
-    "parsing":"parsing_test.csv",
-    "matching":"matching_test.csv"
+    "tagged" : "tagged.csv",
+    "parsing":"parsing.csv",
+    "matching":"matching.csv"
 }
 
 # Database configuration

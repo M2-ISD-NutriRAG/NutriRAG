@@ -52,20 +52,20 @@ SET SCORE_SANTE = GREATEST(0, (
 CREATE OR REPLACE TABLE {database}.{enriched_schema}.RECIPES_SAMPLE_50K AS
 SELECT 
     *,
-    CAST(NULL AS FLOAT) AS score_sante,
-    CAST(NULL AS FLOAT) AS energy_kcal_100g,
-    CAST(NULL AS FLOAT) AS protein_g_100g,
-    CAST(NULL AS FLOAT) AS saturated_fats_g_100g,
-    CAST(NULL AS FLOAT) AS fat_g_100g,
-    CAST(NULL AS FLOAT) AS carb_g_100g,
-    CAST(NULL AS FLOAT) AS fiber_g_100g,
-    CAST(NULL AS FLOAT) AS sugar_g_100g,
-    CAST(NULL AS FLOAT) AS sodium_mg_100g,
-    CAST(NULL AS FLOAT) AS calcium_mg_100g,
-    CAST(NULL AS FLOAT) AS iron_mg_100g,
-    CAST(NULL AS FLOAT) AS potassium_mg_100g,
-    CAST(NULL AS FLOAT) AS vitc_mg_100g,
-    CAST(NULL AS FLOAT) AS magnesium_mg_100g
+    CAST(0 AS FLOAT) AS score_sante,
+    CAST(0 AS FLOAT) AS energy_kcal_100g,
+    CAST(0 AS FLOAT) AS protein_g_100g,
+    CAST(0 AS FLOAT) AS saturated_fats_g_100g,
+    CAST(0 AS FLOAT) AS fat_g_100g,
+    CAST(0 AS FLOAT) AS carb_g_100g,
+    CAST(0 AS FLOAT) AS fiber_g_100g,
+    CAST(0 AS FLOAT) AS sugar_g_100g,
+    CAST(0 AS FLOAT) AS sodium_mg_100g,
+    CAST(0 AS FLOAT) AS calcium_mg_100g,
+    CAST(0 AS FLOAT) AS iron_mg_100g,
+    CAST(0 AS FLOAT) AS potassium_mg_100g,
+    CAST(0 AS FLOAT) AS vitc_mg_100g,
+    CAST(0 AS FLOAT) AS magnesium_mg_100g
 FROM {database}.{cleaned_schema}.RECIPES_SAMPLE_50K;
 
 -- Calculer les valeurs nutritionnelles pour 100g
@@ -239,7 +239,7 @@ WHEN MATCHED THEN UPDATE SET
 -- Calculer le score santé pour chaque recette
 UPDATE {database}.{enriched_schema}.RECIPES_SAMPLE_50K
 SET SCORE_SANTE = CASE 
-    WHEN ENERGY_KCAL_100G IS NULL THEN NULL
+    WHEN ENERGY_KCAL_100G = 0 THEN 0
     ELSE GREATEST(0, (
         -- 40% : Bénéfices nutritionnels
         0.4 * (
