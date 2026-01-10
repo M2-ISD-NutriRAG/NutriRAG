@@ -68,4 +68,7 @@ logs/
 *_key
 *_key.pub
 rsa_key*
-database/scripts/sql/schema_db_generated.sql
+
+
+token_cache.jwt
+
