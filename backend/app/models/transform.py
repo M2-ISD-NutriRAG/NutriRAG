@@ -24,6 +24,7 @@ class TransformConstraints:
         decrease_carbs: Optional[bool] = False,
         decrease_calories: Optional[bool] = False,
         decrease_sodium: Optional[bool] = False,
+        decrease_satfat: Optional[bool] = False,
     ):
         self.transformation = transformation
         self.no_lactose = no_lactose
@@ -37,6 +38,7 @@ class TransformConstraints:
         self.decrease_carbs = decrease_carbs
         self.decrease_calories = decrease_calories
         self.decrease_sodium = decrease_sodium
+        self.decrease_satfat = decrease_satfat
 
 
 class Recipe:
