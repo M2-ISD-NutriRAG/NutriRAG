@@ -202,6 +202,16 @@ INGREDIENTS_MATCHED_TABLE_NAME = "NUTRIRAG_PROJECT.RAW.INGREDIENTS_MATCHING"
 INGREDIENTS_NUTRIMENTS_TABLE_NAME = "NUTRIRAG_PROJECT.RAW.CLEANED_INGREDIENTS"
 INGREDIENTS_TAGGED_TABLE_NAME = "NUTRIRAG_PROJECT.CLEANED.INGREDIENTS_TAGGED"
 
+ADD_CONSTRAINT_TO_NUTRIENT = {
+    "increase_protein": "PROTEIN_G",
+    "decrease_protein": "PROTEIN_G",
+    "increase_fiber": "FIBER_G",
+    "decrease_sugar": "SUGAR_G",
+    "decrease_carbs": "CARB_G",
+    "decrease_calories": "ENERGY_KCAL",
+    "decrease_sodium": "SODIUM_MG",
+    "decrease_satfat": "SATURATED_FATS_G",
+}
 
 class TransformService:
     _pca_data_cache = None
@@ -1635,6 +1645,61 @@ class TransformService:
             traceback.print_exc()
             return []
 
+    def _map_add_constraint_to_nutrient(self, constraint_name: str) -> Optional[str]:
+        """
+        Maps an ADD constraint to the corresponding nutrient column.
+        Returns None if the constraint is not supported.
+        """
+        return ADD_CONSTRAINT_TO_NUTRIENT.get(constraint_name)
+
+    def _get_active_add_constraint(self, constraints):
+        for c in [
+            "increase_protein",
+            "decrease_protein",
+            "increase_fiber",
+            "decrease_sugar",
+            "decrease_carbs",
+            "decrease_calories",
+            "decrease_sodium",
+            "decrease_satfat",
+        ]:
+            if getattr(constraints, c, False):
+                return c
+        return None
+
+    def _infer_role_from_tags(self, tags: Dict[str, Any]) -> str:
+        """
+        Infer the dominant culinary/nutritional role of an ingredient
+        based on available tagging information.
+
+        Roles are used ONLY to avoid redundancy when ADDing ingredients.
+        """
+
+        if not tags:
+            return "other"
+
+        if tags.get("IS_SEAFOOD"):
+            return "animal_protein"
+        if tags.get("IS_VEGETARIAN") is False:
+            return "animal_protein"
+
+        if tags.get("IS_SWEETENER"):
+            return "sugar"
+
+        if tags.get("IS_GRAIN"):
+            return "carb"
+
+        if tags.get("IS_DAIRY"):
+            return "dairy_fat"
+
+        if tags.get("IS_VEGETABLE"):
+            return "plant"
+
+        if tags.get("CONTAINS_NUTS"):
+            return "nuts"
+
+        return "other"
+     
     def adapt_recipe_with_llm(self, recipe: Recipe, substitutions: Dict) -> str:
         """
         Adapt the recipe steps with substitutions via LLM
@@ -1864,6 +1929,93 @@ class TransformService:
 
             return adapted_steps, []
 
+    def adapt_recipe_add_with_llm(self,recipe: Recipe,added_ingredient: str) -> Tuple[List[str], List[str]]:
+        """
+        Adapt recipe steps after ADD transformation using LLM.
+        Returns: (new_steps, notes)
+        """
+
+        base_prompt = f"""
+        You are an expert chef specializing in recipe enrichment.
+    
+        ORIGINAL RECIPE:
+        Name: {recipe.name}
+        Ingredients: {recipe.ingredients}
+        Steps:
+        {chr(10).join(recipe.steps)}
+    
+        INGREDIENT TO ADD:
+        - {added_ingredient}
+    
+        YOUR TASK:
+        Adapt the recipe steps to INCORPORATE this new ingredient while maintaining the dish's balance and identity.
+    
+        GUIDELINES:
+        1. Add the ingredient only where it makes culinary sense
+        2. Modify existing steps when possible instead of adding many new ones
+        3. If necessary, add ONE new step at the most appropriate moment
+        4. Preserve the original order and numbering of steps
+        5. Do NOT remove existing ingredients or steps
+        6. Do NOT introduce additional ingredients
+        7. Keep instructions concise and realistic
+    
+        OUTPUT FORMAT:
+        - Return the adapted recipe steps in numbered format
+        - Optionally add notes starting with "Note:"
+    
+        ADAPTED RECIPE STEPS:
+        """
+
+        try:
+            prompt_escaped = base_prompt.replace("'", "''")
+
+            llm_query = f"""
+                SELECT SNOWFLAKE.CORTEX.COMPLETE(
+                    'mixtral-8x7b',
+                   '{prompt_escaped}'
+                ) AS adapted_steps
+            """
+
+            llm_response = self.session.sql(llm_query)
+            llm_response = parse_query_result(llm_response)
+            response_text = llm_response[0]["ADAPTED_STEPS"].strip()
+
+            if not response_text:
+                return recipe.steps, []
+
+            parsed_steps = response_text.split("\n")
+
+            new_steps: List[str] = []
+            notes: List[str] = []
+
+            for step in parsed_steps:
+                step_cleaned = step.strip()
+                if not step_cleaned:
+                    continue
+
+                if step_cleaned[0].isdigit() or step_cleaned.startswith(("-", "*")):
+                    cleaned_step = step_cleaned.lstrip("0123456789.-*) ").strip()
+                    if cleaned_step:
+                        new_steps.append(cleaned_step)
+                elif step_cleaned.lower().startswith("note"):
+                    notes.append(step_cleaned.split(":", 1)[-1].strip())
+
+            if not new_steps:
+                return recipe.steps, notes
+
+            return new_steps, notes
+
+        except Exception as e:
+            logging.error(
+                f"Failure: ADD recipe adaptation via LLM failed. Error: {str(e)}"
+            )
+            # Fallback: simple append
+            fallback_steps = recipe.steps + [
+                f"Add {added_ingredient}."
+            ]
+            return fallback_steps, []
+
+
     def transform(
         self,
         recipe: Recipe,
@@ -1881,6 +2033,8 @@ class TransformService:
 
         try:
             notes = []
+            ingredients_to_transform: List[str] = []
+
             # Step 1: Find ingredient to 'transform' depending on constraints if not received
             transformation_type = constraints.transformation
 
@@ -1889,59 +2043,63 @@ class TransformService:
             self.log_msg.append(log_msg)
             allergy_constraints = ["no_lactose", "no_gluten", "no_nuts", "vegetarian", "vegan"]
             active_allergy = any(getattr(constraints, c, False) for c in allergy_constraints)
+            
+            if transformation_type != TransformationType.ADD:
 
-            if ingredients_to_remove:
-                logging.info("Recipe has defined ingredients to remove")
-                ingredients_to_transform = ingredients_to_remove
-                if active_allergy:
-                    logging.info("Allergy Constraints active... Verifying ingredient tags")
-                    extra_ingr = self.identify_ingredients_to_remove_by_algo(recipe, constraints)
-                    if not extra_ingr:
-                        logging.info("Defaulting to LLM identification for allergy constraints")
-                        extra_ingr = self.identify_ingredients_to_remove_by_llm(recipe, constraints)
-                    if extra_ingr:
-                        for ingr in extra_ingr:
-                            if ingr not in ingredients_to_transform:
-                                ingredients_to_transform.append(ingr)
-            else:
-                # Algorithm in priority to identify ingredients
-                log_msg = "Running(Step 1): Identify ingredient to remove by algorithm."
-                logging.info(log_msg)
-                self.log_msg.append(log_msg)
-
-                ingredients_to_transform = (
-                    self.identify_ingredients_to_remove_by_algo(
-                        recipe, constraints
-                    )
-                )
-
-                # LLM fallback if the algorithm finds nothing
-                if not ingredients_to_transform:
-                    log_msg = "Running(Step 1): Identify ingredients with algo failed, fallback with llm."
+                if ingredients_to_remove:
+                    logging.info("Recipe has defined ingredients to remove")
+                    ingredients_to_transform = ingredients_to_remove
+                    if active_allergy:
+                        logging.info("Allergy Constraints active... Verifying ingredient tags")
+                        extra_ingr = self.identify_ingredients_to_remove_by_algo(recipe, constraints)
+                        if not extra_ingr:
+                            logging.info("Defaulting to LLM identification for allergy constraints")
+                            extra_ingr = self.identify_ingredients_to_remove_by_llm(recipe, constraints)
+                        if extra_ingr:
+                            for ingr in extra_ingr:
+                                if ingr not in ingredients_to_transform:
+                                    ingredients_to_transform.append(ingr)
+                else:
+                    # Algorithm in priority to identify ingredients
+                    log_msg = "Running(Step 1): Identify ingredient to remove by algorithm."
                     logging.info(log_msg)
                     self.log_msg.append(log_msg)
 
-                    print("Step 1b: LLM fallback for identification...")
                     ingredients_to_transform = (
-                        self.identify_ingredients_to_remove_by_llm(
+                        self.identify_ingredients_to_remove_by_algo(
                             recipe, constraints
                         )
                     )
 
-                if not ingredients_to_transform:
-                    log_msg = "Error(Step 1): No ingredient to modify found."
-                    logging.error(log_msg)
-                    self.log_msg.append(log_msg)
-                    raise Exception
-                else:
-                    log_msg = f"Running(Step 1): Ingredients identified: {ingredients_to_transform}."
-                    logging.info(log_msg)
-                    self.log_msg.append(log_msg)
+                    # LLM fallback if the algorithm finds nothing
+                    if not ingredients_to_transform:
+                        log_msg = "Running(Step 1): Identify ingredients with algo failed, fallback with llm."
+                        logging.info(log_msg)
+                        self.log_msg.append(log_msg)
 
-            log_msg = "End(Step 1): finished (Identify ingredients to remove."
-            logging.info(log_msg)
-            self.log_msg.append(log_msg)
+                        print("Step 1b: LLM fallback for identification...")
+                        ingredients_to_transform = (
+                            self.identify_ingredients_to_remove_by_llm(
+                                recipe, constraints
+                            )
+                        )
 
+                    if not ingredients_to_transform:
+                        log_msg = "Error(Step 1): No ingredient to modify found."
+                        logging.error(log_msg)
+                        self.log_msg.append(log_msg)
+                        raise Exception
+                    else:
+                        log_msg = f"Running(Step 1): Ingredients identified: {ingredients_to_transform}."
+                        logging.info(log_msg)
+                        self.log_msg.append(log_msg)
+
+                log_msg = "End(Step 1): finished (Identify ingredients to remove."
+                logging.info(log_msg)
+                self.log_msg.append(log_msg)
+
+            if not ingredients_to_transform:
+                ingredients_to_transform = []
             # Input for whole pipeline
             transformations = {}
             transformation_count = 0
@@ -2073,8 +2231,115 @@ class TransformService:
                 )
 
             elif transformation_type == TransformationType.ADD:
-                # TODO
-                pass
+                # Identifier la contrainte ADD active
+                active_constraint = self._get_active_add_constraint(constraints)
+                if not active_constraint:
+                    notes.append("No ADD constraint provided.")
+                    new_recipe_nutrition = self._zero_nutrition()
+                    new_recipe.health_score = recipe.health_score
+
+                else:
+                    # Nutriment cible à optimiser
+                    target_nutrient = self._map_add_constraint_to_nutrient(active_constraint)
+                    if not target_nutrient: #pas de contrainte qui permet l'ajout
+                        notes.append(f"Unsupported ADD constraint: {active_constraint}")
+                        new_recipe_nutrition = self._zero_nutrition()
+                        new_recipe.health_score = recipe.health_score
+
+                    else:
+                        # 3 Nutrition actuelle de la recette
+                        base_nutrition = self.get_health_score(
+                            recipe.ingredients,
+                            recipe.id,
+                            recipe.serving_size,
+                            recipe.servings
+                        )
+
+                        # 4 Déterminer les rôles nutritionnels déjà présents
+                        recipe_tags = self.fetch_ingredients_tags(recipe.id, recipe.ingredients)
+                        existing_roles = set()
+                        for ing in recipe.ingredients:
+                            tags = recipe_tags.get((ing or "").strip().lower())
+                            role = self._infer_role_from_tags(tags)
+                            existing_roles.add(role)
+
+                        # 5 Charger PCA si nécessaire
+                        if self.pca_data is None:
+                            self.load_pca_data()
+
+                        df = self.pca_data.copy()
+
+                        # 6 Appliquer les contraintes alimentaires
+                        if constraints.no_lactose:
+                            df = df[df["is_lactose"] == 0]
+                        if constraints.no_gluten:
+                            df = df[df["is_gluten"] == 0]
+                        if constraints.no_nuts:
+                            df = df[df["contains_nuts"] == 0]
+                        if constraints.vegetarian:
+                            df = df[df["is_vegetarian"] == 1]
+                        if constraints.vegan:
+                            df = df[df["is_vegetable"] == 1]
+
+                        # 7 Filtrage nutritionnel guidé par la contrainte
+                        median_value = df[target_nutrient].median()
+                        if active_constraint.startswith("increase"):
+                            df = df[df[target_nutrient] > median_value]
+                        else:  # decrease_xxx
+                            df = df[df[target_nutrient] < median_value]
+
+                        # 8 Anti-redondance culinaire + constitution des candidats
+                        candidates = []
+                        for _, row in df.iterrows():
+                            cand_name = row["Descrip"]
+
+                            cand_tags = {
+                                "IS_SEAFOOD": row.get("is_seafood", False),
+                                "IS_GRAIN": row.get("is_gluten", False),
+                                "IS_SWEETENER": row.get("is_sweetener", False),
+                                "IS_VEGETABLE": row.get("is_vegetable", False),
+                                "IS_VEGETARIAN": row.get("is_vegetarian", True),
+                            }
+
+                            cand_role = self._infer_role_from_tags(cand_tags)
+
+                            if cand_role not in existing_roles:
+                                candidates.append({"name": cand_name})
+
+                            if len(candidates) >= 5:
+                                break
+
+                        # 9 Sélection finale par gain marginal de RHI
+                        best_ing, best_nutrition = self.judge_substitute(
+                            candidates,
+                            recipe.ingredients,
+                            recipe.id,
+                            recipe.serving_size,
+                            recipe.servings
+                        )
+
+                        if best_ing:
+                            added_ingredient = best_ing["name"]
+                            new_ingredients = recipe.ingredients + [added_ingredient]
+                            new_recipe.ingredients = new_ingredients
+                            new_recipe.name = f"{recipe.name} with {added_ingredient}"
+
+                            new_steps, add_notes = self.adapt_recipe_add_with_llm(
+                                recipe=new_recipe,
+                                added_ingredient=added_ingredient
+                            )
+                            new_recipe.steps = new_steps
+                            notes.extend(add_notes)
+
+                            new_recipe_nutrition = best_nutrition
+                            new_recipe.health_score = best_nutrition.health_score
+
+                            notes.append(f"Added ingredient: {added_ingredient}")
+
+                        else:
+                            new_recipe_nutrition = base_nutrition
+                            new_recipe.health_score = base_nutrition.health_score
+                            notes.append("No suitable ingredient found to add.")
 
             elif (
                 transformation_type == TransformationType.DELETE
