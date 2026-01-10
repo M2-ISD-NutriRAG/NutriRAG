@@ -89,6 +89,7 @@ class PipelineOrchestrator:
             ("cleaned_recipes", SNOWFLAKE_CONFIG['cleaned_schema'], SNOWFLAKE_CONFIG['cleaned_table']),
             ("cleaned_ingredients", SNOWFLAKE_CONFIG['raw_schema'], "CLEANED_INGREDIENTS"),
             ("ingredients_with_clusters", SNOWFLAKE_CONFIG['analytics_schema'], SNOWFLAKE_CONFIG['ingredients_with_clusters_table']),
+            ("recipes_with_clusters", SNOWFLAKE_CONFIG['analytics_schema'], SNOWFLAKE_CONFIG['recipes_with_clusters_table']),
             ("matching", SNOWFLAKE_CONFIG['cleaned_schema'], SNOWFLAKE_CONFIG['matching']),
             ("parsing", SNOWFLAKE_CONFIG['cleaned_schema'], SNOWFLAKE_CONFIG['parsing']),
             ("tagged", SNOWFLAKE_CONFIG['cleaned_schema'], SNOWFLAKE_CONFIG['tagged']),
