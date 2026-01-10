@@ -12,6 +12,7 @@ help:
 run:
 	@echo "🚀 Starting NutriRAG pipeline - processing all data..."
 	cd database/scripts/python && python main.py
+	cd backend && python scripts/agent_init.py 
 
 # Clean temporary files
 clean:
