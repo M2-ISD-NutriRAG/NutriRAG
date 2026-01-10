@@ -16,7 +16,6 @@ from app.models.transform import (
     TransformationType,
     Recipe,
 )
-from math import ceil
 from app.udf.transform_recipe import (
     parse_query_result,
 )  # Specific to python only usage
