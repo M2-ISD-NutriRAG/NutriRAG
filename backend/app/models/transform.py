@@ -1,40 +1,49 @@
 from enum import Enum
-from typing import Optional, Dict, List
-from pydantic import BaseModel, Field
+from typing import Optional, List
+from pydantic import BaseModel
+
 
 class TransformationType(Enum):
-    ADD = 0,
-    DELETE = 1,
+    ADD = 0
+    DELETE = 1
     SUBSTITUTION = 2
+
 
 class TransformConstraints(BaseModel):
     # Constraints for recipe transformation
     transformation: TransformationType
-    no_lactose: Optional[bool] = False
-    no_gluten: Optional[bool] = False
-    no_nuts: Optional[bool] = False
-    vegetarian: Optional[bool] = False
-    vegan: Optional[bool] = False
-    
-    increase_protein: Optional[bool] = False
-    decrease_sugar: Optional[bool] = False
-    decrease_protein: Optional[bool] = False
-    decrease_carbs: Optional[bool] = False
-    decrease_calories: Optional[bool] = False
-    decrease_sodium: Optional[bool] = False
+    no_lactose: bool = False
+    no_gluten: bool = False
+    no_nuts: bool = False
+    vegetarian: bool = False
+    vegan: bool = False
+    increase_protein: bool = False
+    decrease_sugar: bool = False
+    decrease_protein: bool = False
+    decrease_carbs: bool = False
+    decrease_calories: bool = False
+    decrease_sodium: bool = False
+    decrease_satfat: bool = False
 
-# recipe object request
+
 class Recipe(BaseModel):
+    id: int
     name: str
+    serving_size: float
+    servings: float
+    health_score: float
     ingredients: List[str]
     quantity_ingredients: List[str]
     minutes: float
     steps: List[str]
 
+
 class TransformRequest(BaseModel):
     # Transform request body
     recipe: Recipe
+    ingredients_to_remove: Optional[List[str]] = None
     constraints: Optional[TransformConstraints] = None
+
 
 class Substitution(BaseModel):
     # Single ingredient substitution
@@ -42,31 +51,34 @@ class Substitution(BaseModel):
     substitute_ingredient: str
     original_quantity: Optional[float] = None
     substitute_quantity: Optional[float] = None
-    reason: str
+    reason: str = ""
+
 
 class NutritionDelta(BaseModel):
     # Changes in nutrition values
-    calories: float
-    protein_g: float
-    fat_g: float
-    carbs_g: float
-    fiber_g: float
-    sodium_mg: float
-    score_health: float
+    calories: float = 0.0
+    protein_g: float = 0.0
+    saturated_fats_g: float = 0.0
+    fat_g: float = 0.0
+    carb_g: float = 0.0
+    fiber_g: float = 0.0
+    sodium_mg: float = 0.0
+    sugar_g: float = 0.0
+    iron_mg: float = 0.0
+    calcium_mg: float = 0.0
+    magnesium_mg: float = 0.0
+    potassium_mg: float = 0.0
+    vitamin_c_mg: float = 0.0
+    health_score: float = 0.0
 
 
 class TransformResponse(BaseModel):
     # Transform response
-    recipe_id: int
+    recipe: Recipe
     original_name: str
     transformed_name: str
-    
-    substitutions: List[Substitution]
-    
-    nutrition_before: float ## nutri score before
-    nutrition_after: float ## nutri score after 
-    delta: NutritionDelta
-    
-    success: bool
+    substitutions: Optional[List[Substitution]] = None
+    nutrition_before: Optional[NutritionDelta] = None
+    nutrition_after: Optional[NutritionDelta] = None
+    success: bool = True
     message: Optional[str] = None
-
