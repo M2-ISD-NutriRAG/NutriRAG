@@ -12,6 +12,7 @@ from shared.snowflake.client import SnowflakeClient
 from app.routers import recipes
 from app.routers import auth
 from app.routers import chat
+from app.routers import analytics
 
 # Global SnowflakeClient instance to avoid reconnection overhead
 _snowflake_client = None
@@ -59,9 +60,14 @@ app.add_middleware(
 )
 
 # Include routers
-app.include_router(recipes.router, prefix="/api/recipes", tags=["Recipes - Équipe 1"])
+app.include_router(
+    recipes.router, prefix="/api/recipes", tags=["Recipes - Équipe 1"]
+)
 app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 app.include_router(chat.router, prefix="/api/chat", tags=["Conversation"])
+app.include_router(
+    analytics.router, prefix="/api/analytics", tags=["Dashboard"]
+)
 
 
 @app.get("/")
@@ -76,7 +82,9 @@ async def health_check():
     db_status = "not connected"
     if _snowflake_client:
         connection_info = _snowflake_client.is_connected()
-        db_status = "connected" if connection_info.get("ok") else "not connected"
+        db_status = (
+            "connected" if connection_info.get("ok") else "not connected"
+        )
 
     return {
         "status": "healthy",
