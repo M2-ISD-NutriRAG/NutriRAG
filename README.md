@@ -51,6 +51,47 @@ NutriRAG est un assistant culinaire intelligent qui combine :
 - Node.js 20+
 - Docker & Docker Compose
 - Compte Snowflake
+- **Git LFS** (pour gérer les fichiers volumineux)
+
+### Configuration Git LFS
+
+Ce projet utilise **Git LFS (Large File Storage)** pour gérer les fichiers volumineux (datasets, modèles, etc.). Vous DEVEZ installer et configurer Git LFS avant de cloner le repository.
+
+**Installation de Git LFS :**
+
+```bash
+# macOS (avec Homebrew)
+brew install git-lfs
+
+# Ubuntu/Debian
+sudo apt-get install git-lfs
+
+# Windows (avec Chocolatey)
+choco install git-lfs
+```
+
+**Configuration (à faire une seule fois) :**
+
+```bash
+# Configurer git lfs
+git lfs install
+
+# Cloner le repository (git lfs téléchargera automatiquement les fichiers)
+git clone <repository-url>
+cd NutriRAG
+```
+
+**Vérification :**
+
+```bash
+# Voir les fichiers gérés par git lfs
+git lfs ls-files
+
+# Vérifier que les fichiers sont bien téléchargés (pas des pointeurs)
+file dataset/*.csv
+```
+
+Si vous clonez le repo SANS Git LFS configuré, vous aurez uniquement des pointeurs texte au lieu des vrais fichiers. Reconfigurer avec `git lfs install` et `git lfs pull` pour télécharger les vrais fichiers.
 
 ### Installation
 
@@ -66,7 +107,7 @@ cd NutriRAG
 ```bash
 # Backend
 cd backend
-python -m venv venv
+python3.11 -m venv venv
 source venv/bin/activate # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
