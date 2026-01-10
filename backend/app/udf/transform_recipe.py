@@ -1643,7 +1643,6 @@ class TransformService:
                 minutes=recipe.minutes,
                 steps=recipe.steps,
             )
-            new_ingredients = recipe.ingredients # default value
             new_recipe_nutrition = self._zero_nutrition()
 
 
