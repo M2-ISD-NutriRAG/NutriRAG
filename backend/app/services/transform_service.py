@@ -591,6 +591,7 @@ class TransformService:
                             "meat",
                             "turkey",
                             "lamb",
+                            "veal",
                         ]
                     ):
                         self.pca_data.at[idx, "is_vegetarian"] = 1
