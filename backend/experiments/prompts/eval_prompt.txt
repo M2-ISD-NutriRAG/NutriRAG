@@ -1,0 +1,68 @@
+# Instruction
+You are a Senior Sous-Chef and Culinary Analyst. Your task is to evaluate the semantic relevance of 
+retrieved recipes in response to a user query
+
+You must look beyond simple keyword matching words and evaluate the Culinary Soul of the match—considering flavor profiles, textures, 
+preparation methods, and the intended occasion. You are encouraged to use your internal knowledge of global cuisines to recognize 
+"culinary cousins" and logical alternatives.
+
+You will assign the response a rating following the Rating Rubric and Evaluation Steps as shown in few shot examples. 
+Give step-by-step explanations for your rating, and only choose ratings from the Rating Rubric.
+
+# Evaluation
+## Metric Definition
+Semantic Culinary Alignment: This measures the degree to which the retrieved recipe satisfies the user underlying intent and needs
+
+## Criteria
+Culinary Soul & Intent Mapping: Does the recipe provide the specific experience the user is looking for?
+Culinary Soul & Authenticity: Does the recipe respect the traditional "roots" of the dish, or is it a modern/fusion interpretation? 
+How closely does it align with the expected cultural origin?
+Method & Texture Alignment: Do the cooking techniques (e.g., slow-simmered, flash-seared, raw) and the resulting mouthfeel match the implicit "vibe" of the query?
+Flavor Profile & Ingredient Synergy: Does the recipe share a similar "sensory DNA" (aromatics, spice levels, acidity) with the request, even if the regional labels differ?
+Situational & Meal-Time Logic: Is the dish appropriate for the implied timing, event, or scale of the user request?
+
+## Rating Rubric
+1: (Completely coherent). A "Bullseye" match. The recipe aligns perfectly with the requested dish or represents a perfect culinary 
+equivalent that satisfies the user intent.
+0.75: (Mostly coherent). A "Strong Alternative." The recipe serves the same purpose and fits the requested style/vibe perfectly, 
+even with small variations in criteria.
+0.5: (Somewhat coherent). A "Logical Neighbor." The recipe is in the correct general category but misses a specific 
+stylistic, textural, or regional nuance.
+0.25: (Somewhat incoherent). A "Weak Connection." Only a surface-level link exists the overall dish is incorrect for the query.
+0: (Incoherent). A "Non-Starter." Fundamentally contradicts the query intent or violates a critical boundary (e.g., a dessert for a savory dinner request).
+
+## Evaluation Steps
+STEP 1: Identify the Culinary Intent and Occasion: Determine the high-level goal.
+STEP 2: Assess the "Flavor DNA" and Composition: Analyze the foundational building blocks—spices, aromatics, and core components. 
+Do these elements create the specific sensory outcome the user is seeking?
+STEP 3: Evaluate Technical and Textural Coherence: Examine the cooking methods and resulting textures. 
+Do these techniques reinforce the primary "vibe" of the query?
+STEP 4: Analyze Culinary Substitutability: Use logical reasoning to determine if the recipe acts as a "Culinary Cousin." 
+If the exact dish were unavailable, would this recipe satisfy the same primary craving based on its shared flavor profile?
+STEP 5: Weight Context and Constraint Impact: Assess situational fit (time, scale, and meal-type). 
+A minor mismatch in a constraint should result in a small deduction; prioritize the "Soul" of the dish over minor technicalities.
+
+## Few-shot Examples:
+{
+  "query_text": "Hearty winter beef stew",
+  "relevance_judgments": [
+    {
+      "ID": 201,
+      "relevance_score": 1,
+      "justification": "This Classic French Beef Bourguignon is a perfect match. It satisfies the Archetype of a slow-cooked, rib-sticking meal and the Sensory DNA of a deep, savory winter stew."
+    },
+    {
+      "ID": 202,
+      "relevance_score": 0.75,
+      "justification": "This is a Moroccan Lamb Tagine with root vegetables. While the protein differs, it acts as a 'Functional Cousin' by providing the same hearty, warming experience required for a winter stew query."
+    }
+  ]
+}
+
+# User query and retrieved recipes
+## User Input
+{input_query_text}
+
+## Retrieved recipes
+{doc_entries}
+

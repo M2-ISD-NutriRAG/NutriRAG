@@ -1,0 +1,112 @@
+{
+  "Experiment_id": 2,
+  "raw_data_table_name": "ENRICHED.RECIPES_SAMPLE_50K",
+  "number_row_analyse": 5000,
+  "eval_with_llm_or_ground_truth": "llm",
+
+  "config_file_path": "config/config.json",
+
+  "input_raw_data_cache_file_path": "data/raw/recipes_samples.csv",
+  "input_raw_data_file_path": "recipes_samples.csv",
+
+  "input_embedding_cache_file_path": "data/embedding_cache/recipes_samples_embeddings.csv",
+
+  "experiments_dir": "experiments/exp{experiment_id}/",
+  "config_dir": "config/",
+  "data_dir": "data/",
+  "raw_data_dir": "data/raw/",
+  "embedding_data_dir": "data/embedding/",
+  "temp_data_dir": "data/temp/",
+  "eval_data_dir": "data/eval/",
+  "prompts_dir": "prompts/",
+  "metrics_dir": "metrics/",
+  "llm_metrics_dir": "metrics/llm/",
+  "embedding_metrics_dir": "metrics/embedding/",
+
+  "eval_prompt_file_path": "prompts/eval_prompt.txt",
+
+  "ground_truth_file_path": "data/eval/ground_truth.json",
+  "query_test_file_path": "data/eval/queries_test.json",
+
+  "eval_llm_ground_truth_file_path": "eval_llm_ground_truth.json",
+
+
+  "output_recipes_embedding_file_path": "recipes_samples_embeddings.csv",
+
+  "output_topk_model_query_retrieved_documents_file_path": "retrieved_topk_model_query_documents.json",
+
+  "output_retrived_documents_relevence_file_path": "retrieved_query_documents_relevance.json",
+  "output_topk_model_query_retrieved_documents_relevance_file_path": "retrieved_topk_model_query_documents_relevance.json",
+
+  "output_retrived_documents_metrics_file_path": "retrieved_query_documents_metrics.json",
+  "output_retrived_documents_aggregated_metrics_file_path": "retrieved_query_documents_aggregated_metrics.json",
+
+  "override_raw_data": false,
+  "override_embeddings": false,
+  "override_llm_eval": false,
+  "override_documents_retrival": false,
+  "override_embedding_eval": false,
+
+  "ID_column": "ID",
+
+  "data_columns": [
+    "NAME",
+    "TAGS",
+    "INGREDIENTS",
+    "STEPS",
+    "DESCRIPTION",
+    "SEARCH_TERMS",
+    "FILTERS"
+  ],
+
+  "embedding_models": [
+    "moranmiz/recipe-sbert-model",
+    "mixedbread-ai/mxbai-embed-xsmall-v1",
+    "sentence-transformers/all-MiniLM-L6-v2",
+    "thenlper/gte-small",
+    "BAAI/bge-small-en-v1.5",   
+    "intfloat/e5-base-v2",
+    "Snowflake/snowflake-arctic-embed-m-v1.5",
+    "Snowflake/snowflake-arctic-embed-m"
+  ],
+
+  "embedding_config": {
+    "config_1": ["NAME", "TAGS", "SEARCH_TERMS", "FILTERS", "INGREDIENTS", "STEPS", "DESCRIPTION"]
+  },
+
+  "llm_model": "mistral-large2",
+  "temperature": 0.2,
+  "max_tokens": 8192,
+  "context_window": 128000,
+  "number_doc_per_call": 10,
+  "max_retries_llm_calls": 3,
+
+  "llm_json_schema":  {
+    "type": "object",
+    "properties": {
+        "query_text": {
+            "type": "string"
+        },
+        "relevance_judgments": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "ID": {"type": "integer"},
+                    "relevance_score": {"type": "number"},
+                    "justification": {"type": "string"}
+                },
+                "required": ["ID", "relevance_score", "justification"]
+            }
+        }
+    },
+    "required": ["query_text", "relevance_judgments"]
+  },
+
+  "top_k": [1, 3, 5, 10, 20]
+
+}
+
+
+
+

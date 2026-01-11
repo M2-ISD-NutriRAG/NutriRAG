@@ -1,0 +1,11 @@
+experiments/*
+!experiments/.gitkeep
+
+data/**/*.csv
+
+!data/.gitkeep
+
+
+.venv
+.env
+
