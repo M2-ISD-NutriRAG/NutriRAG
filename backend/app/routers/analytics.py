@@ -2,14 +2,17 @@ from fastapi import APIRouter, HTTPException, Query, Depends, Request
 from typing import Optional
 from json import loads
 from app.models.analytics import (
-    ClusterResponse,
     RecipeRanking,
     KPIResponse,
     TopIngredient,
     BiggestWin,
     ConversationStatsResponse,
     TransformationSummary,
+    SearchNutritionStats,
+    TopFilter,
+    TopTag,
 )
+from datetime import datetime, timedelta
 
 router = APIRouter()
 
@@ -20,34 +23,12 @@ def get_db(
     return request.app.state.snowflake_client
 
 
-@router.get("/clusters/ingredients", response_model=ClusterResponse)
-async def get_ingredient_clusters(algorithm: Optional[str] = "kmeans"):
-    # Obtenir les résultats du regroupement (clustering) des ingrédients
-    # Retourne des clusters avec des étiquettes et des exemples
-    # TODO: Équipe 4 - Retourner les clusters d'ingrédients de Snowflake
-
-    raise HTTPException(
-        status_code=501,
-        detail="Équipe 4: Implémentation nécessaire - Requête des clusters d'ingrédients",
-    )
-
-
-@router.get("/clusters/recipes", response_model=ClusterResponse)
-async def get_recipe_clusters():
-    # Obtenir les résultats du regroupement (clustering) des recettes (types de cuisine, catégories de plats)
-    # TODO: Équipe 4 - Retourner les clusters de recettes
-
-    raise HTTPException(
-        status_code=501,
-        detail="Équipe 4: Implémentation nécessaire - Requête des clusters de recettes",
-    )
-
-
 @router.get("/kpi", response_model=KPIResponse)
 async def get_kpis(
     user_id: Optional[str] = Query(
         None, description="L'ID de l'utilisateur pour filtrer les KPIs"
     ),
+    time_range: str = Query("all", description="Period: 7d, 30d, 90d, all"),
     db=Depends(get_db),
 ):
     """
@@ -56,14 +37,35 @@ async def get_kpis(
     try:
         session = db.get_snowpark_session()
 
-        search_filter = ""
-        trans_filter = ""
-        params = []
+        date_params = []
 
+        if time_range != "all":
+            days_map = {"7d": 7, "30d": 30, "90d": 90}
+            days = days_map.get(time_range, 30)  # Défaut 30 jours si inconnu
+            cutoff_date = datetime.now() - timedelta(days=days)
+            date_params = [cutoff_date]
+
+        search_where_clauses = []
+        search_params = []
         if user_id:
-            search_filter = "WHERE USER_ID = ?"
-            trans_filter = "AND USER_ID = ?"
-            params = [user_id]
+            search_where_clauses.append("USER_ID = ?")
+            search_params.append(user_id)
+        if time_range != "all":
+            search_where_clauses.append("SEARCH_TIMESTAMP >= ?")
+            search_params.extend(date_params)
+        search_filter_sql = ""
+        if search_where_clauses:
+            search_filter_sql = "WHERE " + " AND ".join(search_where_clauses)
+
+        trans_where_clauses = ["SUCCESS = TRUE"]
+        trans_params = []
+        if user_id:
+            trans_where_clauses.append("USER_ID = ?")
+            trans_params.append(user_id)
+        if time_range != "all":
+            trans_where_clauses.append("TRANSFORM_TIMESTAMP >= ?")
+            trans_params.extend(date_params)
+        trans_filter_sql = "WHERE " + " AND ".join(trans_where_clauses)
 
         # REQUÊTE 1 : METRIQUES DE VOLUME & NUTRITION (TRANSFORMATIONS)
         query_transforms_agg = f"""
@@ -74,12 +76,11 @@ async def get_kpis(
                 AVG( (NUTRITION_AFTER:score_health::FLOAT) - (NUTRITION_BEFORE:score_health::FLOAT) ) as AVG_HEALTH_GAIN,
                 AVG( (ORIGINAL_RECIPE:minutes::INT) - (NEW_RECIPE:minutes::INT) ) as AVG_TIME_SAVED
             FROM NUTRIRAG_PROJECT.ANALYTICS.HIST_TRANSFORMATIONS
-            WHERE SUCCESS = TRUE
-            {trans_filter}
+            {trans_filter_sql}
         """
 
         res_agg = session.sql(
-            query_transforms_agg, params=params if user_id else []
+            query_transforms_agg, params=trans_params if user_id else []
         ).collect()
 
         row_agg = res_agg[0]
@@ -93,12 +94,12 @@ async def get_kpis(
         query_search_stats = f"""
             SELECT
                 COUNT(*) as CNT,
-                AVG(MINUTES) as AVG_MINUTES  -- NOUVEAU
+                AVG(MINUTES) as AVG_MINUTES
             FROM NUTRIRAG_PROJECT.ANALYTICS.HIST_SEARCH
-            {search_filter}
+            {search_filter_sql}
         """
         res_search = session.sql(
-            query_search_stats, params=params if user_id else []
+            query_search_stats, params=search_params if user_id else []
         ).collect()
         total_searches = res_search[0]["CNT"] or 0
         avg_recipe_time = res_search[0]["AVG_MINUTES"] or 0.0
@@ -110,13 +111,13 @@ async def get_kpis(
                 COUNT(*) as FREQUENCY
             FROM NUTRIRAG_PROJECT.ANALYTICS.HIST_SEARCH,
             LATERAL FLATTEN(input => RAW_RECIPE_JSON:ingredients) f
-            {search_filter}
+            {search_filter_sql}
             GROUP BY 1
             ORDER BY 2 DESC
             LIMIT 5
         """
         res_ingredients = session.sql(
-            query_ingredients, params=params if user_id else []
+            query_ingredients, params=search_params if user_id else []
         ).collect()
 
         top_ingredients_list = [
@@ -129,10 +130,10 @@ async def get_kpis(
             SELECT COUNT(DISTINCT f.value::STRING) as UNIQUE_COUNT
             FROM NUTRIRAG_PROJECT.ANALYTICS.HIST_SEARCH,
             LATERAL FLATTEN(input => RAW_RECIPE_JSON:ingredients) f
-            {search_filter}
+            {search_filter_sql}
         """
         res_div = session.sql(
-            query_diversity, params=params if user_id else []
+            query_diversity, params=search_params if user_id else []
         ).collect()
         diversity_index = res_div[0]["UNIQUE_COUNT"] or 0
 
@@ -143,13 +144,12 @@ async def get_kpis(
                 TRANSFORMED_NAME,
                 (NUTRITION_AFTER:score_health::FLOAT - NUTRITION_BEFORE:score_health::FLOAT) as DELTA_SCORE
             FROM NUTRIRAG_PROJECT.ANALYTICS.HIST_TRANSFORMATIONS
-            WHERE SUCCESS = TRUE AND DELTA_SCORE is not null
-            {trans_filter}
+            {trans_filter_sql} AND DELTA_SCORE is not null
             ORDER BY DELTA_SCORE DESC
             LIMIT 1
         """
         res_win = session.sql(
-            query_biggest_win, params=params if user_id else []
+            query_biggest_win, params=trans_params if user_id else []
         ).collect()
 
         biggest_win_obj = None
@@ -163,11 +163,11 @@ async def get_kpis(
         query_best = f"""
             SELECT DISTINCT NAME, SCORE_HEALTH
             FROM NUTRIRAG_PROJECT.ANALYTICS.HIST_SEARCH
-            {search_filter} {("AND" if search_filter else "WHERE")} SCORE_HEALTH IS NOT NULL
+            {search_filter_sql} AND SCORE_HEALTH IS NOT NULL
             ORDER BY SCORE_HEALTH DESC
             LIMIT 5
         """
-        res_best = session.sql(query_best, params=params).collect()
+        res_best = session.sql(query_best, params=search_params).collect()
         top_healthy = [
             RecipeRanking(name=row["NAME"], health_score=row["SCORE_HEALTH"])
             for row in res_best
@@ -176,14 +176,65 @@ async def get_kpis(
         query_worst = f"""
             SELECT DISTINCT NAME, SCORE_HEALTH
             FROM NUTRIRAG_PROJECT.ANALYTICS.HIST_SEARCH
-            {search_filter} {("AND" if search_filter else "WHERE")} SCORE_HEALTH IS NOT NULL
+            {search_filter_sql} AND SCORE_HEALTH IS NOT NULL
             ORDER BY SCORE_HEALTH ASC
             LIMIT 5
         """
-        res_worst = session.sql(query_worst, params=params).collect()
+        res_worst = session.sql(query_worst, params=search_params).collect()
         top_unhealthy = [
             RecipeRanking(name=row["NAME"], health_score=row["SCORE_HEALTH"])
             for row in res_worst
+        ]
+
+        query_search_nutrition = f"""
+            SELECT
+                AVG(CALORIES) as AVG_CAL,
+                AVG(PROTEIN_G) as AVG_PROT,
+                AVG(FAT_G) as AVG_FAT,
+                AVG(CARBS_G) as AVG_CARB,
+                AVG(RAW_RECIPE_JSON:nutrition_detailed:sugar_g_100g::FLOAT) as AVG_SUGAR,
+                AVG(RAW_RECIPE_JSON:nutrition_detailed:fiber_g_100g::FLOAT) as AVG_FIBER,
+                AVG(RAW_RECIPE_JSON:nutrition_detailed:sodium_mg_100g::FLOAT) as AVG_SODIUM
+            FROM NUTRIRAG_PROJECT.ANALYTICS.HIST_SEARCH
+            {search_filter_sql}
+        """
+        res_nut = session.sql(
+            query_search_nutrition, params=search_params
+        ).collect()
+        row_nut = res_nut[0]
+
+        search_nutrition_obj = SearchNutritionStats(
+            avg_calories=round(row_nut["AVG_CAL"] or 0.0, 0),
+            avg_protein=round(row_nut["AVG_PROT"] or 0.0, 1),
+            avg_fat=round(row_nut["AVG_FAT"] or 0.0, 1),
+            avg_carbs=round(row_nut["AVG_CARB"] or 0.0, 1),
+            avg_sugar=round(row_nut["AVG_SUGAR"] or 0.0, 1),
+            avg_fiber=round(row_nut["AVG_FIBER"] or 0.0, 1),
+            avg_sodium=round(row_nut["AVG_SODIUM"] or 0.0, 0),
+        )
+
+        query_filters = f"""
+            SELECT f.value::STRING as NAME, COUNT(*) as CNT
+            FROM NUTRIRAG_PROJECT.ANALYTICS.HIST_SEARCH,
+            LATERAL FLATTEN(input => RAW_RECIPE_JSON:filters) f
+            {search_filter_sql}
+            GROUP BY 1 ORDER BY 2 DESC LIMIT 5
+        """
+        res_filters = session.sql(query_filters, params=search_params).collect()
+        top_filters_list = [
+            TopFilter(name=row["NAME"], count=row["CNT"]) for row in res_filters
+        ]
+
+        query_tags = f"""
+            SELECT f.value::STRING as NAME, COUNT(*) as CNT
+            FROM NUTRIRAG_PROJECT.ANALYTICS.HIST_SEARCH,
+            LATERAL FLATTEN(input => RAW_RECIPE_JSON:tags) f
+            {search_filter_sql} AND  f.value::STRING NOT IN ('time-to-make', 'preparation', 'course')
+            GROUP BY 1 ORDER BY 2 DESC LIMIT 5
+        """
+        res_tags = session.sql(query_tags, params=search_params).collect()
+        top_tags_list = [
+            TopTag(name=row["NAME"], count=row["CNT"]) for row in res_tags
         ]
 
         conversion_rate = 0.0
@@ -199,6 +250,9 @@ async def get_kpis(
             total_calories_saved=round(calories_saved, 1),
             total_protein_gained=round(protein_gained, 1),
             avg_health_score_gain=round(avg_health_gain, 2),
+            search_nutrition_avg=search_nutrition_obj,
+            top_filters=top_filters_list,
+            top_tags=top_tags_list,
             ingredient_diversity_index=diversity_index,
             top_ingredients=top_ingredients_list,
             biggest_optimization=biggest_win_obj,
@@ -230,7 +284,6 @@ async def get_conversation_stats(conversation_id: str, db=Depends(get_db)):
         ).collect()
         total_messages = res_search[0]["CNT"] if res_search else 0
 
-        # 2. Récupérer les JSONs pour calcul
         query_trans = """
             SELECT
                 ORIGINAL_NAME,
@@ -256,7 +309,6 @@ async def get_conversation_stats(conversation_id: str, db=Depends(get_db)):
             def get_val(data, key):
                 return float(data.get(key, 0.0))
 
-            # Calcul des Deltas (APRÈS - AVANT)
             transformations.append(
                 TransformationSummary(
                     original_name=row["ORIGINAL_NAME"],
@@ -301,26 +353,3 @@ async def get_conversation_stats(conversation_id: str, db=Depends(get_db)):
         return ConversationStatsResponse(
             total_messages=0, total_transformations=0, transformations_list=[]
         )
-
-
-@router.get("/distributions/{metric}")
-async def get_distribution(metric: str):
-    # Obtenir la distribution d'une mesure nutritionnelle sur les recettes
-    # Mesures: calories, protein, carbs, fat, score_health
-    # TODO: Équipe 4 - Retourner les données de l'histogramme/distribution
-
-    raise HTTPException(
-        status_code=501,
-        detail="Équipe 4: Implémentation nécessaire - Calculer les distributions",
-    )
-
-
-@router.get("/correlations")
-async def get_correlations():
-    # Obtenir la matrice de corrélation entre les mesures nutritionnelles et les évaluations
-    # TODO: Équipe 4 - Calculer les corrélations
-
-    raise HTTPException(
-        status_code=501,
-        detail="Équipe 4: Implémentation nécessaire - Analyse de corrélation",
-    )

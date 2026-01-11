@@ -16,6 +16,21 @@ export interface RecipeRanking {
   health_score: number;
 }
 
+export interface SearchNutritionStats {
+  avg_calories: number;
+  avg_protein: number;
+  avg_fat: number;
+  avg_carbs: number;
+  avg_sugar: number;
+  avg_fiber: number;
+  avg_sodium: number;
+}
+
+export interface TopItem {
+  name: string;
+  count: number;
+}
+
 export interface DashboardStats {
   total_searches: number;
   total_transformations: number;
@@ -23,6 +38,9 @@ export interface DashboardStats {
   total_calories_saved: number;
   total_protein_gained: number;
   avg_health_score_gain: number;
+  search_nutrition_avg: SearchNutritionStats;
+  top_filters: TopItem[];
+  top_tags: TopItem[];
   ingredient_diversity_index: number;
   top_ingredients: TopIngredient[];
   top_diet_constraint: string;
@@ -53,8 +71,8 @@ export interface ConversationStats {
 }
 
 export const analyticsService = {
-  getDashboardData: async (userId: string): Promise<DashboardStats> => {
-    const response = await apiClient.get(`api/analytics/kpi?user_id=${userId}`);
+  getDashboardData: async (userId: string, timeRange: string = 'all'): Promise<DashboardStats> => {
+    const response = await apiClient.get(`api/analytics/kpi?user_id=${userId}&time_range=${timeRange}`);
     return response.data;
   },
 
