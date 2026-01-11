@@ -1,102 +1,139 @@
-# 🍲 Recipe Embedding and Retrieval Evaluation Project
+# LLM Evaluation Framework
 
-This project focuses on generating vector **embeddings** for recipe data and **evaluating** their performance in a retrieval context. It allows for systematic experimentation with different embedding models and combinations of data columns.
+A flexible framework for evaluating embedding models and configurations using either LLM-as-Judge or ground truth data, with support for multiple ranking metrics (Precision@K, NDCG@K, etc.).
 
-## 📂 Project Structure Hierarchy
+## Project Structure
 
-The following diagram illustrates the project's key file and folder organization:
-
-
-
----
-
-## ⚙️ Configuration and Environment
-
-### 🔒 `.env` File (Environment Variables)
-
-This file stores sensitive database credentials and project-specific parameters. **It MUST be added to `.gitignore`.**
-
-| Variable Name | Description | Example Value |
-| :--- | :--- | :--- |
-| `USER` | Database User Name | `MY_USER` |
-| `PASSWORD` | Database Password | `secure_password` |
-| `PASSCODE` | MFA Passcode (if required) | `123456` |
-| `ACCOUNT` | Database Account Identifier | `xy12345.eu-central-1` |
-| `WAREHOUSE` | Database Warehouse Name | `COMPUTE_WH` |
-| `DATABASE` | Database Name | `RECIPE_DB` |
-| `SCHEMA` | Database Schema Name | `PUBLIC` |
-| `TABLE` | Database Table Name | `RECIPES` |
-| `CONFIG_FILE_PATH` | Path to the main configuration file for experiments | `"config/base_config.json"` |
-
-### 🛠️ Utility Files
-
-| File | Purpose |
-| :--- | :--- |
-| **`requirements.txt`** | Lists all necessary **Python package dependencies** required to run the project. |
-| **`config/base_config.json`** | The main **configuration file** used to define which columns to embed and which embedding models to test. |
-
----
-
-## 📓 Notebooks (Execution Workflow)
-
-The project workflow is managed by two primary Jupyter notebooks:
-
-### 1. `create_embedding.ipynb`
-
-* **Purpose**: Handles the process of **generating vector embeddings**.
-* **Workflow**: Reads the raw data from `data/`, applies the embedding logic (as defined by the configuration in `config/base_config.json`), and saves the resulting embeddings to an experiment-specific folder in `experiments/`.
-
-### 2. `eval_embedding_model_config.ipynb`
-
-* **Purpose**: Orchestrates the systematic **evaluation of different models and column combinations**.
-* **Workflow**: Iterates through models and column combinations defined in the configuration, performs the retrieval search using the embeddings, calculates metrics against the ground truth queries, and saves the results to the `metrics/` subfolder within each experiment.
-
----
-
-## 💾 Data and Ground Truth
-
-### 📂 `data/`
-
-* **Content**: Contains the raw dataset.
-* **Dataset**: A dataset of **1,000 recipes** used for embedding generation.
-
-### 📂 `query/`
-
-* **Content**: Contains the **ground truth for retrieval evaluation**.
-* **File (`query/query_test`)**: A JSON file/structure containing a list of objects. Each object includes a `query_text` and a list of `documents` (recipe IDs) that are **relevant ground truth** for that query. This is essential for testing the retrieval system's accuracy.
-
-**Example Structure:**
-```json
-[
-  {
-    "query_text": "a vegan dessert that require minimum time to prepare",
-    "documents": [15969, 421673, 329664, 482506, ...]
-  }
-]
+```
+.
+├── config/
+│   └── config.json                          # Main configuration file for experiments
+│
+├── data/
+│   ├── embedding_cache/                     # Cached embeddings to avoid recomputation
+│   └── eval/
+│       ├── ground_truth.json                # Ground truth labels for evaluation
+│       └── query_test.json                  # Test queries for evaluation
+│
+├── notebooks/                               # notebooks for testing and exploration
+│
+├── prompts/                                 # Prompt templates for LLM-as-Judge
+│   └── eval_prompt.txt                 # Prompt template for LLM judge evaluation
+│
+├── src/
+│   ├── main.py                              # Main entry point for running experiments
+│   └── pipeline/
+│       ├── init_experience.py               # Initialize and configure experiments
+│       ├── calculate_embeddings.py          # Generate and cache embeddings
+│       ├── eval_llm_judge.py                # Evaluate LLM performance as judge
+│       └── eval_embedding_model_config.py   # Evaluate embeddings and calculate metrics
+│
+└── README.md                                # This file
 ```
 
-## 📈 Experiments and Results (Expériences et Résultats)
+## File Descriptions
 
-All experimental runs and their corresponding outputs are organized under the **`experiments/`** directory.
+### Configuration Files
 
----
+#### `config/config.json`
+Main configuration file that controls all aspects of the experiment. Parameters are grouped by functionality:
 
-## 📂 `experiments/`
+**Experiment Identity**
+- `Experiment_id`: Unique identifier for the experiment
+- `raw_data_table_name`: Source table name in the database
+- `number_row_analyse`: Number of rows to analyze from the dataset
 
-* **Structure** : Contains subfolders for each experimental run (e.g., `exp1`, `exp2`, etc.).
-* **Per-Experiment Folder (`expX`)** : Each folder stores the output of a single run defined by a specific configuration.
-    * **`config.json`** : The exact **configuration** used for this specific experiment run (ensures reproducibility).
-    * **`recipies_samples_emebdding.csv`** : The **generated embeddings** (e.g., a CSV file containing the recipe IDs and the corresponding vector embeddings).
-    * **`metrics/`** : A subfolder dedicated to storing the evaluation results for this experiment.
+**Evaluation Mode**
+- `eval_with_llm_or_ground_truth`: Choose between `"llm"` (LLM-as-Judge) or `"ground_truth"` (manual labels)
 
----
+**Input Data Paths**
+- `input_raw_data_cache_file_path`: Cached raw data location
+- `input_raw_data_file_path`: Raw data file name
+- `input_embedding_cache_file_path`: Pre-computed embeddings cache
+- `ground_truth_file_path`: Ground truth labels for evaluation
+- `query_test_file_path`: Test queries for evaluation
 
-### 📊 `experiments/expX/metrics/` (Detailed Metrics / Métriques Détaillées)
+**Directory Structure**
+- `experiments_dir`: Root directory for experiment outputs (uses experiment_id)
+- `config_dir`, `data_dir`, `raw_data_dir`, `embedding_data_dir`: Data organization directories
+- `temp_data_dir`, `eval_data_dir`: Temporary and evaluation data storage
+- `prompts_dir`: LLM prompt templates location
+- `metrics_dir`, `llm_metrics_dir`, `embedding_metrics_dir`: Metrics output directories
 
-This subfolder contains three critical files for analyzing retrieval performance:
+**Output File Paths**
+- `output_recipes_embedding_file_path`: Generated embeddings output
+- `output_topk_model_query_retrieved_documents_file_path`: Top-K retrieved documents per model/query
+- `output_retrived_documents_relevence_file_path`: Relevance scores for retrieved documents
+- `output_topk_model_query_retrieved_documents_relevance_file_path`: Top-K documents with relevance
+- `output_retrived_documents_metrics_file_path`: Per-query metrics
+- `output_retrived_documents_aggregated_metrics_file_path`: Aggregated metrics across queries
 
-| File Name | Purpose (Objectif) | Granularity (Granularité) |
-| :--- | :--- | :--- |
-| **`retrieval_result.json`** | Stores the **list of retrieved documents** for every query. | Per **Query**, **Top-K value**, **Model**, and **Configuration**. |
-| **`retrieval_per_query.json`** | Stores all calculated retrieval metrics (Precision, Recall, etc.). | Per **Query**, **Top-K value**, **Model**, and **Configuration**. |
-| **`retrieval_metrics.json`** | Stores the **aggregated metrics** (e.g., Mean Average Precision, Mean Recall). | Per **Top-K value**, **Model**, and **Configuration** (averaged over all queries). |
+**Override Flags** (control pipeline execution steps)
+- `override_raw_data`: Re-download/reload raw data
+- `override_embeddings`: Regenerate embeddings (ignore cache)
+- `override_llm_eval`: Re-evaluate with LLM judge
+- `override_documents_retrival`: Re-retrieve documents
+- `override_embedding_eval`: Recalculate metrics
+
+**Data Schema**
+- `ID_column`: Column name for unique identifiers
+- `data_columns`: List of available columns in the dataset (e.g., NAME, TAGS, INGREDIENTS, STEPS, DESCRIPTION, FILTERS)
+
+**Embedding Configuration**
+- `embedding_models`: List of embedding models to evaluate (e.g., `"thenlper/gte-small"`)
+- `embedding_config`: Dictionary of column combinations to test
+  - Each config (config_1, config_2, etc.) specifies which columns to concatenate for embedding
+  - Allows testing different feature combinations for optimal retrieval
+
+**LLM Judge Settings** (when using LLM-as-Judge mode)
+- `llm_model`: Model name for LLM judge (e.g., `"mistral-large2"`)
+- `temperature`: Sampling temperature for LLM responses
+- `max_tokens`: Maximum tokens per LLM response
+- `context_window`: Total context window size
+- `number_doc_per_call`: Documents to evaluate per LLM call
+- `max_retries_llm_calls`: Retry attempts for failed LLM calls
+- `llm_json_schema`: Expected JSON structure for LLM judge output (relevance scores and justifications)
+- `eval_prompt_file_path`: Path to LLM judge prompt template
+- `eval_llm_ground_truth_file_path`: Ground truth for validating LLM judge quality
+
+**Top-k**
+- `top_k`: List of K values for computing Precision@K, NDCG@K, etc. (e.g., [1, 3, 5, 10, 20])
+
+### Data Files
+
+#### `data/eval/ground_truth.json`
+Ground truth labels for evaluation queries. Used when `use_llm_judge: false`.
+
+#### `data/eval/query_test.json`
+Test queries to evaluate against the embedding configurations.
+
+#### `data/embedding_cache/`
+Directory storing cached embeddings to avoid redundant computations across experiments.
+
+### Pipeline Modules
+
+#### `src/pipeline/init_experience.py`
+- Initializes experiment environment
+- Validates configuration
+- Sets up necessary directories and logging
+
+#### `src/pipeline/calculate_embeddings.py`
+- Generates embeddings for specified models and columns
+- Implements caching mechanism
+- Handles multiple embedding model configurations
+
+#### `src/pipeline/eval_llm_judge.py`
+- Evaluates LLM performance before using it as judge
+- Validates LLM judge reliability
+- Generates judge quality metrics (
+
+#### `src/pipeline/eval_embedding_model_config.py`
+- Main evaluation pipeline
+- Calculates ranking metrics: Precision@K, NDCG@K, MAP@K, MRR@K
+- Supports both ground truth and LLM-as-Judge evaluation modes
+
+#### `src/main.py`
+- Launch the entire pipeline
+
+
+
