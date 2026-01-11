@@ -1,4 +1,4 @@
-.PHONY: help run clean
+.PHONY: help run clean init_snowflake
 
 # Default target
 help:
@@ -12,7 +12,7 @@ help:
 run:
 	@echo "🚀 Starting NutriRAG pipeline - processing all data..."
 	cd database/scripts/python && python main.py
-	cd backend && python scripts/agent_init.py 
+	cd backend && python scripts/agent_init.py
 
 # Clean temporary files
 clean:
@@ -21,5 +21,17 @@ clean:
 	find . -type f -name "*.pyc" -delete
 	find . -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
 	@echo "✅ Cleanup complete"
+
+# Initialize Snowflake
+init_snowflake:
+	@echo "❄️  Initializing Snowflake database..."
+	$(MAKE) init_search
+	@echo "✅ Snowflake initialization complete"
+
+
+# Initialize Search related components
+init_search:
+	@cd backend && python -m data.embeddings.create_table
+	@cd backend && python -m scripts.snowflake_search_init
 
 .DEFAULT_GOAL := help
