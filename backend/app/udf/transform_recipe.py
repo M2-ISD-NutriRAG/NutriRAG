@@ -9,6 +9,7 @@ import pandas as pd
 import numpy as np
 import threading
 import logging
+import decimal
 
 from enum import Enum
 from typing import Optional, List, Dict, Any, Tuple
@@ -179,8 +180,6 @@ def to_dict(obj):
 #                                        Transform service logic
 
 ################################################################################################################
-
-
 NUTRIENT_BASIS_GRAMS = 100
 NUTRITION_COLS = [
     "ENERGY_KCAL",
@@ -216,6 +215,7 @@ class TransformService:
         self.recipe_tags_cache: Dict[
             str, Dict[str, Optional[Dict[str, Any]]]
         ] = {}
+        self.log_msg: List[str] = []
 
     def _zero_nutrition(self) -> NutritionDelta:
         return NutritionDelta(
@@ -256,7 +256,9 @@ class TransformService:
         ingredient_to_match = ingredient_clean_name_list
         ingredient_matched = []
 
-        logging.info(f"Matching: Looking for ingredients: {ingredient_to_match}.")
+        logging.info(
+            f"Matching: Looking for ingredients: {ingredient_to_match}."
+        )
 
         if len(ingredient_to_match) > 0:
             # Build the WHERE conditions for each ingredient
@@ -300,6 +302,8 @@ class TransformService:
                 WHERE
                             {where_clause}
             ) AS result
+
+            LIMIT 1000;
             """
 
             result_sql = self.session.sql(query)
@@ -409,7 +413,7 @@ class TransformService:
 
         im = self.session.table(INGREDIENTS_MATCHED_TABLE_NAME)
         ci = self.session.table(INGREDIENTS_NUTRIMENTS_TABLE_NAME)
-        in_list = ", ".join("'" + k.replace("'", "''") + "'" for k in missing)
+        ", ".join("'" + k.replace("'", "''") + "'" for k in missing)
 
         ing_key_expr = lower(trim(col("INGREDIENT_FROM_RECIPE_NAME")))
         joined = (
@@ -463,7 +467,7 @@ class TransformService:
             vals = [r[c] for c in NUTRITION_COLS]
             out[ing_key] = dict(zip(NUTRITION_COLS, vals))
         return out
-    
+
     def compute_recipe_nutrition_totals(
         self,
         recipe_id: int,
@@ -523,7 +527,9 @@ class TransformService:
                 quantity = fill_qty
             factor = float(quantity) / float(NUTRIENT_BASIS_GRAMS)
 
-            recipe_nutrition.calories += float(nutrition["ENERGY_KCAL"]) * factor
+            recipe_nutrition.calories += (
+                float(nutrition["ENERGY_KCAL"]) * factor
+            )
             recipe_nutrition.protein_g += float(nutrition["PROTEIN_G"]) * factor
             recipe_nutrition.fat_g += float(nutrition["FAT_G"]) * factor
             recipe_nutrition.saturated_fats_g += (
@@ -534,11 +540,32 @@ class TransformService:
             recipe_nutrition.sugar_g += float(nutrition["SUGAR_G"]) * factor
             recipe_nutrition.sodium_mg += float(nutrition["SODIUM_MG"]) * factor
 
-            recipe_nutrition.calcium_mg += float(nutrition["CALCIUM_MG"]) * factor
+            recipe_nutrition.calcium_mg += (
+                float(nutrition["CALCIUM_MG"]) * factor
+            )
             recipe_nutrition.iron_mg += float(nutrition["IRON_MG"]) * factor
-            recipe_nutrition.magnesium_mg += float(nutrition["MAGNESIUM_MG"]) * factor
-            recipe_nutrition.potassium_mg += float(nutrition["POTASSIUM_MG"]) * factor
-            recipe_nutrition.vitamin_c_mg += float(nutrition["VITC_MG"]) * factor
+            recipe_nutrition.magnesium_mg += (
+                float(nutrition["MAGNESIUM_MG"]) * factor
+            )
+            recipe_nutrition.potassium_mg += (
+                float(nutrition["POTASSIUM_MG"]) * factor
+            )
+            recipe_nutrition.vitamin_c_mg += (
+                float(nutrition["VITC_MG"]) * factor
+            )
+            recipe_nutrition.calcium_mg += (
+                float(nutrition["CALCIUM_MG"]) * factor
+            )
+            recipe_nutrition.iron_mg += float(nutrition["IRON_MG"]) * factor
+            recipe_nutrition.magnesium_mg += (
+                float(nutrition["MAGNESIUM_MG"]) * factor
+            )
+            recipe_nutrition.potassium_mg += (
+                float(nutrition["POTASSIUM_MG"]) * factor
+            )
+            recipe_nutrition.vitamin_c_mg += (
+                float(nutrition["VITC_MG"]) * factor
+            )
 
         return recipe_nutrition
 
@@ -682,39 +709,126 @@ class TransformService:
         self.pca_data = TransformService._pca_data_cache
 
     def load_pca_data(self):
-        """Load PCA data from Snowflake or CSV as fallback"""
+        """Load PCA data from Snowflake with INGREDIENTS_TAGGED constraints or CSV as fallback"""
         if self.pca_data is None:
             try:
-                # Charger le fichier CSV
+                # Tentative de chargement depuis Snowflake avec jointure INGREDIENTS_TAGGED
+                if self.session is not None:
+                    logging.info(
+                        "Loading PCA data from Snowflake with constraints..."
+                    )
+
+                    query = f"""
+                    SELECT
+                        ic.NDB_NO,
+                        ic.DESCRIP,
+                        ic.ENERGY_KCAL,
+                        ic.PROTEIN_G,
+                        ic.SATURATED_FATS_G,
+                        ic.FAT_G,
+                        ic.CARB_G,
+                        ic.SODIUM_MG,
+                        ic.SUGAR_G,
+                        ic.FIBER_G,
+                        ic.CALCIUM_MG,
+                        ic.IRON_MG,
+                        ic.POTASSIUM_MG,
+                        ic.VITC_MG,
+                        ic.MAGNESIUM_MG,
+                        ic.PCA_MACRO_1,
+                        ic.PCA_MACRO_2,
+                        ic.PCA_MACRO_3,
+                        ic.PCA_MICRO_1,
+                        ic.PCA_MICRO_2,
+                        ic.CLUSTER_MACRO,
+                        ic.CLUSTER_MICRO,
+                        it.FOODON_LABEL,
+                        COALESCE(it.IS_DAIRY, FALSE) AS IS_DAIRY,
+                        COALESCE(it.IS_GLUTEN, FALSE) AS IS_GLUTEN,
+                        COALESCE(it.CONTAINS_NUTS, FALSE) AS CONTAINS_NUTS,
+                        COALESCE(it.IS_VEGETARIAN, FALSE) AS IS_VEGETARIAN,
+                        COALESCE(it.IS_VEGETABLE, FALSE) AS IS_VEGETABLE
+                    FROM NUTRIRAG_PROJECT.ANALYTICS.INGREDIENTS_WITH_CLUSTERS ic
+                    LEFT JOIN {INGREDIENTS_TAGGED_TABLE_NAME} it
+                        ON ic.NDB_NO = it.NDB_NO
+                    """
+
+                    result_cluster = self.session.sql(query)
+                    result_data = parse_query_result(result_cluster)
+
+                    if result_data:
+                        df = pd.DataFrame(result_data)
+                        for col in list(df.columns):
+                            sample_row = df[col][0]
+                            if isinstance(sample_row, (decimal.Decimal)):
+                                df[col].apply(float)
+
+                        # Renommer les colonnes pour correspondre au format attendu
+                        self.pca_data = df.rename(
+                            columns={
+                                "NDB_NO": "NDB_No",
+                                "DESCRIP": "Descrip",
+                                "ENERGY_KCAL": "ENERGY_KCAL",
+                                "PROTEIN_G": "PROTEIN_G",
+                                "SATURATED_FATS_G": "SATURATED_FATS_G",
+                                "FAT_G": "FAT_G",
+                                "CARB_G": "CARB_G",
+                                "SODIUM_MG": "SODIUM_MG",
+                                "SUGAR_G": "SUGAR_G",
+                                "FIBER_G": "FIBER_G",
+                                "CALCIUM_MG": "CALCIUM_MG",
+                                "IRON_MG": "IRON_MG",
+                                "POTASSIUM_MG": "POTASSIUM_MG",
+                                "VITC_MG": "VITC_MG",
+                                "MAGNESIUM_MG": "MAGNESIUM_MG",
+                                "PCA_MACRO_1": "PCA_macro_1",
+                                "PCA_MACRO_2": "PCA_macro_2",
+                                "PCA_MACRO_3": "PCA_macro_3",
+                                "PCA_MICRO_1": "PCA_micro_1",
+                                "PCA_MICRO_2": "PCA_micro_2",
+                                "CLUSTER_MACRO": "Cluster_macro",
+                                "CLUSTER_MICRO": "Cluster_micro",
+                                "FOODON_LABEL": "FOODON_LABEL",
+                                "IS_DAIRY": "is_lactose",
+                                "IS_GLUTEN": "is_gluten",
+                                "CONTAINS_NUTS": "contains_nuts",
+                                "IS_VEGETARIAN": "is_vegetarian",
+                                "IS_VEGETABLE": "is_vegetable",
+                            }
+                        )
+
+                        # Convertir les booléens en entiers (0/1) pour compatibilité
+                        constraint_columns = [
+                            "is_lactose",
+                            "is_gluten",
+                            "contains_nuts",
+                            "is_vegetarian",
+                            "is_vegetable",
+                        ]
+                        for col in constraint_columns:
+                            if col in self.pca_data.columns:
+                                self.pca_data[col] = self.pca_data[col].apply(
+                                    lambda x: 1 if x else 0
+                                )
+
+                        logging.info(
+                            f"Success: PCA data loaded from Snowflake with constraints ({len(self.pca_data)} ingredients)"
+                        )
+                        return
+                    else:
+                        logging.warning(
+                            "Warning: No data returned from Snowflake query, falling back to CSV"
+                        )
+
+                # Fallback: Charger le fichier CSV
+                logging.info("Loading PCA data from CSV fallback...")
                 csv_path = "ingredients_with_clusters.csv"
                 df = pd.read_csv(csv_path)
 
-                # query = f"""
-                # SELECT
-                #     NDB_No,
-                #     Descrip,
-                #     ENERGY_KCAL,
-                #     PROTEIN_G,
-                #     SATURATED_FATS_G,
-                #     FAT_G,CARB_G,
-                #     SODIUM_MG,SUGAR_G,
-                #     PCA_macro_1,
-                #     PCA_macro_2,
-                #     PCA_macro_3,
-                #     PCA_micro_1,
-                #     PCA_micro_2,
-                #     Cluster_macro,
-                #     Cluster_micro
-                # FROM {INGREDIENTS_CLUSTERING_TABLE_NAME}
-                # LIMIT 100;
-                # """
-
-                # Parse query result
-                # result_cluster = self.session.sql(query)
-                # df = pd.DataFrame(parse_query_result(result_cluster))
-                # Parse column values to float
-                # for col in list(df.columns[2:-2]):
-                #     df[col] = df[col].apply(float)
+                for col in list(df.columns):
+                    sample_row = df[col][0]
+                    if isinstance(sample_row, (decimal.Decimal)):
+                        df[col].apply(float)
 
                 # Adapter les noms de colonnes pour correspondre au format attendu
                 self.pca_data = df.rename(
@@ -820,7 +934,7 @@ class TransformService:
                         self.pca_data.at[idx, "is_vegetable"] = 1
 
                 logging.info(
-                    "Success: PCA ingredients coordinates successfully loaded."
+                    f"Success: PCA data loaded from CSV fallback ({len(self.pca_data)} ingredients)"
                 )
 
             except Exception as e:
@@ -918,7 +1032,7 @@ class TransformService:
 
         if not available_macro_cols and not available_micro_cols:
             logging.warning(
-                f"Failure:  No pca coordinates available in pca dataframe."
+                "Failure:  No pca coordinates available in pca dataframe."
             )
             return None
 
@@ -965,6 +1079,8 @@ class TransformService:
             df_filtered["dist_micro"] = 0
 
         # Combined global score
+        df_filtered["dist_macro"] = df_filtered["dist_macro"].astype(float)
+        df_filtered["dist_micro"] = df_filtered["dist_micro"].astype(float)
         df_filtered["global_score"] = (
             macro_weight * df_filtered["dist_macro"]
             + micro_weight * df_filtered["dist_micro"]
@@ -1261,7 +1377,6 @@ class TransformService:
             # Define thresholds to identify "bad" ingredients
             SUGAR_THRESHOLD = 10.0  # g per 100g
             SODIUM_THRESHOLD = 500.0  # mg per 100g
-            SATURATED_FAT_THRESHOLD = 5.0  # g per 100g
             CALORIE_THRESHOLD = 300.0  # kcal per 100g
             CARB_THRESHOLD = 50.0  # g per 100g
 
@@ -1387,12 +1502,9 @@ class TransformService:
                 return []
 
             if active_allergy:
-                mode = "ALL_VIOLATIONS"
-                constraints_text = ", ".join(active_allergy + active_reduction)
+                ", ".join(active_allergy + active_reduction)
             else:
-                max_items = 1
-                mode = "ONE_OFFENDER"
-                constraints_text = ", ".join(active_reduction)
+                ", ".join(active_reduction)
             base_prompt = f"""
 
             You are a culinary and nutrition expert analyzing recipe ingredients.
@@ -1735,17 +1847,29 @@ class TransformService:
         """
         Transform a recipe based on constraints and ingredients to remove, full pipeline
         """
+        log_msg = "Start(Transform Service): Call transform service."
+        logging.info(log_msg)
+        self.log_msg.append(log_msg)
+
         success = True
 
         try:
             notes = []
             # Step 1: Find ingredient to 'transform' depending on constraints if not received
             transformation_type = constraints.transformation
+
+            log_msg = "Start(Step 1): Check ingredients to modify."
+            logging.info(log_msg)
+            self.log_msg.append(log_msg)
+
             if ingredients_to_remove is not None:
                 ingredients_to_transform = ingredients_to_remove
             else:
                 # Algorithm in priority to identify ingredients
-                print("Step 1a: Identification by algorithm...")
+                log_msg = "Running(Step 1): Identify ingredient to remove by algorithm."
+                logging.info(log_msg)
+                self.log_msg.append(log_msg)
+
                 ingredients_to_transform = (
                     self.identify_ingredients_to_remove_by_algo(
                         recipe, constraints
@@ -1754,6 +1878,10 @@ class TransformService:
 
                 # LLM fallback if the algorithm finds nothing
                 if not ingredients_to_transform:
+                    log_msg = "Running(Step 1): Identify ingredients with algo failed, fallback with llm."
+                    logging.info(log_msg)
+                    self.log_msg.append(log_msg)
+
                     print("Step 1b: LLM fallback for identification...")
                     ingredients_to_transform = (
                         self.identify_ingredients_to_remove_by_llm(
@@ -1762,13 +1890,18 @@ class TransformService:
                     )
 
                 if not ingredients_to_transform:
-                    print("No ingredients to transform identified")
+                    log_msg = "Error(Step 1): No ingredient to modify found."
+                    logging.error(log_msg)
+                    self.log_msg.append(log_msg)
+                    raise Exception
                 else:
-                    print(f"Ingredients identified: {ingredients_to_transform}")
+                    log_msg = f"Running(Step 1): Ingredients identified: {ingredients_to_transform}."
+                    logging.info(log_msg)
+                    self.log_msg.append(log_msg)
 
-            logging.info(
-                "Success: Step 1 finished (Ingredients to remove has been found)."
-            )
+            log_msg = "End(Step 1): finished (Identify ingredients to remove."
+            logging.info(log_msg)
+            self.log_msg.append(log_msg)
 
             # Input for whole pipeline
             transformations = {}
@@ -1796,10 +1929,20 @@ class TransformService:
 
             # Pipeline diversion based on transformation type
             if transformation_type == TransformationType.SUBSTITUTION:
-                logging.info("Substitution: Looking for matched ingredients.")
+                log_msg = "Starting(Step 2): Transformation of type substitution recognized, starting process..."
+                logging.info(log_msg)
+                self.log_msg.append(log_msg)
+
+                log_msg = "Running(Step 2): Load clustering coordinates and tag of each ingredients."
+                logging.info(log_msg)
+                self.log_msg.append(log_msg)
                 # Step 2 : Find substitutes for ingredients to transform, function returns new recipe health score as well.
                 if self.pca_data is None:
                     self.load_pca_data()
+
+                log_msg = "Running(Step 2): Ged matching ingredient name between recipe and ingredients nutriment databse."
+                logging.info(log_msg)
+                self.log_msg.append(log_msg)
 
                 # Use cache match when available, otherwise query the database to get matched ingredient
                 ingredients_to_substitute_matched = [
@@ -1809,26 +1952,27 @@ class TransformService:
                     )
                 ]
 
-                ingredients_to_substitute_matched
+                log_msg = (
+                    "Running(Step 2): Ingredients matched found"
+                    + f"\nMatched ingredients {ingredients_to_substitute_matched}, {type(ingredients_to_substitute_matched)}"
+                    + f"\nRequest ingredients changes not needed {base_ingredients}, {type(base_ingredients)}"
+                    + f"\nIngredients to transform {ingredients_to_transform}, {type(ingredients_to_transform)}."
+                )
+                logging.info(log_msg)
+                self.log_msg.append(log_msg)
 
-                logging.info("Substitution: Ingredients matched found.")
-                logging.info(
-                    f"Substitution: Matched ingredients {ingredients_to_substitute_matched}, {type(ingredients_to_substitute_matched)}."
-                )
-                logging.info(
-                    f"Substitution: Base ingredients {base_ingredients}, {type(base_ingredients)}."
-                )
-                logging.info(
-                    f"Substitution: Ingredients to transform {ingredients_to_transform}, {type(ingredients_to_transform)}."
-                )
+                log_msg = "Running(Step 2): Looking for ingredients to replace candidates."
+                logging.info(log_msg)
+                self.log_msg.append(log_msg)
 
                 working_ingredients = list(base_ingredients)
                 for original_ing, matched_name in zip(
                     ingredients_to_transform, ingredients_to_substitute_matched
                 ):
-                    logging.info(
-                        f"Substitution: Looking for ({original_ing} matched with {matched_name}) substitute candidat."
-                    )
+                    log_msg = "Running(Step 2): Looking for ({original_ing} matched with {matched_name}) substitute candidat."
+                    logging.info(log_msg)
+                    self.log_msg.append(log_msg)
+
                     substitute, was_substituted, new_recipe_nutrition = (
                         self.substitute_ingr(
                             matched_name,
@@ -1841,12 +1985,13 @@ class TransformService:
                     )
 
                     if was_substituted:
-                        logging.info(
-                            f"Substitution: Found substitute {substitute} with nutrition {new_recipe_nutrition}."
+                        log_msg = (
+                            "Running(Step 2): Found substitute {substitute} with nutrition {new_recipe_nutrition}."
+                            + "Updating the new_recipe (ingredients and health score)."
                         )
-                        logging.info(
-                            f"Substitution: Updating the new_recipe (ingredients and health score)."
-                        )
+                        logging.info(log_msg)
+                        self.log_msg.append(log_msg)
+
                         transformations[original_ing] = substitute
                         transformation_count += 1
 
@@ -1871,9 +2016,13 @@ class TransformService:
                         new_recipe_score = new_recipe_nutrition.health_score
                         new_recipe.health_score = new_recipe_score
 
-                logging.info(
-                    "Success: Step 2 finished for Substitution (Subtitute ingredients found for eache ingredients to remove)."
-                )
+                log_msg = "End(Step 2): Step 2 finished for Substitution (Subtitute ingredients found for eache ingredients to remove)."
+                logging.info(log_msg)
+                self.log_msg.append(log_msg)
+
+                log_msg = "Start(Step 3): Adapting new recipes steps with llm."
+                logging.info(log_msg)
+                self.log_msg.append(log_msg)
 
                 # Step 3 : Adapt recipe step with LLM
                 if transformations:
@@ -1892,6 +2041,9 @@ class TransformService:
                 transformation_type == TransformationType.DELETE
                 and ingredients_to_transform
             ):
+                log_msg = "Start(Step 2): Transformation Delete ingredient recognized, starting process."
+                logging.info(log_msg)
+                self.log_msg.append(log_msg)
                 # Step 2 : Delete ingredients from recipe, calculate health score after deletion
                 new_recipe_nutrition = self.compute_recipe_nutrition_totals(
                     recipe_id=recipe.id,
@@ -1910,17 +2062,29 @@ class TransformService:
                     )
                 new_recipe_score = self.compute_rhi(scaled_nutrition)
                 new_recipe_nutrition.health_score = new_recipe_score
-                new_recipe.health_score = new_recipe_score
-                logging.info(
-                    "Success: Step 2 finished for Deletion (Removed successfully unwanted ingredients and computed new health score)."
-                )
+                log_msg = "End(Step 2): finished for Deletion (Removed successfully unwanted ingredients and computed new health score)."
+                logging.info(log_msg)
+                self.log_msg.append(log_msg)
+
                 # Step 3 : Adapt recipe step with LLM
+                log_msg = "Start(Step 3): Adapting new recipes steps with llm."
+                logging.info(log_msg)
+                self.log_msg.append(log_msg)
+
                 new_recipe.steps, notes = self.adapt_recipe_delete(
                     recipe, ingredients_to_transform
                 )
-                logging.info(
-                    "Success: Step 3 finished for Deletion (LLM's adapted new_recipe steps successfully)."
+
+                log_msg = (
+                    "End(Step 3): Adapting recipe's steps ended successfully."
                 )
+                logging.info(log_msg)
+                self.log_msg.append(log_msg)
+
+            # Step 3 : Adapt recipe step with LLM
+            log_msg = "Start(Step 4): Compute health score for new recipe."
+            logging.info(log_msg)
+            self.log_msg.append(log_msg)
 
             # Step 4 : Build output
             original_nutrition = self.compute_recipe_nutrition_totals(
@@ -1931,9 +2095,10 @@ class TransformService:
             )
             original_nutrition.health_score = recipe.health_score
 
-            logging.info(
-                "Success: Step 4 finished (Original recipe health score computing finished)."
-            )
+            log_msg = "End(Step 4): New score computation successfully ended."
+            logging.info(log_msg)
+            self.log_msg.append(log_msg)
+
             response = TransformResponse(
                 recipe=new_recipe,
                 original_name=recipe.name,
@@ -1942,17 +2107,19 @@ class TransformService:
                 nutrition_before=original_nutrition,
                 nutrition_after=new_recipe_nutrition,
                 success=success,
-                message="\n".join(notes),
+                message="\n".join(self.log_msg + notes),
             )
-            logging.info(
-                "Success: Step 5 finished (TransformerResponse successfully built, returning it...)."
-            )
+
+            log_msg = "End(TransformService): Transform service output sucessfully built, returning response."
+            logging.info(log_msg)
+            self.log_msg.append(log_msg)
             return response
 
         except Exception as e:
-            logging.error(
-                f"Failure: Transform function failed. Error: {str(e)}. Traceback: {traceback.format_exc()}"
-            )
+            log_msg = f"Failure: Transform function failed. Error: {str(e)}. Traceback: {traceback.format_exc()}\nReturning default response with input recipe."
+            logging.error(log_msg)
+            self.log_msg.append(log_msg)
+
             success = False
             response = TransformResponse(
                 recipe=recipe,
@@ -1962,9 +2129,9 @@ class TransformService:
                 nutrition_before=None,
                 nutrition_after=None,
                 success=success,
-                message=None,
+                message="\n".join(self.log_msg),
             )
-            logging.error("Returning default response with input recipe.")
+
             return response
 
 
@@ -1981,18 +2148,21 @@ def transform_recipe(session: Session, request: str) -> str:
     """
 
     # Input loading
-    loaded_request: dict = json.loads(request)
-    input_recipe: Recipe = Recipe(**loaded_request["recipe"])
-    input_ingredients_to_remove: List[str] = loaded_request.get(
-        "ingredients_to_remove"
-    )
-    input_constraints: TransformConstraints = TransformConstraints(
-        **loaded_request.get("constraints", {})
-    )
+    try:
+        loaded_request: dict = json.loads(request)
+        input_recipe: Recipe = Recipe(**loaded_request["recipe"])
+        input_ingredients_to_remove: List[str] = loaded_request.get(
+            "ingredients_to_remove"
+        )
+        input_constraints: TransformConstraints = TransformConstraints(
+            **loaded_request.get("constraints", {})
+        )
+    except Exception as e:
+        return f"Transform Service:\nError in parsing request: {e}\nTraceback : {traceback.format_exc()}"
 
     service = TransformService(session)
     # Call transform service
-    print("call service transform")
+
     output = service.transform(
         input_recipe, input_ingredients_to_remove, input_constraints
     )
