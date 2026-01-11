@@ -212,12 +212,7 @@ class TransformService:
     def __init__(self, session: Optional[Session] = None):
         self.session = session
         self.matched_ingredients_cache: Dict[str, Optional[Dict]] = {}
-        self.recipe_qty_cache: Dict[str, List[Tuple[str, Optional[float]]]] = {}
-        self.recipe_nutrition_cache: Dict[
-            str, Dict[str, Optional[Dict[str, Any]]]
-        ] = {}
         self.pca_data = None  # ingredient coordinates for clustering
-        # self.load_pca_data()
         self.recipe_tags_cache: Dict[
             str, Dict[str, Optional[Dict[str, Any]]]
         ] = {}
@@ -258,15 +253,10 @@ class TransformService:
         ingredient_clean_name_list = list(
             map(self.clean_ingredient_name, ingredient_name_list)
         )
+        ingredient_to_match = ingredient_clean_name_list
         ingredient_matched = []
-        ingredient_to_match = []
-        for i, ingr_name in enumerate(ingredient_clean_name_list):
-            if ingr_name in self.matched_ingredients_cache:
-                ingredient_matched.append(
-                    self.matched_ingredients_cache[ingr_name]
-                )
-            else:
-                ingredient_to_match.append(ingr_name)
+
+        logging.info(f"Matching: Looking for ingredients: {ingredient_to_match}.")
 
         if len(ingredient_to_match) > 0:
             # Build the WHERE conditions for each ingredient
@@ -314,6 +304,7 @@ class TransformService:
 
             result_sql = self.session.sql(query)
             result = parse_query_result(result_sql)
+            logging.info(f"result: {result}")
 
             if result:
                 for ingredient_key in ingredient_to_match:
@@ -375,15 +366,12 @@ class TransformService:
         return ingredient_matched
 
     def fetch_recipe_quantities(
-        self, recipe_id: str
+        self, recipe_id: int
     ) -> Dict[str, Optional[float]]:
         """
         Returns list of (ingredient_string, qty_g_or_none) from INGREDIENTS_QUANTITY.
         Cached per recipe.
         """
-        if recipe_id in self.recipe_qty_cache:
-            return self.recipe_qty_cache[recipe_id]
-
         sdf = (
             self.session.table(INGREDIENTS_QUANTITY_TABLE_NAME)
             .filter(col("ID") == recipe_id)
@@ -402,11 +390,10 @@ class TransformService:
                 float(qty) if qty is not None else None
             )
 
-        self.recipe_qty_cache[recipe_id] = out
         return out
 
     def fetch_ingredients_nutrition(
-        self, recipe_id: str, ingredients: List[str]
+        self, recipe_id: int, ingredients: List[str]
     ) -> Dict[str, Optional[Dict[str, Any]]]:
         """
          Returns mapping:
@@ -414,32 +401,19 @@ class TransformService:
           val = dict of nutrition columns per 100g (or None if not found)
         Cached per recipe+ingredient key.
         """
-        if recipe_id not in self.recipe_nutrition_cache:
-            self.recipe_nutrition_cache[recipe_id] = {}
-
         keys = [(s or "").strip().lower() for s in ingredients]
         keys = [k for k in keys if k]
-        unique_keys = sorted(set(keys))
-
-        missing = [
-            k
-            for k in unique_keys
-            if k not in self.recipe_nutrition_cache[recipe_id]
-        ]
+        missing = sorted(set(keys))
         if not missing:
-            return self.recipe_nutrition_cache[recipe_id]
-
-        # Default missing keys to None so we don't re-query forever
-        for k in missing:
-            self.recipe_nutrition_cache[recipe_id][k] = None
+            return {}
 
         im = self.session.table(INGREDIENTS_MATCHED_TABLE_NAME)
         ci = self.session.table(INGREDIENTS_NUTRIMENTS_TABLE_NAME)
+        in_list = ", ".join("'" + k.replace("'", "''") + "'" for k in missing)
 
         ing_key_expr = lower(trim(col("INGREDIENT_FROM_RECIPE_NAME")))
-
         joined = (
-            im.filter(col("RECIPE_ID") == recipe_id)
+            im.filter(col("RECIPE_ID") == int(recipe_id))
             .with_column("ING_KEY", ing_key_expr)
             .filter(col("ING_KEY").isin(missing))
             .join(ci, col("INGREDIENT_ID") == col("NDB_NO"), how="left")
@@ -461,14 +435,12 @@ class TransformService:
                 col("SCORE_SANTE"),
             )
         )
-
         w = Window.partition_by(col("ING_KEY")).order_by(
             col("SCORE_SANTE").desc_nulls_last()
         )
         ranked = joined.with_column("RN", row_number().over(w)).filter(
             col("RN") == 1
         )
-
         rows = ranked.select(
             "ING_KEY",
             "ENERGY_KCAL",
@@ -485,19 +457,16 @@ class TransformService:
             "POTASSIUM_MG",
             "VITC_MG",
         ).collect()
-
+        out: Dict[str, Optional[Dict[str, Any]]] = {k: None for k in missing}
         for r in rows:
             ing_key = r["ING_KEY"]
             vals = [r[c] for c in NUTRITION_COLS]
-            self.recipe_nutrition_cache[recipe_id][ing_key] = dict(
-                zip(NUTRITION_COLS, vals)
-            )
-
-        return self.recipe_nutrition_cache[recipe_id]
-
+            out[ing_key] = dict(zip(NUTRITION_COLS, vals))
+        return out
+    
     def compute_recipe_nutrition_totals(
         self,
-        recipe_id: str,
+        recipe_id: int,
         ingredients: List[str],
         serving_size: float,
         servings: float,
@@ -552,24 +521,24 @@ class TransformService:
             quantity = ingredients_quantity.get(name)
             if quantity is None:
                 quantity = fill_qty
-            factor = float(quantity) / NUTRIENT_BASIS_GRAMS
+            factor = float(quantity) / float(NUTRIENT_BASIS_GRAMS)
 
-            recipe_nutrition.calories += nutrition["ENERGY_KCAL"] * factor
-            recipe_nutrition.protein_g += nutrition["PROTEIN_G"] * factor
-            recipe_nutrition.fat_g += nutrition["FAT_G"] * factor
+            recipe_nutrition.calories += float(nutrition["ENERGY_KCAL"]) * factor
+            recipe_nutrition.protein_g += float(nutrition["PROTEIN_G"]) * factor
+            recipe_nutrition.fat_g += float(nutrition["FAT_G"]) * factor
             recipe_nutrition.saturated_fats_g += (
-                nutrition["SATURATED_FATS_G"] * factor
+                float(nutrition["SATURATED_FATS_G"]) * factor
             )
-            recipe_nutrition.carb_g += nutrition["CARB_G"] * factor
-            recipe_nutrition.fiber_g += nutrition["FIBER_G"] * factor
-            recipe_nutrition.sugar_g += nutrition["SUGAR_G"] * factor
-            recipe_nutrition.sodium_mg += nutrition["SODIUM_MG"] * factor
+            recipe_nutrition.carb_g += float(nutrition["CARB_G"]) * factor
+            recipe_nutrition.fiber_g += float(nutrition["FIBER_G"]) * factor
+            recipe_nutrition.sugar_g += float(nutrition["SUGAR_G"]) * factor
+            recipe_nutrition.sodium_mg += float(nutrition["SODIUM_MG"]) * factor
 
-            recipe_nutrition.calcium_mg += nutrition["CALCIUM_MG"] * factor
-            recipe_nutrition.iron_mg += nutrition["IRON_MG"] * factor
-            recipe_nutrition.magnesium_mg += nutrition["MAGNESIUM_MG"] * factor
-            recipe_nutrition.potassium_mg += nutrition["POTASSIUM_MG"] * factor
-            recipe_nutrition.vitamin_c_mg += nutrition["VITC_MG"] * factor
+            recipe_nutrition.calcium_mg += float(nutrition["CALCIUM_MG"]) * factor
+            recipe_nutrition.iron_mg += float(nutrition["IRON_MG"]) * factor
+            recipe_nutrition.magnesium_mg += float(nutrition["MAGNESIUM_MG"]) * factor
+            recipe_nutrition.potassium_mg += float(nutrition["POTASSIUM_MG"]) * factor
+            recipe_nutrition.vitamin_c_mg += float(nutrition["VITC_MG"]) * factor
 
         return recipe_nutrition
 
@@ -697,12 +666,10 @@ class TransformService:
             potassium_mg=nutrition.potassium_mg,
             vitamin_c_mg=nutrition.vitamin_c_mg,
         )
-
         rhi_raw = 0.4 * risk + 0.4 * benefit + 0.2 * micro
 
         rhi_0_1 = max(0.0, rhi_raw)
         rhi = rhi_0_1 * 100.0
-
         return rhi
 
     def ensure_pca_loaded(self):
@@ -1068,6 +1035,7 @@ class TransformService:
         else:
             scaled_nutrition = new_recipe_nutrition  ## fallback servings null
         rhi_score = self.compute_rhi(scaled_nutrition)
+        logging.info(f"Info: Computed RHI score: {rhi_score:.2f}")
         new_recipe_nutrition.health_score = rhi_score
         return new_recipe_nutrition
 
@@ -1096,6 +1064,12 @@ class TransformService:
         for cand in candidates:
             if best_ing is None:
                 best_ing = cand
+                best_nutrition = self.get_health_score(
+                    recipe_ingredients + [cand["name"]],
+                    recipe_id,
+                    serving_size,
+                    servings,
+                )
             else:
                 candidat_nutrition = self.get_health_score(
                     recipe_ingredients + [cand["name"]],
@@ -1156,7 +1130,7 @@ class TransformService:
         return ingredient, False, self._zero_nutrition()
 
     def fetch_ingredients_tags(
-        self, recipe_id: str, ingredients: List[str]
+        self, recipe_id: int, ingredients: List[str]
     ) -> Dict[str, Optional[Dict[str, Any]]]:
         """
         Returns mapping:
@@ -1419,7 +1393,6 @@ class TransformService:
                 max_items = 1
                 mode = "ONE_OFFENDER"
                 constraints_text = ", ".join(active_reduction)
-            logging.info("boo")
             base_prompt = f"""
 
             You are a culinary and nutrition expert analyzing recipe ingredients.
@@ -1937,6 +1910,7 @@ class TransformService:
                     )
                 new_recipe_score = self.compute_rhi(scaled_nutrition)
                 new_recipe_nutrition.health_score = new_recipe_score
+                new_recipe.health_score = new_recipe_score
                 logging.info(
                     "Success: Step 2 finished for Deletion (Removed successfully unwanted ingredients and computed new health score)."
                 )
