@@ -1,4 +1,4 @@
-from app.routers import recipes, search, transform, analytics, orchestration
+from app.routers import auth, chat, recipes
 
-__all__ = ["recipes", "search", "transform", "analytics", "orchestration"]
+__all__ = ["recipes", "auth", "chat"]
 
