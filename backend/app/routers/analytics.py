@@ -71,9 +71,9 @@ async def get_kpis(
         query_transforms_agg = f"""
             SELECT
                 COUNT(*) as TOTAL_TRANSFORMS,
-                SUM( (NUTRITION_BEFORE:calories::FLOAT) - (NUTRITION_AFTER:calories::FLOAT) ) as CALORIES_SAVED,
-                SUM( (NUTRITION_AFTER:protein::FLOAT) - (NUTRITION_BEFORE:protein::FLOAT) ) as PROTEIN_GAINED,
-                AVG( (NUTRITION_AFTER:score_health::FLOAT) - (NUTRITION_BEFORE:score_health::FLOAT) ) as AVG_HEALTH_GAIN,
+                AVG( (NUTRITION_BEFORE:calories::FLOAT) - (NUTRITION_AFTER:calories::FLOAT) ) as CALORIES_SAVED,
+                AVG( (NUTRITION_AFTER:protein_g::FLOAT) - (NUTRITION_BEFORE:protein_g::FLOAT) ) as PROTEIN_GAINED,
+                AVG( (NUTRITION_AFTER:health_score::FLOAT) - (NUTRITION_BEFORE:health_score::FLOAT) ) as AVG_HEALTH_GAIN,
                 AVG( (ORIGINAL_RECIPE:minutes::INT) - (NEW_RECIPE:minutes::INT) ) as AVG_TIME_SAVED
             FROM NUTRIRAG_PROJECT.ANALYTICS.HIST_TRANSFORMATIONS
             {trans_filter_sql}
@@ -142,7 +142,7 @@ async def get_kpis(
             SELECT
                 ORIGINAL_NAME,
                 TRANSFORMED_NAME,
-                (NUTRITION_AFTER:score_health::FLOAT - NUTRITION_BEFORE:score_health::FLOAT) as DELTA_SCORE
+                (NUTRITION_AFTER:health_score::FLOAT - NUTRITION_BEFORE:health_score::FLOAT) as DELTA_SCORE
             FROM NUTRIRAG_PROJECT.ANALYTICS.HIST_TRANSFORMATIONS
             {trans_filter_sql} AND DELTA_SCORE is not null
             ORDER BY DELTA_SCORE DESC
@@ -317,26 +317,26 @@ async def get_conversation_stats(conversation_id: str, db=Depends(get_db)):
                         get_val(aft, "calories") - get_val(bef, "calories"), 2
                     ),
                     delta_protein=round(
-                        get_val(aft, "protein") - get_val(bef, "protein_g"), 2
+                        get_val(aft, "protein_g") - get_val(bef, "protein_g"), 2
                     ),
                     delta_fat=round(
-                        get_val(aft, "fat") - get_val(bef, "fat_g"), 2
+                        get_val(aft, "fat_g") - get_val(bef, "fat_g"), 2
                     ),
                     delta_carbs=round(
-                        get_val(aft, "carbs") - get_val(bef, "carb_g"), 2
+                        get_val(aft, "carb_g") - get_val(bef, "carb_g"), 2
                     ),
                     delta_fiber=round(
-                        get_val(aft, "fiber") - get_val(bef, "fiber_g"), 2
+                        get_val(aft, "fiber_g") - get_val(bef, "fiber_g"), 2
                     ),
                     delta_sugar=round(
-                        get_val(aft, "sugar") - get_val(bef, "sugar_g"), 2
+                        get_val(aft, "sugar_g") - get_val(bef, "sugar_g"), 2
                     ),
                     delta_sodium=round(
-                        get_val(aft, "sodium") - get_val(bef, "sodium_mg"), 2
+                        get_val(aft, "sodium_mg") - get_val(bef, "sodium_mg"), 2
                     ),
                     delta_health_score=round(
-                        get_val(aft, "score_health")
-                        - get_val(bef, "score_health"),
+                        get_val(aft, "health_score")
+                        - get_val(bef, "health_score"),
                         2,
                     ),
                 )

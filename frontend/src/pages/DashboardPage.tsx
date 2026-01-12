@@ -141,7 +141,7 @@ export function DashboardPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-baseline gap-1">
-                    <span className="text-3xl font-extrabold text-emerald-900">+{stats.avg_health_score_gain}</span>
+                    <span className="text-3xl font-extrabold text-emerald-900">{stats.avg_health_score_gain > 0 ? '+' : ''}{stats.avg_health_score_gain}</span>
                     <span className="text-sm font-medium text-emerald-600">pts</span>
                   </div>
                   <p className="text-xs text-emerald-800/60 mt-1">Avg improvement</p>
@@ -158,10 +158,10 @@ export function DashboardPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-baseline gap-1">
-                    <span className="text-3xl font-extrabold text-orange-900">{stats.total_calories_saved}</span>
+                    <span className="text-3xl font-extrabold text-orange-900">{stats.total_calories_saved > 0 ? '+' : ''}{stats.total_calories_saved}</span>
                     <span className="text-sm font-medium text-orange-600">kcal</span>
                   </div>
-                  <p className="text-xs text-orange-800/60 mt-1">Total energy saved</p>
+                  <p className="text-xs text-orange-800/60 mt-1">Avg energy saved</p>
                 </CardContent>
               </Card>
 
@@ -175,10 +175,10 @@ export function DashboardPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-baseline gap-1">
-                    <span className="text-3xl font-extrabold text-blue-900">+{stats.total_protein_gained}</span>
+                    <span className="text-3xl font-extrabold text-blue-900">{stats.total_protein_gained > 0 ? '+' : ''}{stats.total_protein_gained}</span>
                     <span className="text-sm font-medium text-blue-600">g</span>
                   </div>
-                  <p className="text-xs text-blue-800/60 mt-1">Total gained</p>
+                  <p className="text-xs text-blue-800/60 mt-1">Avg gained</p>
                 </CardContent>
               </Card>
 
