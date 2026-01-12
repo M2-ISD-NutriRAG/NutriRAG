@@ -61,6 +61,7 @@ class TransformRequest(BaseModel):
     # Transform request body
     recipe: Recipe
     ingredients_to_remove: Optional[List[str]] = None
+    ingredients_to_add: Optional[List[str]] = None
     constraints: Optional[TransformConstraints] = None
 
 
@@ -199,10 +200,11 @@ NUTRITION_COLS = [
     "VITC_MG",
 ]
 INGREDIENTS_QUANTITY_TABLE_NAME = "NUTRIRAG_PROJECT.RAW.INGREDIENTS_QUANTITY"
-INGREDIENTS_CLUSTERING_TABLE_NAME = "NUTRIRAG_PROJECT.ENRICHED.INGREDIENTS"
+INGREDIENTS_CLUSTERING_TABLE_NAME = "NUTRIRAG_PROJECT.ANALYTICS.INGREDIENTS_WITH_CLUSTERS"
 INGREDIENTS_MATCHED_TABLE_NAME = "NUTRIRAG_PROJECT.RAW.INGREDIENTS_MATCHING"
 INGREDIENTS_NUTRIMENTS_TABLE_NAME = "NUTRIRAG_PROJECT.RAW.CLEANED_INGREDIENTS"
 INGREDIENTS_TAGGED_TABLE_NAME = "NUTRIRAG_PROJECT.CLEANED.INGREDIENTS_TAGGED"
+LOG_RECIPE_TABLE_NAME = "NUTRIRAG_PROJECT.ANALYTICS.LOG_TRANSFORMATION"
 
 ADD_CONSTRAINT_TO_NUTRIENT = {
     "increase_protein": "PROTEIN_G",
@@ -314,8 +316,6 @@ class TransformService:
                 WHERE
                             {where_clause}
             ) AS result
-
-            LIMIT 1000;
             """
 
             result_sql = self.session.sql(query)
@@ -760,7 +760,7 @@ class TransformService:
                         COALESCE(it.CONTAINS_NUTS, FALSE) AS CONTAINS_NUTS,
                         COALESCE(it.IS_VEGETARIAN, FALSE) AS IS_VEGETARIAN,
                         COALESCE(it.IS_VEGETABLE, FALSE) AS IS_VEGETABLE
-                    FROM NUTRIRAG_PROJECT.ANALYTICS.INGREDIENTS_WITH_CLUSTERS ic
+                    FROM {INGREDIENTS_CLUSTERING_TABLE_NAME} ic
                     LEFT JOIN {INGREDIENTS_TAGGED_TABLE_NAME} it
                         ON ic.NDB_NO = it.NDB_NO
                     """
@@ -2067,6 +2067,7 @@ class TransformService:
         self,
         recipe: Recipe,
         ingredients_to_remove: List[str],
+        ingredients_to_add: List[str],
         constraints: TransformConstraints,
     ) -> TransformResponse:
         """
@@ -2147,6 +2148,9 @@ class TransformService:
 
             if not ingredients_to_transform:
                 ingredients_to_transform = []
+            if not ingredients_to_add:
+                ingredients_to_add = []
+                
             # Input for whole pipeline
             transformations = {}
             transformation_count = 0
@@ -2196,6 +2200,13 @@ class TransformService:
                     )
                 ]
 
+                ingredients_user_candidates =[
+                        ing_dict.get("name")
+                        for ing_dict in self.get_ingredient_matched(
+                            ingredients_to_add
+                        )
+                    ]
+
                 log_msg = (
                     "Running(Step 2): Ingredients matched found"
                     + f"\nMatched ingredients {ingredients_to_substitute_matched}, {type(ingredients_to_substitute_matched)}"
@@ -2210,8 +2221,9 @@ class TransformService:
                 self.log_msg.append(log_msg)
 
                 working_ingredients = list(base_ingredients)
-                for original_ing, matched_name in zip(
-                    ingredients_to_transform, ingredients_to_substitute_matched
+                for original_ing, matched_name, user_candidate, matched_name_candidate in zip(
+                    ingredients_to_transform, ingredients_to_substitute_matched,
+                    ingredients_to_add, ingredients_user_candidates
                 ):
                     log_msg = "Running(Step 2): Looking for ({original_ing} matched with {matched_name}) substitute candidat."
                     logging.info(log_msg)
@@ -2280,7 +2292,7 @@ class TransformService:
             elif transformation_type == TransformationType.ADD:
                 # Identifier la contrainte ADD active
                 active_constraint = self._get_active_add_constraint(constraints)
-                if not active_constraint:
+                if (not active_constraint and len(ingredients_to_add)<=0):
                     notes.append("No ADD constraint provided.")
                     new_recipe_nutrition = self._zero_nutrition()
                     new_recipe.health_score = recipe.health_score
@@ -2520,6 +2532,9 @@ def transform_recipe(session: Session, request: str) -> str:
         input_ingredients_to_remove: List[str] = loaded_request.get(
             "ingredients_to_remove"
         )
+        input_ingredients_to_add: List[str] = loaded_request.get(
+            "ingredients_to_add"
+        )
         input_constraints: TransformConstraints = TransformConstraints(
             **loaded_request.get("constraints", {})
         )
@@ -2530,7 +2545,28 @@ def transform_recipe(session: Session, request: str) -> str:
     # Call transform service
 
     output = service.transform(
-        input_recipe, input_ingredients_to_remove, input_constraints
+        input_recipe, input_ingredients_to_remove, input_ingredients_to_add, input_constraints
     )
 
-    return format_output(to_dict(output))
+    try: 
+        log_msg = "\nLog transformation: Calling procedure to log transformation recipe."
+        logging.error(log_msg)
+        output.message += log_msg
+
+        output_fmt = to_dict(output)
+        session.call(
+            LOG_RECIPE_TABLE_NAME,
+            '', # CONVERSATION_ID
+            '', # USER_ID
+            output_fmt,           # FULL_RESPONSE
+            to_dict(input_recipe)   # ORIGINAL_RECIPE
+        )
+        return format_output(output_fmt)
+    except Exception as e:
+        log_msg = f"\nLog transformation: Error in logging recipe transformation.\nError: {e}\nTraceback : {traceback.format_exc()}"
+        logging.error(log_msg)
+        output.message += log_msg
+        output_fmt = format_output(to_dict(output))
+
+        
+    return output_fmt
