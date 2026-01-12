@@ -352,4 +352,4 @@ CREATE OR REPLACE EXTERNAL ACCESS INTEGRATION training_internet_access
 
 
 -- 3. Accorder l'accès au rôle
-GRANT USAGE ON INTEGRATION training_internet_access TO ROLE TRAINING_ROLE;
+GRANT USAGE ON INTEGRATION training_internet_access TO ROLE ${ROLE};

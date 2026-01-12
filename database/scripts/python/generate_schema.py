@@ -20,10 +20,13 @@ try:
     from config import SNOWFLAKE_CONFIG
     WAREHOUSE = SNOWFLAKE_CONFIG.get("warehouse", "NUTRIRAG_PROJECT")
     DATABASE = SNOWFLAKE_CONFIG.get("database", "NUTRIRAG_PROJECT")
+    ROLE = SNOWFLAKE_CONFIG.get("role","TRAINING_ROLE")
 except ImportError:
     # Fallback sur les variables d'environnement
     WAREHOUSE = os.getenv("SNOWFLAKE_WAREHOUSE", "NUTRIRAG_PROJECT")
     DATABASE = os.getenv("SNOWFLAKE_DATABASE", "NUTRIRAG_PROJECT")
+    ROLE = os.getenv("SNOWFLAKE_ROLE","TRAINING_ROLE")
+
 
 # Lire le template SQL
 template_path = Path(__file__).parent.parent / "sql" / "schema_db_template.sql"
@@ -33,6 +36,9 @@ with open(template_path, "r") as f:
 # Substituer les variables
 sql_content = sql_template.replace("${WAREHOUSE_NAME}", WAREHOUSE)
 sql_content = sql_content.replace("${DATABASE_NAME}", DATABASE)
+sql_content = sql_content.replace("${ROLE}", ROLE)
+
+
 
 # Optionnel: Sauvegarder dans un fichier
 output_path = Path(__file__).parent.parent / "sql" / "schema_db_generated.sql"
