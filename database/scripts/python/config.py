@@ -37,7 +37,8 @@ SNOWFLAKE_CONFIG = {
     "recipes_with_clusters_table": "RECIPES_SAMPLE_50K_WITH_CLUSTER",
     "tagged" : "INGREDIENTS_TAGGED",
     "parsing":"INGREDIENTS_QUANTITY",
-    "matching":"INGREDIENTS_MATCHING"
+    "matching":"INGREDIENTS_MATCHING",
+    "role": os.getenv("SNOWFLAKE_ROLE"),
 }
 
 # Data processing parameters
