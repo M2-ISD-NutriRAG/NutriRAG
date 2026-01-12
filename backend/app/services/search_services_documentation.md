@@ -46,8 +46,6 @@ NutriRAG provides three search engines for recipe retrieval:
 ```python
 # Python version
 from shared.snowflake.client import SnowflakeClient
-from app.services.vector_search_service import VectorSearchService
-from app.services.bm25_service import BM25Service
 from app.services.search_service import SearchService
 
 # Connect to Snowflake
@@ -63,13 +61,13 @@ print("All procedures and tables created.")
 
 ```python
 from shared.snowflake.client import SnowflakeClient
-from app.services.vector_search_service import VectorSearchService
+from app.services.search_service import SearchService
 
 client = SnowflakeClient()
-service = VectorSearchService(client)  # No setup=True needed
+service = SearchService(client) # No setup=True needed
 
 # Start searching!
-results = service.search_semantic(query="chocolate cake")
+results = service.search(query="chocolate cake")
 ```
 
 ---
@@ -102,6 +100,7 @@ for recipe in results:
 CALL VECTORS.search_semantic(
     'healthy breakfast',                    -- Your query
     'VECTORS.RECIPES_SAMPLE_50K_EMBEDDINGS',      -- Which recipes to search
+    'BAAI/bge-small-en-v1.5',               -- Embedding model used
     5,                                      -- How many results
     NULL                                    -- No filters
 );
@@ -110,6 +109,7 @@ CALL VECTORS.search_semantic(
 CALL VECTORS.search_semantic(
     'quick vegetarian meal',
     'VECTORS.RECIPES_SAMPLE_50K_EMBEDDINGS',
+    'BAAI/bge-small-en-v1.5',
     10,
     'MINUTES <= 30'
 );
@@ -122,7 +122,8 @@ CALL VECTORS.search_semantic(
 | `query` | What you're looking for | `"chocolate cake"` |
 | `top_k` | How many results | `5` to `20` |
 | `embeddings_table` | Which recipes to search | `"VECTORS.RECIPES_SAMPLE_50K_EMBEDDINGS"` |
-| `filter_conditions` | Extra filters (optional) | `"MINUTES <= 30"` |)
+| `model_name` | Embedding model used | `"BAAI/bge-small-en-v1.5"` |
+| `filter_conditions` | Extra filters (optional) | `"MINUTES <= 30"` |
 
 ---
 
@@ -251,7 +252,7 @@ for recipe in results:
 | `bm25_weight` | Weight for keyword relevance (0.0-1.0) | `0.3` |
 | `index_table` | BM25 index table name | `"VECTORS.RECIPES_SAMPLE_50K_BM25_INDEX"` |
 | `source_table` | Original recipe table | `"ENRICHED.RECIPES_SAMPLE_50K"` |
-| `embeddings_table` | Embeddings table for semantic search | `"VECTORS.RECIPES_SAMPLE_50K_EMBEDDINGS"` |
+| `embeddings_table` | Embeddings table for semantic search | `"VECTORS.RECIPES_50K_EMBEDDINGS"` |
 
 ### Direct Snowflake SQL
 
@@ -264,9 +265,10 @@ CALL VECTORS.SEARCH_SIMILAR_RECIPES(
     NULL,                                           -- No filters
     0.7,                                            -- 70% semantic
     0.3,                                            -- 30% keyword
-    'VECTORS.RECIPES_SAMPLE_50K_BM25_INDEX',       -- BM25 index
-    'ENRICHED.RECIPES_SAMPLE_50K',                 -- Source table
-    'VECTORS.RECIPES_SAMPLE_50K_EMBEDDINGS'               -- Embeddings
+    'VECTORS.RECIPES_SAMPLE_50K_BM25_INDEX',        -- BM25 index
+    'ENRICHED.RECIPES_SAMPLE_50K',                  -- Source table
+    'VECTORS.RECIPES_50K_EMBEDDINGS',        -- Embeddings
+    'BAAI/bge-small-en-v1.5'                        -- Embedding model used
 );
 
 -- Keyword-focused: More keyword, less semantic
@@ -278,7 +280,8 @@ CALL VECTORS.SEARCH_SIMILAR_RECIPES(
     0.7,                                            -- 70% keyword
     'VECTORS.RECIPES_SAMPLE_50K_BM25_INDEX',
     'ENRICHED.RECIPES_SAMPLE_50K',
-    'VECTORS.RECIPES_SAMPLE_50K_EMBEDDINGS'
+    'VECTORS.RECIPES_50K_EMBEDDINGS',
+    'BAAI/bge-small-en-v1.5'
 );
 
 -- With filters (dietary + time)
@@ -290,12 +293,10 @@ CALL VECTORS.SEARCH_SIMILAR_RECIPES(
     0.4,
     'VECTORS.RECIPES_SAMPLE_50K_BM25_INDEX',
     'ENRICHED.RECIPES_SAMPLE_50K',
-    'VECTORS.RECIPES_SAMPLE_50K_EMBEDDINGS'
+    'VECTORS.RECIPES_50K_EMBEDDINGS',
+    'BAAI/bge-small-en-v1.5'
 );
 ```
-
----
-
 ## Agent Tool - Search Similar Recipes Tool
 
 ### Overview
@@ -307,6 +308,7 @@ The `SEARCH_SIMILAR_RECIPES_TOOL` is the primary search interface exposed to AI 
 -- Snowflake SQL version
 CALL SERVICES.SEARCH_SIMILAR_RECIPES_TOOL(
     'user@example.com',                    -- User identifier
+    'conversation_id_12345',               -- Conversation ID
     'vegetarian pasta dinner',             -- Search query
     10,                                    -- Number of results
     '{"dietary_filters": ["vegetarian"]}'  -- Optional filters as JSON
@@ -318,6 +320,7 @@ CALL SERVICES.SEARCH_SIMILAR_RECIPES_TOOL(
 | Parameter | What It Is | Example |
 |-----------|-----------|---------|
 | `user_input` | User identifier making the request | `'user@example.com'` |
+| `conversation_id_input` | Unique conversation ID for context | `'conversation_id_12345'` |
 | `query_input` | Search query (can be conceptual or keywords) | `'healthy pasta dinner'` |
 | `k_input` | Number of results to return | `5` to `20` |
 | `filters_input` | Optional filter JSON string | `'{"dietary_filters": ["vegetarian"]}'` or `NULL` |
@@ -471,7 +474,8 @@ For detailed configuration options, see [embeddings README](..\..\..\backend\dat
 vector_service.search_semantic(
     query="your query",
     top_k=10,
-    embeddings_table="VECTORS.RECIPES_SAMPLE_50K_EMBEDDINGS",
+    embeddings_table="VECTORS.RECIPES_50K_EMBEDDINGS",
+    embedding_model="BAAI/bge-small-en-v1.5",
     filter_conditions=None
 )
 ```
@@ -480,7 +484,8 @@ vector_service.search_semantic(
 -- Snowflake SQL version
 CALL VECTORS.search_semantic(
     'your query',
-    'VECTORS.RECIPES_SAMPLE_50K_EMBEDDINGS',
+    'VECTORS.RECIPES_50K_EMBEDDINGS',
+    'BAAI/bge-small-en-v1.5',
     10,
     NULL
 );
@@ -520,7 +525,8 @@ service.search(
     bm25_weight=0.3,
     index_table="VECTORS.RECIPES_SAMPLE_50K_BM25_INDEX",
     source_table="ENRICHED.RECIPES_SAMPLE_50K",
-    embeddings_table="VECTORS.RECIPES_SAMPLE_50K_EMBEDDINGS"
+    embeddings_table="VECTORS.RECIPES_50K_EMBEDDINGS",
+    embedding_model="BAAI/bge-small-en-v1.5"
 )
 ```
 
@@ -534,7 +540,8 @@ CALL VECTORS.SEARCH_SIMILAR_RECIPES(
     0.3,
     'VECTORS.RECIPES_SAMPLE_50K_BM25_INDEX',
     'ENRICHED.RECIPES_SAMPLE_50K',
-    'VECTORS.RECIPES_SAMPLE_50K_EMBEDDINGS'
+    'VECTORS.RECIPES_SAMPLE_50K_EMBEDDINGS',
+    'BAAI/bge-small-en-v1.5'
 );
 ```
 
