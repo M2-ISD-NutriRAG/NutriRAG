@@ -12,11 +12,7 @@ from typing import Any, Dict, List, Optional
 from snowflake.snowpark import Session
 from snowflake.snowpark.functions import sproc
 
-from data.embeddings.config import EMBEDDING_MODEL as DEFAULT_EMBEDDING_MODEL
-from shared.models.embedding_models import (
-    EmbeddingModel,
-    get_embedding_config
-)
+
 from shared.snowflake.client import SnowflakeClient
 
 
@@ -29,31 +25,21 @@ class VectorSearchService:
 
     Attributes:
         client: Snowflake client for database operations.
-        embedding_model: Selected embedding model identifier.
-        model: Embedding model instance for query encoding.
-        embedding_config: Configuration for the selected embedding model.
         stage_name: Snowflake stage location for storing models.
     """
 
     def __init__(
         self,
-        snowflake_client: Optional[SnowflakeClient] = None,
-        embedding_model: Optional[EmbeddingModel] = None,
+        snowflake_client: SnowflakeClient,
         setup: bool = False,
     ):
         """Initialize the Vector Search Service.
 
         Args:
-            snowflake_client: Optional Snowflake client instance. If None,
-                creates a new SnowflakeClient.
-            embedding_model: Optional embedding model to use for query encoding.
-                If None, uses the default model from config.
+            snowflake_client: Snowflake client instance.
             setup: If True, creates stages and registers stored procedures.
         """
-        self.client = snowflake_client or SnowflakeClient()
-        # Use provided model or default from config (must match embeddings creation)
-        self.embedding_model = embedding_model or DEFAULT_EMBEDDING_MODEL
-        self.embedding_config = get_embedding_config(self.embedding_model)
+        self.client = snowflake_client
         self.stage_name = "@VECTORS.embedding_models_stage"
 
         if setup:
@@ -63,13 +49,14 @@ class VectorSearchService:
 
     def _setup_stage(self) -> None:
         """Create Snowflake stage for storing embedding models."""
+        session = self.client.get_snowpark_session()
         create_stage_sql = f"""
         CREATE STAGE IF NOT EXISTS VECTORS.embedding_models_stage
             DIRECTORY = (ENABLE = TRUE)
             COMMENT = 'Stage for storing custom embedding models'
         """
         try:
-            self.client.execute(create_stage_sql)
+            session.sql(create_stage_sql).collect()
         except Exception as e:
             raise RuntimeError(
                 f"Failed to create embedding models stage: {str(e)}"
@@ -245,7 +232,6 @@ class VectorSearchService:
     def _setup_search_procedure(self) -> None:
         """Register the search_semantic stored procedure."""
         session = self.client.get_snowpark_session()
-        embedding_model = self.embedding_model.value
 
         @sproc(
             session=session,
@@ -260,6 +246,7 @@ class VectorSearchService:
             session: Session,
             query_text: str,
             embeddings_table: str,
+            embedding_model: str,
             top_k: int = 10,
             filters: Optional[str] = None,
         ) -> list:
@@ -279,7 +266,9 @@ class VectorSearchService:
                 # Parse embedding result
                 embedding_json = json.loads(embedding_result[0][0])
                 query_embedding = embedding_json.get("embedding", [])
-                embedding_values = ",".join(map(str, query_embedding))
+                
+                if not query_embedding:
+                    return []
 
                 # Build search query with filtering and similarity calculation
                 search_sql = f"""
@@ -296,10 +285,10 @@ class VectorSearchService:
                 search_sql += f"""
                     )
                     SELECT
-                        *,
+                        * EXCLUDE (EMBEDDING),
                         VECTOR_COSINE_SIMILARITY(
                             EMBEDDING,
-                            CAST(ARRAY_CONSTRUCT({embedding_values}) AS VECTOR(FLOAT, 768))
+                            {query_embedding}::VECTOR(FLOAT, {len(query_embedding)})
                         )::FLOAT AS COSINE_SIMILARITY_SCORE
                     FROM filtered_embeddings
                     ORDER BY COSINE_SIMILARITY_SCORE DESC
@@ -318,6 +307,12 @@ class VectorSearchService:
                     for key, value in row_dict.items():
                         if hasattr(value, "isoformat"):
                             row_dict[key] = value.isoformat()
+                        # Parse JSON string fields to proper dicts/lists
+                        elif isinstance(value, str) and (value.startswith('[') or value.startswith('{')):
+                            try:
+                                row_dict[key] = json.loads(value)
+                            except (json.JSONDecodeError, TypeError):
+                                pass
 
                     result_list.append(row_dict)
 
@@ -330,12 +325,13 @@ class VectorSearchService:
         self,
         query: str,
         embeddings_table: str = "VECTORS.RECIPES_50K_EMBEDDINGS",
+        embedding_model: str = "BAAI/bge-small-en-v1.5",
         top_k: int = 10,
         filter_conditions: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Execute semantic search using server-side embedding generation.
 
-        Encodes the query using the configured embedding model and finds the
+        Encodes the query using the specified embedding model and finds the
         most similar documents using cosine similarity.
 
         Args:
@@ -344,30 +340,32 @@ class VectorSearchService:
                 Defaults to "VECTORS.RECIPES_50K_EMBEDDINGS".
             top_k: Maximum number of results to return. Defaults to 10.
             filter_conditions: Optional SQL WHERE clause for filtering results.
+            embedding_model: Embedding model to use for generating query embeddings.
+                Required parameter that must be specified.
 
         Returns:
             List of matching documents with cosine similarity scores, sorted
             by similarity in descending order. Returns empty list if no results
             found or on error.
         """
+        session = self.client.get_snowpark_session()
         # Escape single quotes for SQL safety
         safe_query = query.replace("'", "''")
         safe_table = embeddings_table.replace("'", "''")
-        filter_param = "NULL"
 
-        if filter_conditions:
-            safe_filters = filter_conditions.replace("'", "''")
-            filter_param = f"'{safe_filters}'"
+        results = session.call(
+            "VECTORS.search_semantic",
+            safe_query,
+            safe_table,
+            embedding_model,
+            top_k,
+            filter_conditions,
+        )
 
-        sql = f"CALL VECTORS.search_semantic('{safe_query}', '{safe_table}', {top_k}, {filter_param})"
+        if not results:
+            return []
 
         try:
-            results = self.client.execute(sql, fetch="all")
-
-            if not results:
-                return []
-
-            return json.loads(results[0][0])
-
+            return json.loads(results) if isinstance(results, str) else results
         except (json.JSONDecodeError, IndexError, TypeError):
             return []

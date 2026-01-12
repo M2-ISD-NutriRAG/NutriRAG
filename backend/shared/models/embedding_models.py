@@ -10,6 +10,7 @@ class EmbeddingModel(str, Enum):
     SENTENCE_TRANSFORMERS_PARAPHRASE_MINILM_L6_V2 = (
         "sentence-transformers/paraphrase-MiniLM-L6-v2"
     )
+    BAAI_BGE_SMALL_EN_V1_5 = "BAAI/bge-small-en-v1.5"
 
     # Snowflake models
     E5_BASE_V2 = "e5-base-v2"
@@ -47,6 +48,11 @@ EMBEDDING_CONFIGS: dict[EmbeddingModel, EmbeddingConfig] = {
     ),
     EmbeddingModel.SENTENCE_TRANSFORMERS_PARAPHRASE_MINILM_L6_V2: EmbeddingConfig(
         model=EmbeddingModel.SENTENCE_TRANSFORMERS_PARAPHRASE_MINILM_L6_V2,
+        dimension=384,
+        is_cortex=False,
+    ),
+    EmbeddingModel.BAAI_BGE_SMALL_EN_V1_5: EmbeddingConfig(
+        model=EmbeddingModel.BAAI_BGE_SMALL_EN_V1_5,
         dimension=384,
         is_cortex=False,
     ),

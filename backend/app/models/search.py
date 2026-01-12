@@ -62,7 +62,8 @@ class SearchFilters(BaseModel):
 
 
 class SearchRequest(BaseModel):
-    user: str
+    user: Optional[str] = None,
+    coversation_id: Optional[str] = None,
     query: str = Field(..., description="Natural language search query")
     k: int = Field(default=10, description="Number of top-k results to return")
     filters: Optional[SearchFilters] = None

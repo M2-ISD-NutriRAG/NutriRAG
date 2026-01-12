@@ -22,7 +22,7 @@ class CreateVectorDatabaseService:
         notebook_name: str = "create_vector_db",
         setup: bool = False,
         source_table: str = "ENRICHED.RECIPES_SAMPLE_50K",
-        output_table: str = "VECTORS.RECIPES_50K_VECTOR_EMBEDDING",
+        output_table: str = "VECTORS.RECIPES_50K_EMBEDDINGS",
         id_column: str = "ID",
         columns_to_embed: List[str] = [
             "NAME",

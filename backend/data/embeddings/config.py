@@ -27,7 +27,7 @@ from data.embeddings.types import ProcessingMode
 
 # Which embedding model to use
 # Options: See shared.models.embedding_models.EmbeddingModel for all available models
-EMBEDDING_MODEL = EmbeddingModel.E5_BASE_V2
+EMBEDDING_MODEL = EmbeddingModel.BAAI_BGE_SMALL_EN_V1_5
 
 
 # Processing mode:

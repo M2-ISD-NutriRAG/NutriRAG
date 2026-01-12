@@ -35,6 +35,7 @@ def example_combined_search():
             index_table="VECTORS.RECIPES_SAMPLE_50K_BM25_INDEX",
             source_table="ENRICHED.RECIPES_SAMPLE_50K",
             embeddings_table="VECTORS.RECIPES_50K_EMBEDDINGS",
+            embedding_model="BAAI/bge-small-en-v1.5"
         )
 
         print(f"Results found: {len(results)}\n")
@@ -112,6 +113,7 @@ def example_search_with_numeric_filters():
             index_table="VECTORS.RECIPES_SAMPLE_50K_BM25_INDEX",
             source_table="ENRICHED.RECIPES_SAMPLE_50K",
             embeddings_table="VECTORS.RECIPES_50K_EMBEDDINGS",
+            embedding_model="BAAI/bge-small-en-v1.5"
         )
 
         print(f"Results found: {len(results)}\n")
@@ -174,6 +176,7 @@ def example_search_with_dietary_filters():
             index_table="VECTORS.RECIPES_SAMPLE_50K_BM25_INDEX",
             source_table="ENRICHED.RECIPES_SAMPLE_50K",
             embeddings_table="VECTORS.RECIPES_50K_EMBEDDINGS",
+            embedding_model="BAAI/bge-small-en-v1.5"
         )
 
         if results and isinstance(results, list):
@@ -247,6 +250,7 @@ def example_search_with_ingredient_filters():
             index_table="VECTORS.RECIPES_SAMPLE_50K_BM25_INDEX",
             source_table="ENRICHED.RECIPES_SAMPLE_50K",
             embeddings_table="VECTORS.RECIPES_50K_EMBEDDINGS",
+            embedding_model="BAAI/bge-small-en-v1.5"
         )
 
         if results and isinstance(results, list):
@@ -324,6 +328,7 @@ def example_search_with_multiple_filters():
             index_table="VECTORS.RECIPES_SAMPLE_50K_BM25_INDEX",
             source_table="ENRICHED.RECIPES_SAMPLE_50K",
             embeddings_table="VECTORS.RECIPES_50K_EMBEDDINGS",
+            embedding_model="BAAI/bge-small-en-v1.5"
         )
 
         if results and isinstance(results, list):

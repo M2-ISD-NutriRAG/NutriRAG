@@ -1,41 +1,83 @@
 import { apiClient } from '@/lib/api'
-import { AnalyticsUsage, PopularRecipesResponse } from '@shared/types'
 
-// Types pour le frontend (pas encore dans backend)
-export interface KPIData {
-  total_searches: number
-  total_transformations: number
-  active_users: number
-  avg_response_time: number
+export interface TopIngredient {
+  name: string;
+  count: number;
 }
 
-export interface UsageStats {
-  date: string
-  searches: number
-  transformations: number
-  users: number
+export interface BiggestWin {
+  original_name: string;
+  transformed_name: string;
+  health_score_delta: number;
+}
+
+export interface RecipeRanking {
+  name: string;
+  health_score: number;
+}
+
+export interface SearchNutritionStats {
+  avg_calories: number;
+  avg_protein: number;
+  avg_fat: number;
+  avg_carbs: number;
+  avg_sugar: number;
+  avg_fiber: number;
+  avg_sodium: number;
+}
+
+export interface TopItem {
+  name: string;
+  count: number;
+}
+
+export interface DashboardStats {
+  total_searches: number;
+  total_transformations: number;
+  conversion_rate: number;
+  total_calories_saved: number;
+  total_protein_gained: number;
+  avg_health_score_gain: number;
+  search_nutrition_avg: SearchNutritionStats;
+  top_filters: TopItem[];
+  top_tags: TopItem[];
+  ingredient_diversity_index: number;
+  top_ingredients: TopIngredient[];
+  top_diet_constraint: string;
+  biggest_optimization: BiggestWin | null;
+  top_5_healthy_recipes: RecipeRanking[];
+  top_5_unhealthy_recipes: RecipeRanking[];
+  avg_recipe_time: number;
+  avg_time_saved: number;
+}
+
+export interface TransformationDetail {
+  original_name: string;
+  transformed_name: string;
+  delta_calories: number;
+  delta_protein: number;
+  delta_fat: number;
+  delta_carbs: number;
+  delta_fiber: number;
+  delta_sugar: number;
+  delta_sodium: number;
+  delta_health_score: number;
+}
+
+export interface ConversationStats {
+  total_messages: number;
+  total_transformations: number;
+  transformations_list: TransformationDetail[];
 }
 
 export const analyticsService = {
-  async getKPIs(): Promise<KPIData> {
-    const response = await apiClient.get('/api/analytics/kpi')
-    return response.data
+  getDashboardData: async (userId: string, timeRange: string = 'all'): Promise<DashboardStats> => {
+    const response = await apiClient.get(`api/analytics/kpi?user_id=${userId}&time_range=${timeRange}`);
+    return response.data;
   },
 
-  async getUsageStats(period: string = '7d'): Promise<UsageStats[]> {
-    const response = await apiClient.get('/api/analytics/usage', {
-      params: { period }
-    })
-    return response.data
-  },
-
-  async getPopularRecipes(limit: number = 10): Promise<PopularRecipesResponse> {
-    const response = await apiClient.get('/api/analytics/popular', {
-      params: { limit }
-    })
-    return response.data
-  },
+  getConversationStats: async (conversationId: string): Promise<ConversationStats> => {
+    const response = await apiClient.get(`api/analytics/conversation/${conversationId}`);
+    return response.data;
+  }
 }
-
-export default analyticsService
-
