@@ -57,18 +57,23 @@ def prepare_text_column(dataframe: DataFrame, columns: List[Enum]) -> DataFrame:
     Raises:
         ValueError: If no valid columns found.
     """
-    schema_dict = {field.name: field.datatype for field in dataframe.schema.fields}
+    schema_dict = {
+        field.name: field.datatype for field in dataframe.schema.fields
+    }
     cleaned_expressions = []
 
     for column in columns:
         column_name = column.value
         if column_name not in schema_dict:
             print_message(
-                MessageType.WARNING, f"⚠ Column '{column_name}' not found. Skipping."
+                MessageType.WARNING,
+                f"⚠ Column '{column_name}' not found. Skipping.",
             )
             continue
 
-        cleaned_expr = clean_column_expression(column_name, schema_dict[column_name])
+        cleaned_expr = clean_column_expression(
+            column_name, schema_dict[column_name]
+        )
         cleaned_expressions.append(cleaned_expr)
 
     if not cleaned_expressions:

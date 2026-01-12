@@ -45,7 +45,7 @@ def create_embeddings_table(
     """
     print_message(
         MessageType.HEADER,
-        f"Creating Embeddings Table: {table_config.target_table.get_table_name()}",
+        f"Creating Embeddings Table: {table_config.target_table.get_full_table_name()}",
         width=60,
     )
 

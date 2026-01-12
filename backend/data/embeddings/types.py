@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import List, Optional
 
-from shared.snowflake.tables.recipes_sample_table import Table
+from shared.snowflake.tables.table import Table
 
 
 @dataclass
@@ -12,9 +12,9 @@ class TableConfig:
     """Configuration for table creation.
 
     Attributes:
-        source_table: Source table (e.g., RecipesSampleTable).
-        target_table: Target table (e.g., RecipesUnifiedEmbeddingsTable).
-        columns_to_concat: List of column enums (e.g. RecipesSampleTable) to concatenate for embedding.
+        source_table: Source table (e.g., RecipesSample50kTable).
+        target_table: Target table (e.g., Recipes50kEmbeddingsTable).
+        columns_to_concat: List of column enums (e.g. RecipesSample50kTable) to concatenate for embedding.
         drop_existing: Whether to drop and recreate the target table.
         keep_concatenated_text: Whether to keep the CONCATENATED_TEXT_FOR_RAG column in the final table.
                                Useful for debugging or analysis. Default is False to save storage.
