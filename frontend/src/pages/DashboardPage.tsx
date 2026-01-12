@@ -1,30 +1,37 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  ArrowLeft, Activity, Flame, Heart, Zap,
-  Dumbbell, Sprout, Trophy, ArrowRight, ChefHat,
-  Clock, Timer, ThumbsUp, ThumbsDown
+  ArrowLeft, Activity, Flame, Heart, Zap, Calendar,
+  Dumbbell, Sprout, Trophy, ChefHat, ArrowRight,
+  Clock, Timer, ThumbsUp, ThumbsDown, Search, Tag, Filter
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { ScrollArea } from '@/components/ui/scroll-area' // <--- IMPORT AJOUTÉ
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { analyticsService, type DashboardStats, type RecipeRanking } from '@/services/analytics.service'
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
+  Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis
 } from 'recharts'
 import { cn } from '@/lib/utils'
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select"
 
 export function DashboardPage() {
   const navigate = useNavigate()
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [loading, setLoading] = useState(true)
 
+  const [timeRange, setTimeRange] = useState("all")
+
   useEffect(() => {
     const loadData = async () => {
+      setLoading(true)
       try {
-        const result = await analyticsService.getDashboardData('DOG')
+        const result = await analyticsService.getDashboardData('DOG', timeRange)
         setStats(result)
       } catch (error) {
         console.error("Failed to fetch analytics", error)
@@ -33,11 +40,11 @@ export function DashboardPage() {
       }
     }
     loadData()
-  }, [])
+  }, [timeRange])
 
   if (loading) {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-slate-50"> {/* h-screen -> h-full */}
+      <div className="flex h-full w-full items-center justify-center bg-slate-50">
         <div className="flex flex-col items-center gap-4 animate-pulse">
           <ChefHat className="h-12 w-12 text-primary/50" />
           <p className="text-lg font-medium text-slate-500">Curating your culinary data...</p>
@@ -49,27 +56,41 @@ export function DashboardPage() {
   if (!stats) return <div className="flex h-full items-center justify-center">No Data Available</div>
 
   // --- DATA PREPARATION ---
+
+  // 1. Conversion Data (Pie Chart)
   const conversionData = [
     { name: 'Transformed', value: stats.total_transformations },
     { name: 'Standard Search', value: stats.total_searches - stats.total_transformations },
-  ]
-  const PIE_COLORS = ['#10b981', '#f1f5f9']
+  ];
+  const PIE_COLORS = ['#10b981', '#f1f5f9'];
 
+  // 2. Ingredients Data (Bar Chart)
   const ingredientsData = stats.top_ingredients.slice(0, 6).map(i => ({
     name: i.name.length > 12 ? i.name.substring(0, 12) + '...' : i.name,
     full_name: i.name,
     count: i.count
   }));
 
+  // 3. Nutrition Profile Data (Radar Chart)
+  // On crée un dataset normalisé pour visualiser l'équilibre
+  const nutritionRadarData = [
+    { subject: 'Protein', A: stats.search_nutrition_avg.avg_protein, fullMark: 150 },
+    { subject: 'Carbs', A: stats.search_nutrition_avg.avg_carbs, fullMark: 150 },
+    { subject: 'Fat', A: stats.search_nutrition_avg.avg_fat, fullMark: 150 },
+    { subject: 'Sugar', A: stats.search_nutrition_avg.avg_sugar, fullMark: 100 },
+    { subject: 'Fiber', A: stats.search_nutrition_avg.avg_fiber * 2, fullMark: 50 }, // Multiplié pour visibilité
+  ];
+  const maxVal = Math.max(
+    ...nutritionRadarData.map(d => d.A)
+  );
+  const domainMax = maxVal > 0 ? maxVal * 1.2 : 100;
+
   return (
-    // 1. Conteneur principal fixe à 100% de la hauteur du parent
     <div className="h-full w-full bg-slate-50/50 font-sans text-slate-900 overflow-hidden">
 
-      {/* 2. ScrollArea gère le défilement à l'intérieur de cette hauteur fixe */}
+      {/* ScrollArea gère le défilement de toute la page */}
       <ScrollArea className="h-full w-full">
-
-        {/* 3. Contenu avec padding (le min-h-screen est retiré au profit de h-full) */}
-        <div className="p-6 md:p-8 mx-auto max-w-7xl">
+        <div className="p-6 md:p-8 mx-auto max-w-7xl pb-20">
 
           {/* --- HEADER --- */}
           <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -80,23 +101,39 @@ export function DashboardPage() {
               </h1>
               <p className="text-slate-500 mt-1">Real-time tracking of your culinary transformations and health impact.</p>
             </div>
-            <Button variant="outline" onClick={() => navigate('/')} className="gap-2 border-slate-200 hover:bg-white hover:text-primary transition-colors shadow-sm">
-              <ArrowLeft className="h-4 w-4" /> Back to Kitchen
-            </Button>
+            <div className="flex items-center gap-3">
+                {/* SÉLECTEUR DE PÉRIODE */}
+                <Select value={timeRange} onValueChange={setTimeRange}>
+                  <SelectTrigger className="w-[160px] bg-white border-slate-200 shadow-sm">
+                    <div className="flex items-center gap-2 text-slate-600">
+                        <Calendar className="h-4 w-4" />
+                        <SelectValue placeholder="Select period" />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="7d">Last 7 Days</SelectItem>
+                    <SelectItem value="30d">Last 30 Days</SelectItem>
+                    <SelectItem value="90d">Last 3 Months</SelectItem>
+                    <SelectItem value="all">All Time</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Button variant="outline" onClick={() => navigate('/')} className="gap-2 border-slate-200 hover:bg-white hover:text-primary transition-colors shadow-sm">
+                  <ArrowLeft className="h-4 w-4" /> Back to Kitchen
+                </Button>
+            </div>
           </div>
 
-          <div className="space-y-6 pb-10"> {/* pb-10 pour laisser de l'espace en bas du scroll */}
+          <div className="space-y-8">
 
             {/* =================================================================================
-                SECTION 1: HERO METRICS
+                SECTION 1: HERO METRICS (KPIs)
                ================================================================================= */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
 
               {/* HEALTH SCORE */}
               <Card className="relative overflow-hidden border-emerald-100 bg-gradient-to-br from-white to-emerald-50/50 shadow-sm hover:shadow-md transition-shadow">
-                <div className="absolute top-0 right-0 p-4 opacity-10">
-                    <Heart className="h-20 w-20 text-emerald-600" />
-                </div>
+                <div className="absolute top-0 right-0 p-4 opacity-10"><Heart className="h-20 w-20 text-emerald-600" /></div>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-semibold text-emerald-600 uppercase tracking-wider flex items-center gap-2">
                     <Heart className="h-4 w-4" /> Health Boost
@@ -113,9 +150,7 @@ export function DashboardPage() {
 
               {/* CALORIES */}
               <Card className="relative overflow-hidden border-orange-100 bg-gradient-to-br from-white to-orange-50/50 shadow-sm hover:shadow-md transition-shadow">
-                <div className="absolute top-0 right-0 p-4 opacity-10">
-                    <Flame className="h-20 w-20 text-orange-600" />
-                </div>
+                <div className="absolute top-0 right-0 p-4 opacity-10"><Flame className="h-20 w-20 text-orange-600" /></div>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-semibold text-orange-600 uppercase tracking-wider flex items-center gap-2">
                     <Flame className="h-4 w-4" /> Calories Cut
@@ -132,9 +167,7 @@ export function DashboardPage() {
 
               {/* PROTEIN */}
               <Card className="relative overflow-hidden border-blue-100 bg-gradient-to-br from-white to-blue-50/50 shadow-sm hover:shadow-md transition-shadow">
-                <div className="absolute top-0 right-0 p-4 opacity-10">
-                    <Dumbbell className="h-20 w-20 text-blue-600" />
-                </div>
+                <div className="absolute top-0 right-0 p-4 opacity-10"><Dumbbell className="h-20 w-20 text-blue-600" /></div>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-semibold text-blue-600 uppercase tracking-wider flex items-center gap-2">
                     <Dumbbell className="h-4 w-4" /> Protein
@@ -151,9 +184,7 @@ export function DashboardPage() {
 
                {/* TIME SAVED */}
                <Card className="relative overflow-hidden border-purple-100 bg-gradient-to-br from-white to-purple-50/50 shadow-sm hover:shadow-md transition-shadow">
-                <div className="absolute top-0 right-0 p-4 opacity-10">
-                    <Timer className="h-20 w-20 text-purple-600" />
-                </div>
+                <div className="absolute top-0 right-0 p-4 opacity-10"><Timer className="h-20 w-20 text-purple-600" /></div>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-semibold text-purple-600 uppercase tracking-wider flex items-center gap-2">
                     <Timer className="h-4 w-4" /> Time Saved
@@ -171,7 +202,91 @@ export function DashboardPage() {
             </div>
 
             {/* =================================================================================
-                SECTION 2: DEEP DIVE (Ingredients & Activity)
+                SECTION 2 (NOUVEAU): SEARCH TRENDS & PROFILE
+               ================================================================================= */}
+            <div>
+              <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                <Search className="h-5 w-5 text-indigo-500" /> Search Habits & Trends
+              </h2>
+
+              <div className="grid gap-6 md:grid-cols-3">
+
+                {/* 1. NUTRITION PROFILE (RADAR CHART) */}
+                <Card className="md:col-span-1 shadow-sm border-slate-200">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-bold text-slate-700">Average Macro Profile</CardTitle>
+                    <CardDescription>Nutritional balance of recipes you explore</CardDescription>
+                  </CardHeader>
+                  <CardContent className="h-[250px] flex items-center justify-center">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RadarChart cx="50%" cy="50%" outerRadius="70%" data={nutritionRadarData}>
+                        <PolarGrid stroke="#e2e8f0" />
+                        <PolarAngleAxis dataKey="subject" tick={{ fill: '#64748b', fontSize: 12, fontWeight: 500 }} />
+                        <PolarRadiusAxis angle={30} domain={[0, domainMax]} tick={false} axisLine={false} />
+                        <Radar name="You" dataKey="A" stroke="#6366f1" fill="#6366f1" fillOpacity={0.4} />
+                        <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '12px' }}/>
+                      </RadarChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                  <div className="px-6 pb-4 flex justify-between text-xs text-slate-500 border-t pt-3">
+                    <span>Avg Cal: <strong>{stats.search_nutrition_avg.avg_calories}</strong></span>
+                    <span>Sodium: <strong>{stats.search_nutrition_avg.avg_sodium}mg</strong></span>
+                  </div>
+                </Card>
+
+                {/* 2. TOP TAGS (CATEGORIES) */}
+                <Card className="md:col-span-1 shadow-sm border-slate-200">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                        <Tag className="h-4 w-4 text-pink-500"/> Top Categories
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4 pt-4">
+                    {stats.top_tags.map((tag, idx) => (
+                        <div key={idx} className="flex items-center justify-between">
+                            <span className="text-sm text-slate-600 capitalize truncate max-w-[150px]" title={tag.name}>
+                              {tag.name.replace(/-/g, ' ')}
+                            </span>
+                            <div className="flex items-center gap-2 flex-1 justify-end ml-4">
+                                <div className="h-2 bg-pink-100 rounded-full w-20 overflow-hidden">
+                                    <div className="h-full bg-pink-400 rounded-full" style={{ width: `${Math.min((tag.count / stats.total_searches) * 100, 100)}%` }}></div>
+                                </div>
+                                <span className="text-xs font-bold text-pink-600 w-6 text-right">{tag.count}</span>
+                            </div>
+                        </div>
+                    ))}
+                  </CardContent>
+                </Card>
+
+                {/* 3. TOP FILTERS (PREFERENCES) */}
+                <Card className="md:col-span-1 shadow-sm border-slate-200">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                        <Filter className="h-4 w-4 text-cyan-500"/> Preferred Filters
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3 pt-4">
+                    {stats.top_filters.length > 0 ? stats.top_filters.map((filter, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-50 transition-colors">
+                            <span className="text-sm text-slate-600 capitalize">{filter.name.replace(/_/g, ' ')}</span>
+                            <Badge variant="secondary" className="bg-cyan-50 text-cyan-700 hover:bg-cyan-100 border-cyan-100">
+                                {filter.count} uses
+                            </Badge>
+                        </div>
+                    )) : (
+                        <div className="flex flex-col items-center justify-center h-40 text-slate-400">
+                           <Filter className="h-8 w-8 mb-2 opacity-20"/>
+                           <span className="text-sm italic">No filters used yet</span>
+                        </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+              </div>
+            </div>
+
+            {/* =================================================================================
+                SECTION 3: DEEP DIVE (Ingredients & Conversion)
                ================================================================================= */}
             <div className="grid gap-6 md:grid-cols-12">
 
@@ -179,11 +294,12 @@ export function DashboardPage() {
               <Card className="md:col-span-8 shadow-sm border-slate-200">
                 <CardHeader className="flex flex-row items-center justify-between pb-2">
                   <div>
-                    <CardTitle className="text-lg font-bold text-slate-800">Flavor Profile</CardTitle>
+                    <CardTitle className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                      <Sprout className="h-5 w-5 text-green-600"/> Flavor Profile
+                    </CardTitle>
                     <CardDescription>Top ingredients appearing in your searches</CardDescription>
                   </div>
                   <Badge variant="secondary" className="gap-1 bg-slate-100 text-slate-600 hover:bg-slate-200">
-                    <Sprout className="h-3 w-3" />
                     {stats.ingredient_diversity_index} unique items
                   </Badge>
                 </CardHeader>
@@ -246,8 +362,10 @@ export function DashboardPage() {
                 {/* Conversion Card */}
                 <Card className="flex-1 shadow-sm border-slate-200 flex flex-col">
                   <CardHeader className="pb-0">
-                    <CardTitle className="text-lg font-bold text-slate-800">Activity Ratio</CardTitle>
-                    <CardDescription>Percentage of transformed recipes among the recipes searched</CardDescription>
+                    <CardTitle className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                        <Zap className="h-5 w-5 text-amber-500"/> Activity Ratio
+                    </CardTitle>
+                    <CardDescription>Search vs. Transform</CardDescription>
                   </CardHeader>
                   <CardContent className="flex-1 flex flex-col items-center justify-center min-h-[160px]">
                     <div className="h-[140px] w-full relative">
@@ -271,6 +389,7 @@ export function DashboardPage() {
                           <Tooltip />
                         </PieChart>
                       </ResponsiveContainer>
+                      {/* Center Text */}
                       <div className="absolute inset-0 flex items-center justify-center flex-col pointer-events-none">
                          <span className="text-xl font-bold text-slate-800">{stats.conversion_rate}%</span>
                       </div>
@@ -286,7 +405,7 @@ export function DashboardPage() {
             </div>
 
             {/* =================================================================================
-                SECTION 3: HIGHLIGHTS & RANKINGS
+                SECTION 4: HIGHLIGHTS & RANKINGS
                ================================================================================= */}
 
             {/* BIGGEST WIN ROW */}
@@ -318,7 +437,7 @@ export function DashboardPage() {
                 </CardContent>
             </Card>
 
-            {/* NEW RANKING ROW */}
+            {/* RANKING ROW */}
             <div className="grid gap-6 md:grid-cols-2">
 
                 {/* BEST RECIPES */}
@@ -362,7 +481,7 @@ export function DashboardPage() {
   )
 }
 
-// --- Helper Component pour la liste ---
+// --- Helper Component pour la liste de recettes ---
 function RecipeList({ recipes, colorClass, scoreColor }: { recipes: RecipeRanking[], colorClass: string, scoreColor: string }) {
     if (!recipes || recipes.length === 0) {
         return <div className="text-sm text-slate-400 italic text-center py-4">No data available</div>
@@ -371,16 +490,16 @@ function RecipeList({ recipes, colorClass, scoreColor }: { recipes: RecipeRankin
     return (
         <div className="space-y-3">
             {recipes.map((recipe, idx) => (
-                <div key={idx} className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-3">
-                        <span className={cn("flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold", colorClass)}>
+                <div key={idx} className="flex items-center justify-between text-sm group hover:bg-slate-50 p-2 rounded-lg transition-colors">
+                    <div className="flex items-center gap-3 overflow-hidden">
+                        <span className={cn("flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold shrink-0", colorClass)}>
                             {idx + 1}
                         </span>
-                        <span className="font-medium text-slate-700 truncate max-w-[200px] md:max-w-[250px]" title={recipe.name}>
+                        <span className="font-medium text-slate-700 truncate" title={recipe.name}>
                             {recipe.name}
                         </span>
                     </div>
-                    <span className={cn("font-bold", scoreColor)}>
+                    <span className={cn("font-bold ml-2", scoreColor)}>
                         {recipe.health_score}
                     </span>
                 </div>
