@@ -3,59 +3,52 @@ from typing import List, Optional, Any
 import json
 
 
-class IngredientParsed(BaseModel):
-    # Parsed ingredient with quantity, unit, and name
-    quantity: Optional[float] = None
-    unit: Optional[str] = None
-    name: str
-    ndb_no: Optional[int] = None  # Link to cleaned_ingredients
-
-
 class NutritionDetailed(BaseModel):
     # Detailed nutrition information
-    calories: float
-    protein_g: float
-    fat_g: float
-    saturated_fat_g: float
-    carbs_g: float
-    fiber_g: Optional[float] = None
-    sugar_g: Optional[float] = None
-    sodium_mg: float
+    energy_kcal_100g: Optional[float] = None
+    protein_g_100g: Optional[float] = None
+    fat_g_100g: Optional[float] = None
+    saturated_fats_g_100g: Optional[float] = None
+    carbs_g_100g: Optional[float] = None
+    fiber_g_100g: Optional[float] = None
+    sugar_g_100g: Optional[float] = None
+    sodium_mg_100g: Optional[float] = None
 
     # Optional micronutrients
-    calcium_mg: Optional[float] = None
-    iron_mg: Optional[float] = None
-    magnesium_mg: Optional[float] = None
-    potassium_mg: Optional[float] = None
-    vitamin_c_mg: Optional[float] = None
+    calcium_mg_100g: Optional[float] = None
+    iron_mg_100g: Optional[float] = None
+    magnesium_mg_100g: Optional[float] = None
+    potassium_mg_100g: Optional[float] = None
+    vitamin_c_mg_100g: Optional[float] = None
 
 
 class Recipe(BaseModel):
     # Complete recipe model
     id: int
     name: str
-    description: Optional[str] = None
+    description: str
     minutes: int
     n_steps: int
     n_ingredients: int
+    servings: int
+    serving_size: int
+    
 
     # Arrays
     tags: List[str] = Field(default_factory=list)
+    filters: List[str] = Field(default_factory=list)
+    search_terms: List[str] = Field(default_factory=list)
     ingredients: List[str] = Field(default_factory=list)
-    ingredients_raw: List[str] = Field(default_factory=list)
-    ingredients_parsed: Optional[List[IngredientParsed]] = None
+    ingredients_with_quantities: List[str] = Field(default_factory=list)
     steps: List[str] = Field(default_factory=list)
 
     # Nutrition
-    nutrition_original: Optional[List[float]] = None  # Original from Food.com
-    nutrition_detailed: Optional[NutritionDetailed] = (
-        None  # Calculated by Team 1
-    )
+    nutrition: Optional[List[float]] = None  # Original from Food.com
+    nutrition_detailed: Optional[NutritionDetailed] = None  # Calculated by Team 1
+
 
     # Scores
-    score_health: Optional[float] = None
-    rating_avg: Optional[float] = None
-    rating_count: Optional[int] = None
+    score_sante: Optional[float] = None
 
     # Validation to normalize field names because Snowflake these fields are uppercase
     @model_validator(mode="before")
@@ -68,10 +61,11 @@ class Recipe(BaseModel):
 
     @field_validator(
         "tags",
+        "filters",
+        "search_terms",
         "steps",
-        "ingredients_raw",
-        "ingredients_parsed",
-        "nutrition_original",
+        "ingredients_with_quantities",
+        "nutrition",
         mode="before",
     )
     @classmethod
