@@ -2,8 +2,9 @@ from fastapi import APIRouter, HTTPException, Query
 from typing import Optional, List
 import json
 from shared.snowflake.client import SnowflakeClient
-from shared.snowflake.tables.recipes_sample_table import RecipesSampleTable
-from shared.snowflake.tables.recipes_final_table import RecipesFullTable
+from shared.snowflake.tables.recipes_sample_50k_table import (
+    RecipesSample50kTable,
+)
 from app.models.recipe import Recipe, RecipeListResponse, NutritionDetailed
 
 
@@ -21,7 +22,7 @@ def parse_list_string(value: str) -> Optional[List]:
         return None
 
     value = value.strip()
-    
+
     # Try JSON parsing first
     try:
         parsed = json.loads(value)
@@ -33,12 +34,12 @@ def parse_list_string(value: str) -> Optional[List]:
     # Manual parsing for malformed JSON
     if value.startswith("[") and value.endswith("]"):
         content = value[1:-1].strip()
-        
+
         if not content:
             return []
-        
+
         parts = [p.strip().strip('"').strip("'") for p in content.split(",")]
-        
+
         result = []
         for p in parts:
             if not p:
@@ -99,7 +100,7 @@ def parse_nutrition_from_row(row) -> Optional[NutritionDetailed]:
             potassium_mg=safe_float(row[30]),
             vitamin_c_mg=safe_float(row[31]),
         )
-    except:
+    except Exception:
         return None
 
 
@@ -110,15 +111,15 @@ def parse_recipe_from_row(row) -> Recipe:
     ingredients_raw = parse_list_string(row[10]) or []
     steps = parse_list_string(row[8]) or []
     nutrition_original = parse_list_string(row[6]) or []
-    
+
     # Ensure they are lists of strings
     tags = [safe_str(t) for t in tags]
     ingredients_raw = [safe_str(i) for i in ingredients_raw]
     steps = [safe_str(s) for s in steps]
-    
+
     # Parse nutrition
     nutrition_detailed = parse_nutrition_from_row(row)
-    
+
     return Recipe(
         id=safe_int(row[1], -1),
         name=safe_str(row[0], "Unknown Recipe"),
@@ -134,7 +135,7 @@ def parse_recipe_from_row(row) -> Recipe:
         nutrition_detailed=nutrition_detailed,
         score_health=safe_float(row[19]),
         rating_avg=None,
-        rating_count=None
+        rating_count=None,
     )
 
 
@@ -145,19 +146,21 @@ async def get_recipe(recipe_id: int):
     Returns enriched recipe with parsed ingredients and health score.
     """
     client = SnowflakeClient()
-    
+
     result = client.execute(
         f"""
         SELECT *
-        FROM {RecipesFullTable.get_full_table_name()}
+        FROM {RecipesSample50kTable.get_full_table_name()}
         WHERE id = {recipe_id}
         """,
-        fetch="all"
+        fetch="all",
     )
-    
+
     if not result:
-        raise HTTPException(status_code=404, detail=f"Recipe with id {recipe_id} not found")
-    
+        raise HTTPException(
+            status_code=404, detail=f"Recipe with id {recipe_id} not found"
+        )
+
     return parse_recipe_from_row(result[0])
 
 
@@ -167,24 +170,29 @@ async def get_recipe_nutrition(recipe_id: int):
     Get detailed nutritional breakdown for a recipe.
     """
     client = SnowflakeClient()
-    
+
     result = client.execute(
         f"""
         SELECT *
-        FROM {RecipesFullTable.get_full_table_name()}
+        FROM {RecipesSample50kTable.get_full_table_name()}
         WHERE id = {recipe_id}
         """,
-        fetch="all"
+        fetch="all",
     )
-    
+
     if not result:
-        raise HTTPException(status_code=404, detail=f"Recipe with id {recipe_id} not found")
-    
+        raise HTTPException(
+            status_code=404, detail=f"Recipe with id {recipe_id} not found"
+        )
+
     nutrition = parse_nutrition_from_row(result[0])
-    
+
     if nutrition is None:
-        raise HTTPException(status_code=404, detail=f"Nutrition data not available for recipe {recipe_id}")
-    
+        raise HTTPException(
+            status_code=404,
+            detail=f"Nutrition data not available for recipe {recipe_id}",
+        )
+
     return nutrition
 
 
@@ -194,27 +202,27 @@ async def get_random_recipes(count: int = Query(5, ge=1, le=20)):
     Get random recipes for exploration.
     """
     client = SnowflakeClient()
-    
+
     # Validate count
     safe_count = max(1, min(int(count), 20))
-    
+
     results = client.execute(
         f"""
         SELECT *
-        FROM {RecipesSampleTable.get_full_table_name()}
+        FROM {RecipesSample50kTable.get_full_table_name()}
         SAMPLE ({safe_count} ROWS)
         """,
-        fetch="all"
+        fetch="all",
     )
-    
+
     recipes = []
     for row in results:
         try:
             recipe = parse_recipe_from_row(row)
             recipes.append(recipe)
-        except Exception as e:
+        except Exception:
             continue
-    
+
     return recipes
 
 

@@ -32,8 +32,8 @@ DROP_EXISTING_TABLE = True  # True: recreate, False: append
 KEEP_CONCATENATED_TEXT = False  # True: keep debug column
 
 # 4. Tables (see ../../shared/snowflake/README.md)
-SOURCE_TABLE = RecipesSampleTable
-TARGET_TABLE = RecipesUnifiedEmbeddingsTable
+SOURCE_TABLE = RecipesSample50kTable
+TARGET_TABLE = Recipes50kEmbeddingsTable
 ```
 
 ## Processing Modes

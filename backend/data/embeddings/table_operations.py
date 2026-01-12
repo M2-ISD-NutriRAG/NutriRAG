@@ -5,7 +5,7 @@ from typing import Optional
 from snowflake.snowpark import DataFrame, Session
 
 from shared.utils.console import print_message, MessageType
-from shared.snowflake.tables.recipes_sample_table import Table
+from shared.snowflake.tables.table import Table
 
 from data.embeddings.config import EMBEDDING
 from data.embeddings.types import TableConfig
@@ -22,7 +22,7 @@ def _table_exists(session: Session, table: type[Table]) -> bool:
         True if table exists, False otherwise.
     """
     try:
-        df = session.table(table.get_table_name())
+        df = session.table(table.get_full_table_name())
         _ = df.schema  # Verify table exists
         return True
     except Exception:
@@ -47,7 +47,7 @@ def get_source_dataframe(
         # Target doesn't exist - must create from source
         print_message(
             MessageType.INFO,
-            f"ℹ️  Target table '{table_config.target_table.get_table_name()}' does not exist.",
+            f"ℹ️  Target table '{table_config.target_table.get_full_table_name()}' does not exist.",
         )
         if not table_config.source_table:
             print_message(
@@ -56,31 +56,35 @@ def get_source_dataframe(
             return None
         print_message(
             MessageType.INFO,
-            f"   → Creating from '{table_config.source_table.get_table_name()}'",
+            f"   → Creating from '{table_config.source_table.get_full_table_name()}'",
         )
-        return session.table(table_config.source_table.get_table_name())
+        return session.table(table_config.source_table.get_full_table_name())
 
     # Target exists
     print_message(
         MessageType.INFO,
-        f"ℹ️  Target table '{table_config.target_table.get_table_name()}' exists.",
+        f"ℹ️  Target table '{table_config.target_table.get_full_table_name()}' exists.",
     )
 
     if table_config.drop_existing:
         if table_config.source_table:
             print_message(
                 MessageType.INFO,
-                f"   → Drop mode: Reloading from '{table_config.source_table.get_table_name()}'",
+                f"   → Drop mode: Reloading from '{table_config.source_table.get_full_table_name()}'",
             )
-            return session.table(table_config.source_table.get_table_name())
+            return session.table(
+                table_config.source_table.get_full_table_name()
+            )
         else:
             print_message(
                 MessageType.INFO, "   → Drop mode: Reusing existing data"
             )
-            return session.table(table_config.target_table.get_table_name())
+            return session.table(
+                table_config.target_table.get_full_table_name()
+            )
     else:
         print_message(MessageType.INFO, "   → Append mode")
-        return session.table(table_config.target_table.get_table_name())
+        return session.table(table_config.target_table.get_full_table_name())
 
 
 def _verify_embedding_column(
@@ -194,15 +198,15 @@ def verify_table_schema(
     """
     print_message(
         MessageType.HEADER,
-        f"Schema Verification: {table.get_table_name()}",
+        f"Schema Verification: {table.get_full_table_name()}",
         width=40,
     )
 
-    df = session.table(table.get_table_name())
+    df = session.table(table.get_full_table_name())
 
     # Verify EMBEDDING column exists and has correct dimension
     _verify_embedding_column(
-        df.schema.fields, table.get_table_name(), expected_dimension
+        df.schema.fields, table.get_full_table_name(), expected_dimension
     )
 
     # Check row count
