@@ -1090,12 +1090,7 @@ class TransformService:
     def fetch_ingredients_tags(
         self, recipe_id: int, ingredients: List[str]
     ) -> Dict[str, Optional[Dict[str, Any]]]:
-        """
-        Returns mapping:
-          key = LOWER(TRIM(ingredient_from_recipe_name))
-          val = dict of tag columns (or None if not found)
-        Cached per recipe+ingredient key.
-        """
+
         if recipe_id not in self.recipe_tags_cache:
             self.recipe_tags_cache[recipe_id] = {}
 
@@ -1103,54 +1098,72 @@ class TransformService:
         keys = [k for k in keys if k]
         unique_keys = sorted(set(keys))
 
-        missing = [
-            k for k in unique_keys if k not in self.recipe_tags_cache[recipe_id]
-        ]
+        missing = [k for k in unique_keys if k not in self.recipe_tags_cache[recipe_id]]
         if not missing:
             return self.recipe_tags_cache[recipe_id]
 
-        # Default missing keys to None so we don't re-query forever
         for k in missing:
             self.recipe_tags_cache[recipe_id][k] = None
 
         im = self.session.table(INGREDIENTS_MATCHED_TABLE_NAME)
+        ci = self.session.table(INGREDIENTS_NUTRIMENTS_TABLE_NAME)
         it = self.session.table(INGREDIENTS_TAGGED_TABLE_NAME)
 
-        ing_key_expr = lower(trim(col("INGREDIENT_FROM_RECIPE_NAME")))
+        ing_key_expr = lower(trim(im["INGREDIENT_FROM_RECIPE_NAME"]))
 
-        joined = (
-            im.filter(col("RECIPE_ID") == recipe_id)
-            .with_column("ING_KEY", ing_key_expr)
-            .filter(col("ING_KEY").isin(missing))
-            .join(it, col("INGREDIENT_ID") == col("NDB_NO"), how="left")
-            .select(
-                col("ING_KEY"),
-                col("NDB_NO"),
-                col("DESCRIP"),
-                col("FOODON_LABEL"),
-                col("IS_DAIRY"),
-                col("IS_GLUTEN"),
-                col("CONTAINS_NUTS"),
-                col("IS_GRAIN"),
-                col("IS_SEAFOOD"),
-                col("IS_SWEETENER"),
-                col("IS_VEGETABLE"),
-                col("IS_VEGETARIAN"),
-            )
+        candidates = (
+            im.filter(im["RECIPE_ID"] == int(recipe_id))
+              .with_column("ING_KEY", ing_key_expr)
+              .with_column("INGREDIENT_ID_NUM", im["INGREDIENT_ID"])
+              .filter(col("ING_KEY").isin(missing))
+              .filter(col("INGREDIENT_ID_NUM").is_not_null())  # drop 'N003', 'F016', etc
         )
 
-        # If multiple rows exist per ING_KEY, just take the first one deterministically
+        candidates_with_score = (
+            candidates.join(ci, col("INGREDIENT_ID_NUM") == ci["NDB_NO"], how="left")
+                      .select(
+                          col("ING_KEY"),
+                          col("INGREDIENT_ID_NUM").as_("INGREDIENT_ID"),
+                          ci["SCORE_SANTE"].as_("SCORE_SANTE"),
+                      )
+        )
+
         w = Window.partition_by(col("ING_KEY")).order_by(
-            col("NDB_NO").asc_nulls_last()
-        )
-        ranked = joined.with_column("RN", row_number().over(w)).filter(
-            col("RN") == 1
+            col("SCORE_SANTE").desc_nulls_last(),
+            col("INGREDIENT_ID").asc_nulls_last(),
         )
 
-        rows = ranked.collect()
+        best = (
+            candidates_with_score.with_column("RN", row_number().over(w))
+                                 .filter(col("RN") == 1)
+                                 .select(col("ING_KEY"), col("INGREDIENT_ID"))
+        )
+
+        best_with_tags = (
+            best.join(it, best["INGREDIENT_ID"] == it["NDB_NO"], how="left")
+                .select(
+                    best["ING_KEY"].as_("ING_KEY"),
+                    best["INGREDIENT_ID"].as_("NDB_NO"),
+                    it["DESCRIP"],
+                    it["FOODON_LABEL"],
+                    it["IS_DAIRY"],
+                    it["IS_GLUTEN"],
+                    it["CONTAINS_NUTS"],
+                    it["IS_GRAIN"],
+                    it["IS_SEAFOOD"],
+                    it["IS_SWEETENER"],
+                    it["IS_VEGETABLE"],
+                    it["IS_VEGETARIAN"],
+                )
+        )
+
+        rows = best_with_tags.collect()
 
         for r in rows:
             ing_key = r["ING_KEY"]
+            if r["NDB_NO"] is None and r["DESCRIP"] is None and r["FOODON_LABEL"] is None:
+                continue
+
             self.recipe_tags_cache[recipe_id][ing_key] = {
                 "NDB_NO": r["NDB_NO"],
                 "DESCRIP": r["DESCRIP"],
@@ -1171,129 +1184,142 @@ class TransformService:
         self, recipe: Recipe, constraints: TransformConstraints
     ) -> List[str]:
         """
-        Algorithm to identify ingredients to remove based on nutritional constraints.
-
-        Args:
-            recipe: Recipe object
-            constraints: TransformConstraints with nutritional goals
-
-        Returns:
-            List of ingredient names to remove
+        Single-pass ingredient loop:
+          - Allergy/diet constraints -> immediate removal via tags (up to 3)
+          - Reduction constraints -> compute contribution-based score and collect candidates
+          - After loop: pick best candidates to fill remaining slots (no second loop over ingredients)
+    
+        Returns list of ingredient strings from recipe.ingredients.
         """
-        ingredients_to_remove = []
-
         try:
-            # Fetch nutritional data for all ingredients
-            ingredients_nutrition = self.fetch_ingredients_nutrition(
-                recipe.id, recipe.ingredients
-            )
-            ingredients_tags = self.fetch_ingredients_tags(
-                recipe.id, recipe.ingredients
-            )
-
-            allergy_constraints = [
-                "no_lactose",
-                "no_gluten",
-                "no_nuts",
-                "vegetarian",
-                "vegan",
-            ]
+            allergy_constraints = ["no_lactose", "no_gluten", "no_nuts", "vegetarian", "vegan"]
             reduction_constraints = [
-                "decrease_sugar",
-                "decrease_sodium",
-                "decrease_calories",
-                "decrease_carbs",
-                "increase_protein",
-                "decrease_protein",
+                "decrease_sugar", "decrease_sodium", "decrease_calories", "decrease_carbs",
+                "increase_protein", "decrease_protein",
             ]
-
-            active_allergy = any(
-                getattr(constraints, c, False) for c in allergy_constraints
-            )
-            active_reduction = any(
-                getattr(constraints, c, False) for c in reduction_constraints
-            )
-
+    
+            active_allergy = any(getattr(constraints, c, False) for c in allergy_constraints)
+            active_reduction = any(getattr(constraints, c, False) for c in reduction_constraints)
+    
+            if not active_allergy and not active_reduction:
+                return []
+    
+            # Max removals rule
             max_items = 3 if active_allergy else (1 if active_reduction else 0)
-
-            # Define thresholds to identify "bad" ingredients
-            SUGAR_THRESHOLD = 10.0  # g per 100g
-            SODIUM_THRESHOLD = 500.0  # mg per 100g
-            CALORIE_THRESHOLD = 300.0  # kcal per 100g
-            CARB_THRESHOLD = 50.0  # g per 100g
-
+            if max_items == 0:
+                return []
+    
+            # Fetch only what we need
+            ingredients_tags = {}
+            ingredients_nutrition = {}
+            qty_map = {}
+    
+            if active_allergy:
+                logging.info("Allergy constraints active... Checking ingredient tags")
+                ingredients_tags = self.fetch_ingredients_tags(recipe.id, recipe.ingredients)
+    
+            if active_reduction:
+                logging.info("Reduction constraints active... Using nutrition + quantities for contribution scoring")
+                ingredients_nutrition = self.fetch_ingredients_nutrition(recipe.id, recipe.ingredients)
+                qty_map = self.fetch_recipe_quantities(recipe.id)
+    
+            def contrib(qty_g: float, per100: float) -> float:
+                return qty_g * (per100 / 100.0)
+    
+            ingredients_to_remove: List[str] = []
+            removed_set = set()
+            candidates = []
+    
             for ingredient in recipe.ingredients:
-                ing_key = ingredient.lower().strip()
-                nutrition = ingredients_nutrition.get(ing_key)
-
-                if nutrition is None:
+                if len(ingredients_to_remove) >= max_items:
+                    break
+                
+                ing_key = (ingredient or "").strip().lower()
+                if not ing_key:
                     continue
-
+                
                 should_remove = False
-
-                # Check reduction constraints
-                if (
-                    constraints.decrease_sugar
-                    and nutrition.get("SUGAR_G", 0) > SUGAR_THRESHOLD
-                ):
-                    should_remove = True
-                    # print(f"_identify_ingredients_to_remove_by_algo: {ingredient} identified for sugar reduction ({nutrition.get('SUGAR_G', 0):.1f}g)")
-
-                if (
-                    constraints.decrease_sodium
-                    and nutrition.get("SODIUM_MG", 0) > SODIUM_THRESHOLD
-                ):
-                    should_remove = True
-                    # print(f"_identify_ingredients_to_remove_by_algo: {ingredient} identified for sodium reduction ({nutrition.get('SODIUM_MG', 0):.1f}mg)")
-
-                if (
-                    constraints.decrease_calories
-                    and nutrition.get("ENERGY_KCAL", 0) > CALORIE_THRESHOLD
-                ):
-                    should_remove = True
-                    # print(f"_identify_ingredients_to_remove_by_algo: {ingredient} identified for calorie reduction ({nutrition.get('ENERGY_KCAL', 0):.1f}kcal)")
-
-                if (
-                    constraints.decrease_carbs
-                    and nutrition.get("CARB_G", 0) > CARB_THRESHOLD
-                ):
-                    should_remove = True
-                    # print(f"_identify_ingredients_to_remove_by_algo: {ingredient} identified for carbohydrate reduction ({nutrition.get('CARB_G', 0):.1f}g)")
-
-                # Check dietary constraints (via PCA data if available)
-                tags = ingredients_tags.get(ing_key)
-                if tags is not None:
-                    if constraints.no_lactose and tags.get("IS_DAIRY") is True:
-                        should_remove = True
-                    if constraints.no_gluten and tags.get("IS_GLUTEN") is True:
-                        should_remove = True
-                    if (
-                        constraints.no_nuts
-                        and tags.get("CONTAINS_NUTS") is True
-                    ):
-                        should_remove = True
-                    if (
-                        constraints.vegetarian
-                        and tags.get("IS_VEGETARIAN") is False
-                    ):
-                        should_remove = True
-                    if constraints.vegan and tags.get("IS_VEGETABLE") is False:
-                        should_remove = True  # proxy as you requested
-
+    
+                # --- Allergy / diet checks (immediate removal) ---
+                if active_allergy:
+                    tags = ingredients_tags.get(ing_key)
+                    if tags is not None:
+                        if constraints.no_lactose and tags.get("IS_DAIRY") is True:
+                            should_remove = True
+                        if constraints.no_gluten and tags.get("IS_GLUTEN") is True:
+                            should_remove = True
+                        if constraints.no_nuts and tags.get("CONTAINS_NUTS") is True:
+                            should_remove = True
+                        if constraints.vegetarian and tags.get("IS_VEGETARIAN") is False:
+                            should_remove = True
+                        if constraints.vegan and tags.get("IS_VEGETABLE") is False:
+                            should_remove = True  # proxy
+    
                 if should_remove:
                     ingredients_to_remove.append(ingredient)
-                    if max_items and len(ingredients_to_remove) >= max_items:
+                    removed_set.add(ingredient)
+                    continue
+                
+                # --- Reduction scoring (collect candidates) ---
+                if active_reduction:
+                    nutrition = ingredients_nutrition.get(ing_key)
+                    qty = qty_map.get(ing_key)
+    
+                    if nutrition is None or qty is None:
+                        continue
+                    
+                    try:
+                        qty_g = float(qty)
+                    except Exception:
+                        continue
+                    if qty_g <= 0:
+                        continue
+                    
+                    score = 0.0
+                    any_metric = False
+    
+                    if constraints.decrease_sugar:
+                        score += contrib(qty_g, float(nutrition.get("SUGAR_G", 0.0) or 0.0))
+                        any_metric = True
+                    if constraints.decrease_sodium:
+                        score += contrib(qty_g, float(nutrition.get("SODIUM_MG", 0.0) or 0.0))
+                        any_metric = True
+                    if constraints.decrease_calories:
+                        score += contrib(qty_g, float(nutrition.get("ENERGY_KCAL", 0.0) or 0.0))
+                        any_metric = True
+                    if constraints.decrease_carbs:
+                        score += contrib(qty_g, float(nutrition.get("CARB_G", 0.0) or 0.0))
+                        any_metric = True
+    
+                    protein_c = contrib(qty_g, float(nutrition.get("PROTEIN_G", 0.0) or 0.0))
+    
+                    if constraints.decrease_protein:
+                        score += protein_c
+                        any_metric = True
+    
+                    if constraints.increase_protein:
+                        # Prefer removing LOW protein contribution ingredients:
+                        # subtract protein contribution so lower protein => higher score
+                        score -= protein_c
+                        any_metric = True
+    
+                    if any_metric:
+                        candidates.append((score, ingredient))
+    
+            # Fill remaining slots from best reduction candidates
+            remaining = max_items - len(ingredients_to_remove)
+            if remaining > 0 and candidates:
+                candidates.sort(key=lambda x: x[0], reverse=True)
+                for _, ing in candidates:
+                    if len(ingredients_to_remove) >= max_items:
                         break
-
-            # Limit the number of ingredients to remove (max 3 to not destroy the recipe)
-            if len(ingredients_to_remove) > 3:
-                print(
-                    f"_identify_ingredients_to_remove_by_algo: Limiting to 3 ingredients out of {len(ingredients_to_remove)} identified"
-                )
-                ingredients_to_remove = ingredients_to_remove[:3]
-
-            return ingredients_to_remove
-
+                    if ing in removed_set:
+                        continue
+                    ingredients_to_remove.append(ing)
+                    removed_set.add(ing)
+    
+            return ingredients_to_remove[:3]
+    
         except Exception as e:
             print(f" Error in identifying ingredients to remove: {e}")
             traceback.print_exc()
@@ -1703,9 +1729,22 @@ class TransformService:
             log_msg = "Start(Step 1): Check ingredients to modify."
             logging.info(log_msg)
             self.log_msg.append(log_msg)
+            allergy_constraints = ["no_lactose", "no_gluten", "no_nuts", "vegetarian", "vegan"]
+            active_allergy = any(getattr(constraints, c, False) for c in allergy_constraints)
 
-            if ingredients_to_remove is not None:
+            if ingredients_to_remove:
+                logging.info("Recipe has defined ingredients to remove")
                 ingredients_to_transform = ingredients_to_remove
+                if active_allergy:
+                    logging.info("Allergy Constraints active... Verifying ingredient tags")
+                    extra_ingr = self.identify_ingredients_to_remove_by_algo(recipe, constraints)
+                    if not extra_ingr:
+                        logging.info("Defaulting to LLM identification for allergy constraints")
+                        extra_ingr = self.identify_ingredients_to_remove_by_llm(recipe, constraints)
+                    if extra_ingr:
+                        for ingr in extra_ingr:
+                            if ingr not in ingredients_to_transform:
+                                ingredients_to_transform.append(ingr)
             else:
                 # Algorithm in priority to identify ingredients
                 log_msg = "Running(Step 1): Identify ingredient to remove by algorithm."
@@ -1904,6 +1943,7 @@ class TransformService:
                     )
                 new_recipe_score = self.compute_rhi(scaled_nutrition)
                 new_recipe_nutrition.health_score = new_recipe_score
+                new_recipe.health_score = new_recipe_score
                 log_msg = "End(Step 2): finished for Deletion (Removed successfully unwanted ingredients and computed new health score)."
                 logging.info(log_msg)
                 self.log_msg.append(log_msg)
