@@ -41,6 +41,8 @@ class TransformConstraints(BaseModel):
     decrease_calories: bool = False
     decrease_sodium: bool = False
     decrease_satfat: bool = False
+    increase_fiber: bool = False
+
 
 
 class Recipe(BaseModel):
@@ -2015,6 +2017,51 @@ class TransformService:
             ]
             return fallback_steps, []
 
+    def fetch_tags_for_ndb_nos(self, ndb_nos: List[str]) -> Dict[str, Dict[str, Any]]:
+        if not ndb_nos:
+            return {}
+
+        it = self.session.table(INGREDIENTS_TAGGED_TABLE_NAME)
+        cleaned = [str(x).strip() for x in ndb_nos if x is not None and str(x).strip()]
+
+        rows = (
+            it.filter(col("NDB_NO").isin( cleaned))
+              .select(
+                  col("NDB_NO"),
+                  col("DESCRIP"),
+                  col("FOODON_LABEL"),
+                  col("IS_DAIRY"),
+                  col("IS_GLUTEN"),
+                  col("CONTAINS_NUTS"),
+                  col("IS_GRAIN"),
+                  col("IS_SEAFOOD"),
+                  col("IS_SWEETENER"),
+                  col("IS_VEGETABLE"),
+                  col("IS_VEGETARIAN"),
+              )
+              .collect()
+        )
+
+        out: Dict[int, Dict[str, Any]] = {}
+        for r in rows:
+            ndb = r["NDB_NO"]
+            if ndb is None:
+                continue
+            out[ndb] = {
+                "NDB_NO": r["NDB_NO"],
+                "DESCRIP": r["DESCRIP"],
+                "FOODON_LABEL": r["FOODON_LABEL"],
+                "IS_DAIRY": r["IS_DAIRY"],
+                "IS_GLUTEN": r["IS_GLUTEN"],
+                "CONTAINS_NUTS": r["CONTAINS_NUTS"],
+                "IS_GRAIN": r["IS_GRAIN"],
+                "IS_SEAFOOD": r["IS_SEAFOOD"],
+                "IS_SWEETENER": r["IS_SWEETENER"],
+                "IS_VEGETABLE": r["IS_VEGETABLE"],
+                "IS_VEGETARIAN": r["IS_VEGETARIAN"],
+            }
+        return out
+
 
     def transform(
         self,
@@ -2263,48 +2310,62 @@ class TransformService:
                             role = self._infer_role_from_tags(tags)
                             existing_roles.add(role)
 
-                        # 5 Charger PCA si nécessaire
+                        # 5 Load PCA catalog (ingredients + nutrients)
                         if self.pca_data is None:
                             self.load_pca_data()
-
                         df = self.pca_data.copy()
 
-                        # 6 Appliquer les contraintes alimentaires
-                        if constraints.no_lactose:
-                            df = df[df["is_lactose"] == 0]
-                        if constraints.no_gluten:
-                            df = df[df["is_gluten"] == 0]
-                        if constraints.no_nuts:
-                            df = df[df["contains_nuts"] == 0]
-                        if constraints.vegetarian:
-                            df = df[df["is_vegetarian"] == 1]
-                        if constraints.vegan:
-                            df = df[df["is_vegetable"] == 1]
+                        # 7 Nutrient-guided filtering (ONLY if the nutrient column exists)
+                        if target_nutrient not in df.columns:
+                            notes.append(f"Missing nutrient column in pca_data: {target_nutrient}")
+                            df_filtered = df
+                        else:
+                            median_value = df[target_nutrient].median()
+                            if active_constraint.startswith("increase"):
+                                df_filtered = df[df[target_nutrient] > median_value].sort_values(target_nutrient, ascending=False)
+                            else:
+                                df_filtered = df[df[target_nutrient] < median_value].sort_values(target_nutrient, ascending=True)
 
-                        # 7 Filtrage nutritionnel guidé par la contrainte
-                        median_value = df[target_nutrient].median()
-                        if active_constraint.startswith("increase"):
-                            df = df[df[target_nutrient] > median_value]
-                        else:  # decrease_xxx
-                            df = df[df[target_nutrient] < median_value]
+                        # Build a pool of potential candidates with IDs
+                        df_filtered = df_filtered.dropna(subset=["Descrip", "NDB_No"])
+                        pool = df_filtered[["NDB_No", "Descrip"]].head(200).to_dict("records")
 
-                        # 8 Anti-redondance culinaire + constitution des candidats
+                        # Fetch tags by NDB_NO (you implement this)
+                        tags_map = self.fetch_tags_for_ndb_nos([p["NDB_No"] for p in pool])
+
                         candidates = []
-                        for _, row in df.iterrows():
-                            cand_name = row["Descrip"]
+                        seen = set()
 
-                            cand_tags = {
-                                "IS_SEAFOOD": row.get("is_seafood", False),
-                                "IS_GRAIN": row.get("is_gluten", False),
-                                "IS_SWEETENER": row.get("is_sweetener", False),
-                                "IS_VEGETABLE": row.get("is_vegetable", False),
-                                "IS_VEGETARIAN": row.get("is_vegetarian", True),
-                            }
+                        for p in pool:
+                            ndb = int(p["NDB_No"])
+                            name = str(p["Descrip"]).strip()
+                            key = name.lower()
 
-                            cand_role = self._infer_role_from_tags(cand_tags)
+                            if not name or key in seen:
+                                continue
+                            seen.add(key)
 
-                            if cand_role not in existing_roles:
-                                candidates.append({"name": cand_name})
+                            tags = tags_map.get(ndb) or {}
+
+                            # diet constraints (match your schema!)
+                            if constraints.no_lactose and tags.get("IS_DAIRY") is True:
+                                continue
+                            if constraints.no_gluten and tags.get("IS_GLUTEN") is True:
+                                continue
+                            if constraints.no_nuts and tags.get("CONTAINS_NUTS") is True:
+                                continue
+                            if constraints.vegetarian and tags.get("IS_VEGETARIAN") is False:
+                                continue
+                            if constraints.vegan and tags.get("IS_VEGETABLE") is False:  # proxy
+                                continue
+
+                            role = self._infer_role_from_tags(tags)
+
+                            # optional: ignore "other" so you don't block everything
+                            if role != "other" and role in existing_roles:
+                                continue
+                            
+                            candidates.append({"name": name})
 
                             if len(candidates) >= 5:
                                 break
