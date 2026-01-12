@@ -2194,22 +2194,43 @@ class TransformService:
 
                 # Use cache match when available, otherwise query the database to get matched ingredient
                 ingredients_to_substitute_matched = [
-                    ing_dict.get("name")
+                    ing_dict.get("name") if ing_dict else None
                     for ing_dict in self.get_ingredient_matched(
                         ingredients_to_transform
                     )
                 ]
 
-                ingredients_user_candidates =[
-                        ing_dict.get("name")
-                        for ing_dict in self.get_ingredient_matched(
-                            ingredients_to_add
-                        )
+                # Handle user-provided substitute candidates
+                user_provided_substitutes: List[Optional[str]] = []
+                if ingredients_to_add and len(ingredients_to_add) > 0:
+                    # Validate length constraint
+                    if len(ingredients_to_add) > len(ingredients_to_transform):
+                        log_msg = f"Warning(Step 2): ingredients_to_add ({len(ingredients_to_add)}) exceeds ingredients_to_remove ({len(ingredients_to_transform)}). Truncating."
+                        logging.warning(log_msg)
+                        self.log_msg.append(log_msg)
+                        ingredients_to_add = ingredients_to_add[:len(ingredients_to_transform)]
+                    
+                    # Match user-provided substitutes to database
+                    user_candidates_matched = self.get_ingredient_matched(ingredients_to_add)
+                    user_provided_substitutes = [
+                        ing_dict.get("name") if ing_dict else None
+                        for ing_dict in user_candidates_matched
                     ]
+                    # Pad with None if fewer substitutes than ingredients to remove
+                    while len(user_provided_substitutes) < len(ingredients_to_transform):
+                        user_provided_substitutes.append(None)
+                    
+                    log_msg = f"Running(Step 2): User provided {len(ingredients_to_add)} substitute candidates: {user_provided_substitutes}"
+                    logging.info(log_msg)
+                    self.log_msg.append(log_msg)
+                else:
+                    # No user-provided substitutes, fill with None
+                    user_provided_substitutes = [None] * len(ingredients_to_transform)
 
                 log_msg = (
                     "Running(Step 2): Ingredients matched found"
                     + f"\nMatched ingredients {ingredients_to_substitute_matched}, {type(ingredients_to_substitute_matched)}"
+                    + f"\nUser provided substitutes {user_provided_substitutes}"
                     + f"\nRequest ingredients changes not needed {base_ingredients}, {type(base_ingredients)}"
                     + f"\nIngredients to transform {ingredients_to_transform}, {type(ingredients_to_transform)}."
                 )
@@ -2221,28 +2242,46 @@ class TransformService:
                 self.log_msg.append(log_msg)
 
                 working_ingredients = list(base_ingredients)
-                for original_ing, matched_name, user_candidate, matched_name_candidate in zip(
-                    ingredients_to_transform, ingredients_to_substitute_matched,
-                    ingredients_to_add, ingredients_user_candidates
-                ):
-                    log_msg = "Running(Step 2): Looking for ({original_ing} matched with {matched_name}) substitute candidat."
+                for idx, (original_ing, matched_name) in enumerate(zip(
+                    ingredients_to_transform, ingredients_to_substitute_matched
+                )):
+                    log_msg = f"Running(Step 2): Looking for ({original_ing} matched with {matched_name}) substitute candidat."
                     logging.info(log_msg)
                     self.log_msg.append(log_msg)
 
-                    substitute, was_substituted, new_recipe_nutrition = (
-                        self.substitute_ingr(
-                            matched_name,
-                            constraints,
-                            working_ingredients,
+                    user_candidate = user_provided_substitutes[idx] if idx < len(user_provided_substitutes) else None
+                    
+                    if user_candidate:
+                        # User provided a substitute candidate - use it directly
+                        log_msg = f"Running(Step 2): Using user-provided substitute '{user_candidate}' for '{original_ing}'"
+                        logging.info(log_msg)
+                        self.log_msg.append(log_msg)
+                        
+                        # Calculate nutrition with user-provided substitute
+                        new_recipe_nutrition = self.get_health_score(
+                            working_ingredients + [user_candidate],
                             recipe.id,
                             recipe.serving_size,
                             recipe.servings,
                         )
-                    )
+                        substitute = user_candidate
+                        was_substituted = True
+                    else:
+                        # No user candidate - use PCA-based search
+                        substitute, was_substituted, new_recipe_nutrition = (
+                            self.substitute_ingr(
+                                matched_name,
+                                constraints,
+                                working_ingredients,
+                                recipe.id,
+                                recipe.serving_size,
+                                recipe.servings,
+                            )
+                        )
 
                     if was_substituted:
                         log_msg = (
-                            "Running(Step 2): Found substitute {substitute} with nutrition {new_recipe_nutrition}."
+                            f"Running(Step 2): Found substitute {substitute} with nutrition {new_recipe_nutrition}."
                             + "Updating the new_recipe (ingredients and health score)."
                         )
                         logging.info(log_msg)
