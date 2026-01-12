@@ -335,3 +335,21 @@ CREATE TABLE IF NOT EXISTS ${DATABASE_NAME}.PUBLIC.USER_SESSIONS (
 );
 
 CREATE SCHEMA IF NOT EXISTS SERVICES;
+
+-- 1. Créer la règle réseau
+CREATE OR REPLACE NETWORK RULE training_internet_rule
+  MODE = EGRESS
+  TYPE = HOST_PORT
+  VALUE_LIST = ('0.0.0.0:443', '0.0.0.0:80')
+  COMMENT = 'Règle réseau autorisant les connexions sortantes HTTPS (port 443) et HTTP (port 80) vers toutes les destinations Internet. Utilisée pour permettre aux UDF Python d''effectuer des appels API externes.';
+
+
+-- 2. Créer l'intégration
+CREATE OR REPLACE EXTERNAL ACCESS INTEGRATION training_internet_access
+  ALLOWED_NETWORK_RULES = (training_internet_rule)
+  ENABLED = TRUE
+  COMMENT = 'Intégration d''accès externe pour les UDF Python. Permet aux fonctions Python dans Snowflake de faire des requêtes HTTP/HTTPS vers des APIs externes via la règle training_internet_rule.';
+
+
+-- 3. Accorder l'accès au rôle
+GRANT USAGE ON INTEGRATION training_internet_access TO ROLE TRAINING_ROLE;
