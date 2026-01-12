@@ -1931,7 +1931,7 @@ class TransformService:
 
             return adapted_steps, []
 
-    def adapt_recipe_add_with_llm(self,recipe: Recipe,added_ingredient: str) -> Tuple[List[str], List[str]]:
+    def adapt_recipe_add_with_llm(self,recipe: Recipe,added_ingredient: List[str]) -> Tuple[List[str], List[str]]:
         """
         Adapt recipe steps after ADD transformation using LLM.
         Returns: (new_steps, notes)
@@ -1950,12 +1950,12 @@ class TransformService:
         - {added_ingredient}
     
         YOUR TASK:
-        Adapt the recipe steps to INCORPORATE this new ingredient while maintaining the dish's balance and identity.
+        Adapt the recipe steps to INCORPORATE the new ingredient(s) while maintaining the dish's balance and identity.
     
         GUIDELINES:
-        1. Add the ingredient only where it makes culinary sense
+        1. Add the ingredient(s) only where it makes culinary sense
         2. Modify existing steps when possible instead of adding many new ones
-        3. If necessary, add ONE new step at the most appropriate moment
+        3. If necessary, add ONE new step per ingredient at the most appropriate moment
         4. Preserve the original order and numbering of steps
         5. Do NOT remove existing ingredients or steps
         6. Do NOT introduce additional ingredients
@@ -2290,14 +2290,17 @@ class TransformService:
                 )
 
             elif transformation_type == TransformationType.ADD:
+                added_ingredient = []
                 # Identifier la contrainte ADD active
                 active_constraint = self._get_active_add_constraint(constraints)
                 if (not active_constraint and len(ingredients_to_add)<=0):
                     notes.append("No ADD constraint provided.")
                     new_recipe_nutrition = self._zero_nutrition()
                     new_recipe.health_score = recipe.health_score
-
-                else:
+                
+                if (len(ingredients_to_add)>0):
+                    added_ingredient.extend(ingredients_to_add)
+                if active_constraint:
                     # Nutriment cible à optimiser
                     target_nutrient = self._map_add_constraint_to_nutrient(active_constraint)
                     if not target_nutrient: #pas de contrainte qui permet l'ajout
@@ -2306,14 +2309,6 @@ class TransformService:
                         new_recipe.health_score = recipe.health_score
 
                     else:
-                        # 3 Nutrition actuelle de la recette
-                        base_nutrition = self.get_health_score(
-                            recipe.ingredients,
-                            recipe.id,
-                            recipe.serving_size,
-                            recipe.servings
-                        )
-
                         # 4 Déterminer les rôles nutritionnels déjà présents
                         recipe_tags = self.fetch_ingredients_tags(recipe.id, recipe.ingredients)
                         existing_roles = set()
@@ -2392,27 +2387,34 @@ class TransformService:
                         )
 
                         if best_ing:
-                            added_ingredient = best_ing["name"]
-                            new_ingredients = recipe.ingredients + [added_ingredient]
-                            new_recipe.ingredients = new_ingredients
+                            added_ingredient.append(best_ing["name"])
                             new_recipe.name = f"{recipe.name} with {added_ingredient}"
-
-                            new_steps, add_notes = self.adapt_recipe_add_with_llm(
-                                recipe=new_recipe,
-                                added_ingredient=added_ingredient
-                            )
-                            new_recipe.steps = new_steps
-                            notes.extend(add_notes)
-
-                            new_recipe_nutrition = best_nutrition
-                            new_recipe.health_score = best_nutrition.health_score
-
-                            notes.append(f"Added ingredient: {added_ingredient}")
-
                         else:
-                            new_recipe_nutrition = base_nutrition
-                            new_recipe.health_score = base_nutrition.health_score
                             notes.append("No suitable ingredient found to add.")
+                
+                if added_ingredient:
+                    seen = set()
+                    added_ingredient = [
+                        x for x in added_ingredient
+                        if (x not in seen and not seen.add(x)) and (x not in recipe.ingredients)
+                    ]
+
+                    new_recipe.ingredients = recipe.ingredients + added_ingredient
+                    recipe_health = self.get_health_score(
+                        new_recipe.ingredients,
+                        recipe.id,
+                        recipe.serving_size,
+                        recipe.servings
+                    )
+                    best_nutrition = recipe_health
+                    new_steps, add_notes = self.adapt_recipe_add_with_llm(
+                                recipe=new_recipe,
+                                added_ingredient=added_ingredient)
+                    new_recipe.steps = new_steps
+                    notes.extend(add_notes)
+                    new_recipe_nutrition = best_nutrition
+                    new_recipe.health_score = best_nutrition.health_score
+                    notes.append(f"Added ingredient: {added_ingredient}")
 
             elif (
                 transformation_type == TransformationType.DELETE
@@ -2550,7 +2552,7 @@ def transform_recipe(session: Session, request: str) -> str:
 
     try: 
         log_msg = "\nLog transformation: Calling procedure to log transformation recipe."
-        logging.error(log_msg)
+        logging.info(log_msg)
         output.message += log_msg
 
         output_fmt = to_dict(output)
