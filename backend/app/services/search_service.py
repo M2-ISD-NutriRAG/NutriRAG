@@ -16,7 +16,7 @@ from app.models.search import SearchFilters
 from app.services.bm25_service import BM25Service
 from app.services.vector_search_service import VectorSearchService
 from app.utils.filter_builder import (
-    build_filter_conditions as build_filters_util,
+    build_filter_conditions as build_filters_util
 )
 from shared.snowflake.client import SnowflakeClient
 
@@ -59,18 +59,17 @@ class SearchService:
 
     def __init__(
         self,
-        snowflake_client: Optional[SnowflakeClient] = None,
+        snowflake_client: SnowflakeClient,
         setup: bool = False,
     ):
         """Initialize the Search Service.
 
         Args:
-            snowflake_client: Optional Snowflake client instance. If None,
-                creates a new SnowflakeClient.
+            snowflake_client: Snowflake client instance.
             setup: If True, initializes BM25 and vector search services,
                 creates stages, uploads utilities, and registers procedures.
         """
-        self.client = snowflake_client or SnowflakeClient()
+        self.client = snowflake_client
         self.stage_name = "@VECTORS.search_stage"
 
         if setup:
@@ -111,18 +110,20 @@ class SearchService:
 
     def _setup_stage(self) -> None:
         """Create Snowflake stage for storing search utilities."""
+        session = self.client.get_snowpark_session()
         create_stage_sql = f"""
         CREATE STAGE IF NOT EXISTS VECTORS.search_stage
             DIRECTORY = (ENABLE = TRUE)
             COMMENT = 'Stage for storing search utility files'
         """
         try:
-            self.client.execute(create_stage_sql)
+            session.sql(create_stage_sql).collect()
         except Exception as e:
             raise RuntimeError(f"Failed to create search stage: {str(e)}")
 
     def _upload_utils_to_stage(self) -> None:
         """Upload utility files and models to Snowflake stage."""
+        session = self.client.get_snowpark_session()
         current_dir = os.path.dirname(os.path.abspath(__file__))
         utils_dir = os.path.join(current_dir, "..", "utils")
         models_dir = os.path.join(current_dir, "..", "models")
@@ -151,7 +152,7 @@ class SearchService:
             """
 
             try:
-                self.client.execute(put_sql)
+                session.sql(put_sql).collect()
             except Exception as e:
                 raise RuntimeError(
                     f"Failed to upload {util_file} to stage: {str(e)}"
@@ -177,7 +178,7 @@ class SearchService:
             """
 
             try:
-                self.client.execute(put_sql)
+                session.sql(put_sql).collect()
             except Exception as e:
                 raise RuntimeError(
                     f"Failed to upload {model_file} to stage: {str(e)}"
@@ -212,6 +213,7 @@ class SearchService:
             index_table: str = "VECTORS.RECIPES_SAMPLE_50K_BM25_INDEX",
             source_table: str = "ENRICHED.RECIPES_SAMPLE_50K",
             embeddings_table: str = "VECTORS.RECIPES_50K_EMBEDDINGS",
+            embedding_model: str = "BAAI/bge-small-en-v1.5",
         ) -> list:
             """Search recipes combining vector and BM25 results."""
             import json
@@ -229,26 +231,32 @@ class SearchService:
 
                 # Execute vector search with filters
                 fetch_size = max(top_k * 5, 60)  # Fetch more for better merging
-                if filter_conditions:
-                    safe_conditions = filter_conditions.replace("'", "''")
-                    filter_param = f"'{safe_conditions}'"
-                else:
-                    filter_param = "NULL"
-                query_escaped = query_text.replace("'", "''")
-                vector_sql = f"CALL VECTORS.SEARCH_SEMANTIC('{query_escaped}', '{embeddings_table}', {fetch_size}, {filter_param})"
                 try:
-                    vector_results = json.loads(
-                        session.sql(vector_sql).collect()[0][0]
+                    vector_results = session.call(
+                        "VECTORS.SEARCH_SEMANTIC",
+                        query_text,
+                        embeddings_table,
+                        embedding_model,
+                        fetch_size,
+                        filter_conditions,
                     )
+                    if isinstance(vector_results, str):
+                        vector_results = json.loads(vector_results)
                 except (json.JSONDecodeError, IndexError, TypeError):
                     vector_results = []
 
                 # Execute BM25 search with filters
-                bm25_sql = f"CALL VECTORS.SEARCH_BM25('{query_escaped}', '{index_table}', '{source_table}', {fetch_size}, {filter_param})"
                 try:
-                    bm25_results = json.loads(
-                        session.sql(bm25_sql).collect()[0][0]
+                    bm25_results = session.call(
+                        "VECTORS.SEARCH_BM25",
+                        query_text,
+                        index_table,
+                        source_table,
+                        fetch_size,
+                        filter_conditions,
                     )
+                    if isinstance(bm25_results, str):
+                        bm25_results = json.loads(bm25_results)
                 except (json.JSONDecodeError, IndexError, TypeError):
                     bm25_results = []
 
@@ -276,9 +284,11 @@ class SearchService:
 
     def _setup_search_tool_procedure(self) -> None:
         """Register the SEARCH_SIMILAR_RECIPES_TOOL agent procedure."""
+        session = self.client.get_snowpark_session()
         create_tool_proc_sql = """
         CREATE OR REPLACE PROCEDURE SERVICES.SEARCH_SIMILAR_RECIPES_TOOL(
             user_input STRING,
+            conversation_id_input STRING,
             query_input STRING,
             k_input INT,
             filters_input VARCHAR DEFAULT NULL
@@ -291,11 +301,26 @@ class SearchService:
         HANDLER = 'search_tool_handler'
         AS
         $$
-def search_tool_handler(session, user_input, query_input, k_input, filters_input):
+def search_tool_handler(session, user_input, conversation_id_input, query_input, k_input, filters_input):
     import json
     from datetime import datetime
     import time
+    import traceback
     from search import SearchRequest, SearchResponse
+
+    def log_to_analytics(response_data):
+        if not (conversation_id_input and user_input):
+            return
+        try:
+            session.call(
+                'NUTRIRAG_PROJECT.ANALYTICS.LOG_SEARCH_RECIPE',
+                conversation_id_input,
+                user_input,
+                response_data
+            )
+        except Exception:
+            # Silent fail
+            pass
 
     try:
         start_time = time.time()
@@ -317,32 +342,69 @@ def search_tool_handler(session, user_input, query_input, k_input, filters_input
         )
 
         # 3. Call the main search procedure
-        if filters_dict:
-            filters_param = "PARSE_JSON('" + json.dumps(filters_dict).replace("'", "''") + "')"
-        else:
-            filters_param = "NULL"
-
-        query_escaped = search_request.query.replace("'", "''")
-        call_sql = f"\"\"
-        CALL VECTORS.SEARCH_SIMILAR_RECIPES(
-            '{query_escaped}',
-            {search_request.k},
-            {filters_param},
+        results_raw = session.call(
+            "VECTORS.SEARCH_SIMILAR_RECIPES",
+            search_request.query,
+            search_request.k,
+            json.dumps(filters_dict) if filters_dict else None,
             0.7,
             0.3,
             'VECTORS.RECIPES_SAMPLE_50K_BM25_INDEX',
             'ENRICHED.RECIPES_SAMPLE_50K',
-            'VECTORS.RECIPES_50K_EMBEDDINGS'
+            'VECTORS.RECIPES_50K_EMBEDDINGS',
+            'BAAI/bge-small-en-v1.5'
         )
-        "\"\"
-
-        results_raw = session.sql(call_sql).collect()
 
         # Parse search results
-        if results_raw:
-            results_json = json.loads(results_raw[0][0])
+        if isinstance(results_raw, str):
+            results_json = json.loads(results_raw)
         else:
-            results_json = []
+            results_json = results_raw if results_raw else []
+
+        # Parse JSON string fields in results to proper lists
+        if isinstance(results_json, list):
+            for result in results_json:
+                for field, value in result.items():
+                    if isinstance(value, str) and (value.startswith('[') or value.startswith('{')):
+                        try:
+                            result[field] = json.loads(value)
+                        except (json.JSONDecodeError, TypeError):
+                            # Leave as string if not valid JSON
+                            pass
+
+        # Transform procedure results to match Recipe model
+        if isinstance(results_json, list):
+            transformed_results = []
+            for result in results_json:
+                # Rename INGREDIENTS_RAW_STR to INGREDIENTS_WITH_QUANTITIES
+                if 'INGREDIENTS_RAW_STR' in result:
+                    result['INGREDIENTS_WITH_QUANTITIES'] = result.pop('INGREDIENTS_RAW_STR')
+                
+                # Build nutrition_detailed from individual nutrition columns
+                nutrition_detailed_data = {
+                    'energy_kcal_100g': result.pop('ENERGY_KCAL_100G', None),
+                    'protein_g_100g': result.pop('PROTEIN_G_100G', None),
+                    'fat_g_100g': result.pop('FAT_G_100G', None),
+                    'saturated_fats_g_100g': result.pop('SATURATED_FATS_G_100G', None),
+                    'carbs_g_100g': result.pop('CARB_G_100G', None),
+                    'fiber_g_100g': result.pop('FIBER_G_100G', None),
+                    'sugar_g_100g': result.pop('SUGAR_G_100G', None),
+                    'sodium_mg_100g': result.pop('SODIUM_MG_100G', None),
+                    'calcium_mg_100g': result.pop('CALCIUM_MG_100G', None),
+                    'iron_mg_100g': result.pop('IRON_MG_100G', None),
+                    'magnesium_mg_100g': result.pop('MAGNESIUM_MG_100G', None),
+                    'potassium_mg_100g': result.pop('POTASSIUM_MG_100G', None),
+                    'vitamin_c_mg_100g': result.pop('VITC_MG_100G', None),
+                }
+                result['NUTRITION_DETAILED'] = nutrition_detailed_data
+                
+                # Remove search-specific fields that aren't part of Recipe model
+                result.pop('BM25_SCORE', None)
+                result.pop('COMBINED_SCORE', None)
+                result.pop('COSINE_SIMILARITY_SCORE', None)
+                
+                transformed_results.append(result)
+            results_json = transformed_results
 
         # Build and validate response
         execution_time_ms = (time.time() - start_time) * 1000
@@ -355,13 +417,17 @@ def search_tool_handler(session, user_input, query_input, k_input, filters_input
             status="success"
         )
 
-        return response.model_dump_json()
+        response_dict = response.model_dump()
+
+        # Log to analytics
+        log_to_analytics(response_dict)
+
+        return response_dict
 
     except Exception as e:
-        import traceback
         execution_time_ms = (time.time() - start_time) * 1000
 
-        # Return error response (note: SearchResponse may not have error field, so we return JSON directly)
+        # Return error response as dict
         error_response = {
             "results": [],
             "query": query_input,
@@ -372,11 +438,14 @@ def search_tool_handler(session, user_input, query_input, k_input, filters_input
             "traceback": traceback.format_exc()
         }
 
+        # Log to analytics
+        log_to_analytics(error_response)
+
         return error_response
 $$
         """
         try:
-            self.client.execute(create_tool_proc_sql)
+            session.sql(create_tool_proc_sql).collect()
         except Exception as e:
             raise RuntimeError(
                 f"Failed to create SEARCH_SIMILAR_RECIPES_TOOL procedure: {str(e)}"
@@ -392,6 +461,7 @@ $$
         index_table: str = "VECTORS.RECIPES_SAMPLE_50K_BM25_INDEX",
         source_table: str = "ENRICHED.RECIPES_SAMPLE_50K",
         embeddings_table: str = "VECTORS.RECIPES_50K_EMBEDDINGS",
+        embedding_model: str = "BAAI/bge-small-en-v1.5",
     ) -> List[Dict[str, Any]]:
         """Execute hybrid search combining vector and BM25 results.
 
@@ -412,6 +482,8 @@ $$
                 "ENRICHED.RECIPES_SAMPLE_50K".
             embeddings_table: Embeddings table name. Defaults to
                 "VECTORS.RECIPES_50K_EMBEDDINGS".
+            embedding_model: Embedding model to use for vector search. Defaults to
+                "BAAI/bge-small-en-v1.5".
 
         Returns:
             List of search results ranked by combined hybrid score.
@@ -444,26 +516,26 @@ $$
 
             build_filters_util(filters_dict)  # Validation happens here
 
-        filters_json_str = json.dumps(filters_dict) if filters_dict else "NULL"
-
-        sql = f"""
-        CALL VECTORS.SEARCH_SIMILAR_RECIPES(
-            '{query.replace("'", "''")}',
-            {limit},
-            PARSE_JSON('{filters_json_str}'),
-            {vector_weight},
-            {bm25_weight},
-            '{index_table}',
-            '{source_table}',
-            '{embeddings_table}'
-        )
-        """
+        filters_json_str = json.dumps(filters_dict) if filters_dict else None
+        session = self.client.get_snowpark_session()
 
         try:
-            results = self.client.execute(sql, fetch="all")
+            results = session.call(
+                "VECTORS.SEARCH_SIMILAR_RECIPES",
+                query,
+                limit,
+                filters_json_str,
+                vector_weight,
+                bm25_weight,
+                index_table,
+                source_table,
+                embeddings_table,
+                embedding_model,
+            )
+
             if not results:
                 return []
 
-            return json.loads(results[0][0])
+            return json.loads(results) if isinstance(results, str) else results
         except (json.JSONDecodeError, IndexError, TypeError):
             return []
