@@ -92,10 +92,10 @@ class EmbeddingPipeline:
         """
         print_message(
             MessageType.SUCCESS,
-            f"💾 Saving to '{self.table_config.target_table.get_table_name()}' (mode: {mode})...",
+            f"💾 Saving to '{self.table_config.target_table.get_full_table_name()}' (mode: {mode})...",
         )
         df_final.write.mode(mode).save_as_table(
-            self.table_config.target_table.get_table_name()
+            self.table_config.target_table.get_full_table_name()
         )
         print_message(MessageType.SUCCESS, "✓ Complete.")
 
@@ -227,7 +227,7 @@ class BatchProcessor:
         # Save to table
         write_mode = self._determine_write_mode()
         df_final.write.mode(write_mode).save_as_table(
-            self.table_config.target_table.get_table_name()
+            self.table_config.target_table.get_full_table_name()
         )
         print_message(
             MessageType.SUCCESS, f"   ✓ Saved batch ({len(batch_data)} rows)"
@@ -238,11 +238,11 @@ class BatchProcessor:
         if self.table_config.drop_existing:
             print_message(
                 MessageType.WARNING,
-                f"🗑️  Dropping table '{self.table_config.target_table.get_table_name()}' if exists...",
+                f"🗑️  Dropping table '{self.table_config.target_table.get_full_table_name()}' if exists...",
             )
             try:
                 self.session.table(
-                    self.table_config.target_table.get_table_name()
+                    self.table_config.target_table.get_full_table_name()
                 ).drop_table()
             except Exception as e:
                 # Table likely doesn't exist, which is fine

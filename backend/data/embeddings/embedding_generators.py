@@ -135,7 +135,8 @@ def generate_embeddings_local(
     df_with_embeddings = session.create_dataframe(pdf)
 
     print_message(
-        MessageType.HIGHLIGHT, f"🔄 Converting to VECTOR({config.dimension}) format..."
+        MessageType.HIGHLIGHT,
+        f"🔄 Converting to VECTOR({config.dimension}) format...",
     )
     return df_with_embeddings.with_column(
         EMBEDDING,
@@ -163,4 +164,6 @@ def generate_embeddings(
     if config.is_cortex:
         return generate_embeddings_cortex(dataframe, config, text_column)
     else:
-        return generate_embeddings_local(session, dataframe, config, text_column)
+        return generate_embeddings_local(
+            session, dataframe, config, text_column
+        )
