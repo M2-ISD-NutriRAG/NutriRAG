@@ -46,10 +46,11 @@ class BM25Service:
 
     def _upload_utils_to_stage(self) -> None:
         """Upload utility files and dependencies to Snowflake stage."""
+        session = self.client.get_snowpark_session()
         try:
-            self.client.execute(
+            session.sql(
                 "CREATE STAGE IF NOT EXISTS VECTORS.bm25_stage DIRECTORY = (ENABLE = true)"
-            )
+            ).collect()
         except Exception as e:
             # Stage may already exist; proceed with upload
             pass
@@ -83,7 +84,7 @@ class BM25Service:
                 AUTO_COMPRESS = FALSE
                 OVERWRITE = TRUE
                 """
-                self.client.execute(put_sql)
+                session.sql(put_sql).collect()
 
         except Exception as e:
             raise RuntimeError(f"Failed to upload files to stage: {str(e)}")
@@ -247,8 +248,8 @@ class BM25Service:
             """
             Execute BM25 semantic search with optional filtering.
 
-            Searches the BM25 index for documents matching the query, applies
-            optional filters, and returns results sorted by BM25 relevance score.
+            Optimized version that minimizes data movement and iterations.
+            Filters at SQL layer and processes results in single pass.
 
             Args:
                 session: Snowflake Snowpark session.
@@ -267,44 +268,6 @@ class BM25Service:
             import bm25_utils
 
             try:
-                # Apply SQL filters to identify valid document IDs
-                filter_where = ""
-                if (
-                    filter_conditions
-                    and filter_conditions.strip()
-                    and filter_conditions != "NULL"
-                ):
-                    filter_where = f"WHERE {filter_conditions}"
-
-                valid_ids_result = session.sql(
-                    f"SELECT DISTINCT ID FROM {source_table} {filter_where}"
-                ).collect()
-                valid_ids = {r["ID"] for r in valid_ids_result}
-
-                if not valid_ids:
-                    return []
-
-                # Load document ID to index mapping
-                index_rows = session.sql(
-                    f"""
-                    SELECT DOC_ID, DOC_INDEX
-                    FROM {index_table}
-                    ORDER BY DOC_INDEX
-                    """
-                ).collect()
-
-                filtered_doc_ids = []
-                filtered_offsets = []
-
-                for r in index_rows:
-                    doc_id = r["DOC_ID"]
-                    if doc_id in valid_ids:
-                        filtered_doc_ids.append(doc_id)
-                        filtered_offsets.append(r["DOC_INDEX"])
-
-                if not filtered_doc_ids:
-                    return []
-
                 # Load BM25 index from stage
                 bm25_table = f"{index_table}_BM25"
                 meta_result = session.sql(
@@ -322,11 +285,41 @@ class BM25Service:
 
                 bm25 = bm25_utils.deserialize_bm25(bm25_data_str)
 
+                # Build SQL filter for index rows using source table filtering
+                if (
+                    filter_conditions
+                    and filter_conditions.strip()
+                    and filter_conditions != "NULL"
+                ):
+                # Load only filtered index rows from SQL (avoids loading entire index)
+                    index_query = f"""
+                    SELECT i.DOC_ID, i.DOC_INDEX
+                    FROM {index_table} i
+                    INNER JOIN {source_table} s ON i.DOC_ID = s.ID
+                    WHERE {filter_conditions}
+                    ORDER BY i.DOC_INDEX
+                    """
+                else:
+                    index_query = f"""
+                    SELECT DOC_ID, DOC_INDEX
+                    FROM {index_table}
+                    ORDER BY DOC_INDEX
+                    """
+
+                index_rows = session.sql(index_query).collect()
+
+                if not index_rows:
+                    return []
+
+                # Extract arrays in order - single pass
+                filtered_doc_ids = [r["DOC_ID"] for r in index_rows]
+                filtered_offsets = [r["DOC_INDEX"] for r in index_rows]
+
                 # Calculate BM25 scores for query
                 query_tokens = bm25_utils.tokenize(search_query)
                 scores = bm25.get_batch_scores(query_tokens, filtered_offsets)
 
-                # Associate document IDs with scores and sort by relevance
+                # Get top_k scored results
                 scored_results = sorted(
                     zip(filtered_doc_ids, scores),
                     key=lambda x: x[1],
@@ -336,40 +329,42 @@ class BM25Service:
                 if not scored_results:
                     return []
 
-                # Retrieve full document data from source table
-                doc_ids_str = "', '".join(
-                    str(doc_id) for doc_id, _ in scored_results
+                # Create temp dataframe with only top_k results
+                scored_data = [
+                    {"DOC_ID": doc_id, "BM25_SCORE": float(score), "RANK": rank}
+                    for rank, (doc_id, score) in enumerate(scored_results)
+                ]
+                temp_df = session.create_dataframe(scored_data)
+
+                # Join and collect in order
+                source_df = session.table(source_table)
+                result_df = (
+                    temp_df.join(
+                        source_df, temp_df["DOC_ID"] == source_df["ID"], how="inner"
+                    )
+                    .select(source_df["*"], temp_df["BM25_SCORE"])
+                    .sort(temp_df["RANK"])
                 )
 
-                result_df = session.sql(
-                    f"""
-                    SELECT * FROM {source_table}
-                    WHERE ID IN ('{doc_ids_str}')
-                    """
-                )
                 result_rows = result_df.collect()
 
-                # Add BM25 scores to results and format for JSON serialization
-                score_map = {
-                    doc_id: float(score) for doc_id, score in scored_results
-                }
+                # Build result list in single pass
                 result_list = []
-
                 for row in result_rows:
                     row_dict = row.as_dict()
-                    row_dict["BM25_SCORE"] = score_map.get(row_dict["ID"], 0.0)
 
                     # Convert datetime objects to ISO format strings
                     for key, value in row_dict.items():
-                        if hasattr(
-                            value, "isoformat"
-                        ):  # datetime.date and datetime.datetime
+                        if hasattr(value, "isoformat"):
                             row_dict[key] = value.isoformat()
+                        # Parse JSON string fields to proper dicts/lists
+                        elif isinstance(value, str) and (value.startswith('[') or value.startswith('{')):
+                            try:
+                                row_dict[key] = json.loads(value)
+                            except (json.JSONDecodeError, TypeError):
+                                pass
 
                     result_list.append(row_dict)
-
-                # Sort results by BM25 score in descending order
-                result_list.sort(key=lambda x: x["BM25_SCORE"], reverse=True)
 
                 return result_list
 
@@ -400,22 +395,27 @@ class BM25Service:
                 - metadata_table: Name of the created metadata table.
                 - field_weights: Field weights used in index creation.
         """
-        cols_json = json.dumps(text_columns)
-
-        if field_weights:
-            weights_json = json.dumps(field_weights)
-            weights_param = f"'{weights_json}'"
-        else:
-            weights_param = "NULL"
+        session = self.client.get_snowpark_session()
 
         base_name = source_table.split(".")[-1].replace('"', "")
         index_table = f"VECTORS.{base_name}_BM25_INDEX"
 
-        query = f"CALL VECTORS.build_bm25_index('{source_table}', PARSE_JSON('{cols_json}'), '{id_column}', '{index_table}', {weights_param})"
-        result = self.client.execute(query, fetch="one")
+        # Convert field_weights dict to JSON string if provided
+        weights_json_str = None
+        if field_weights:
+            weights_json_str = json.dumps(field_weights)
+
+        result = session.call(
+            "VECTORS.build_bm25_index",
+            source_table,
+            text_columns,
+            id_column,
+            index_table,
+            weights_json_str,
+        )
 
         return {
-            "message": result[0] if result else "Success",
+            "message": result if result else "Success",
             "index_table": index_table,
             "metadata_table": f"{index_table}_BM25",
             "field_weights": field_weights,
@@ -445,20 +445,22 @@ class BM25Service:
             List of matching documents with BM25 scores, sorted by relevance
             in descending order. Returns empty list if no results found or on error.
         """
+        session = self.client.get_snowpark_session()
         safe_query = query.replace("'", "''")
-        if filter_conditions:
-            safe_filters = filter_conditions.replace("'", "''")
-            filter_param = f"'{safe_filters}'"
-        else:
-            filter_param = "NULL"
-
-        sql = f"CALL VECTORS.search_bm25('{safe_query}', '{index_table}', '{source_table}', {top_k}, {filter_param})"
-        results = self.client.execute(sql, fetch="all")
+        
+        results = session.call(
+            "VECTORS.search_bm25",
+            safe_query,
+            index_table,
+            source_table,
+            top_k,
+            filter_conditions,
+        )
 
         if not results:
             return []
 
         try:
-            return json.loads(results[0][0])
+            return json.loads(results) if isinstance(results, str) else results
         except (json.JSONDecodeError, IndexError, TypeError):
             return []
