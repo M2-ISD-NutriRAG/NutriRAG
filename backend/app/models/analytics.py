@@ -44,22 +44,41 @@ class RecipeRanking(BaseModel):
     health_score: float
 
 
+class TopFilter(BaseModel):
+    name: str
+    count: int
+
+
+class TopTag(BaseModel):
+    name: str
+    count: int
+
+
+class SearchNutritionStats(BaseModel):
+    avg_calories: float
+    avg_protein: float
+    avg_fat: float
+    avg_carbs: float
+    avg_sugar: float
+    avg_fiber: float
+    avg_sodium: float
+
+
 class KPIResponse(BaseModel):
-    # Métriques Générales
     total_searches: int
     total_transformations: int
     conversion_rate: float
-    # Métriques Nutritionnelles Cumulées
     total_calories_saved: float
-    total_protein_gained: float  # Nouveau
+    total_protein_gained: float
     avg_health_score_gain: float
-    # Métriques Ingrédients & Diversité
-    ingredient_diversity_index: (
-        int  # Nouveau (Nombre d'ingrédients uniques explorés)
+    search_nutrition_avg: (
+        SearchNutritionStats  # Moyenne nutritionnelle des recherches
     )
-    top_ingredients: List[TopIngredient]  # Nouveau
-    # Métriques "Fun" / Gamification
-    biggest_optimization: Optional[BiggestWin]  # Nouveau
+    top_filters: List[TopFilter]  # Top filtres utilisés
+    top_tags: List[TopTag]  # Top tags des recettes vues
+    ingredient_diversity_index: int
+    top_ingredients: List[TopIngredient]
+    biggest_optimization: Optional[BiggestWin]
     top_5_healthy_recipes: List[RecipeRanking]
     top_5_unhealthy_recipes: List[RecipeRanking]
     avg_recipe_time: float

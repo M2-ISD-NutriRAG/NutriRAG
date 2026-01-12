@@ -1,4 +1,4 @@
-CREATE OR REPLACE AGENT NUTRIRAG_PROJECT.SERVICES.AGENT_TEST_3
+CREATE OR REPLACE AGENT NUTRIRAG_PROJECT.SERVICES.Agent_test_5
   COMMENT = 'NutriRAG orchestrator agent for recipe search and transformation'
   PROFILE = '{"display_name":"NutriRAG Assistant","avatar":"chef-hat.png","color":"green"}'
 FROM SPECIFICATION $$
@@ -622,7 +622,7 @@ tool_resources:
     identifier: "NUTRIRAG_PROJECT.SERVICES.SEARCH_SIMILAR_RECIPES_TOOL"
     execution_environment:
       type: warehouse
-      warehouse: NUTRIRAG_PROJECT_VAR
+      warehouse: TEST_WAREHOUSE
       query_timeout: 120
       
   transform:
@@ -631,6 +631,6 @@ tool_resources:
     identifier: "NUTRIRAG_PROJECT.SERVICES.TRANSFORM_RECIPE"
     execution_environment:
       type: warehouse
-      warehouse: NUTRIRAG_PROJECT_VAR
+      warehouse: TEST_WAREHOUSE
       query_timeout: 120
 $$;

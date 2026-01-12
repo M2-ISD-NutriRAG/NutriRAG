@@ -1,7 +1,6 @@
 from app.models.recipe import (
     Recipe,
     RecipeListResponse,
-    IngredientParsed,
     NutritionDetailed,
 )
 from app.models.search import SearchRequest, SearchResponse, SearchFilters
@@ -21,7 +20,6 @@ from app.models.orchestration import (
 __all__ = [
     "Recipe",
     "RecipeListResponse",
-    "IngredientParsed",
     "NutritionDetailed",
     "SearchRequest",
     "SearchResponse",
