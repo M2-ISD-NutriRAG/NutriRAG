@@ -50,6 +50,7 @@ def example_semantic_search():
             query=query,
             embeddings_table="VECTORS.RECIPES_50K_EMBEDDINGS",
             top_k=top_k,
+            embedding_model="BAAI/bge-small-en-v1.5",
         )
 
         print(f"Results found: {len(results)}\n")
@@ -108,6 +109,7 @@ def example_semantic_search_with_filter():
             embeddings_table="VECTORS.RECIPES_50K_EMBEDDINGS",
             top_k=top_k,
             filter_conditions=filter_conditions,
+            embedding_model="BAAI/bge-small-en-v1.5",
         )
 
         print(f"Results found: {len(results)}\n")
