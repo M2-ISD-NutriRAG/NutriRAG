@@ -31,7 +31,13 @@ export function DashboardPage() {
     const loadData = async () => {
       setLoading(true)
       try {
-        const result = await analyticsService.getDashboardData('DOG', timeRange)
+        const user = localStorage.getItem('snowflake_account_display')
+        if (!user) {
+          console.error("User account not found")
+          setLoading(false)
+          return
+        }
+        const result = await analyticsService.getDashboardData(user, timeRange)
         setStats(result)
       } catch (error) {
         console.error("Failed to fetch analytics", error)
