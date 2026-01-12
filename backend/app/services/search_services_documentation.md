@@ -12,7 +12,7 @@ Comprehensive documentation for using NutriRAG's three search services.
 6. [Agent Tool - Search Similar Recipes Tool](#agent-tool---search-similar-recipes-tool)
 7. [Filtering Your Results](#filtering-your-results)
 8. [BM25 Index Maintenance](#index-maintenance)
-9. [Em]
+9. [Embedding Updates](#updating-embeddings)
 10. [Quick Reference](#quick-reference)
 
 ---
@@ -101,7 +101,7 @@ for recipe in results:
 -- Basic search
 CALL VECTORS.search_semantic(
     'healthy breakfast',                    -- Your query
-    'VECTORS.RECIPES_50K_EMBEDDINGS',      -- Which recipes to search
+    'VECTORS.RECIPES_SAMPLE_50K_EMBEDDINGS',      -- Which recipes to search
     5,                                      -- How many results
     NULL                                    -- No filters
 );
@@ -109,7 +109,7 @@ CALL VECTORS.search_semantic(
 -- With time filter
 CALL VECTORS.search_semantic(
     'quick vegetarian meal',
-    'VECTORS.RECIPES_50K_EMBEDDINGS',
+    'VECTORS.RECIPES_SAMPLE_50K_EMBEDDINGS',
     10,
     'MINUTES <= 30'
 );
@@ -121,7 +121,7 @@ CALL VECTORS.search_semantic(
 |-----------|-----------|---------|
 | `query` | What you're looking for | `"chocolate cake"` |
 | `top_k` | How many results | `5` to `20` |
-| `embeddings_table` | Which recipes to search | `"VECTORS.RECIPES_50K_EMBEDDINGS"` |
+| `embeddings_table` | Which recipes to search | `"VECTORS.RECIPES_SAMPLE_50K_EMBEDDINGS"` |
 | `filter_conditions` | Extra filters (optional) | `"MINUTES <= 30"` |)
 
 ---
@@ -251,7 +251,7 @@ for recipe in results:
 | `bm25_weight` | Weight for keyword relevance (0.0-1.0) | `0.3` |
 | `index_table` | BM25 index table name | `"VECTORS.RECIPES_SAMPLE_50K_BM25_INDEX"` |
 | `source_table` | Original recipe table | `"ENRICHED.RECIPES_SAMPLE_50K"` |
-| `embeddings_table` | Embeddings table for semantic search | `"VECTORS.RECIPES_50K_EMBEDDINGS"` |
+| `embeddings_table` | Embeddings table for semantic search | `"VECTORS.RECIPES_SAMPLE_50K_EMBEDDINGS"` |
 
 ### Direct Snowflake SQL
 
@@ -266,7 +266,7 @@ CALL VECTORS.SEARCH_SIMILAR_RECIPES(
     0.3,                                            -- 30% keyword
     'VECTORS.RECIPES_SAMPLE_50K_BM25_INDEX',       -- BM25 index
     'ENRICHED.RECIPES_SAMPLE_50K',                 -- Source table
-    'VECTORS.RECIPES_50K_EMBEDDINGS'               -- Embeddings
+    'VECTORS.RECIPES_SAMPLE_50K_EMBEDDINGS'               -- Embeddings
 );
 
 -- Keyword-focused: More keyword, less semantic
@@ -278,7 +278,7 @@ CALL VECTORS.SEARCH_SIMILAR_RECIPES(
     0.7,                                            -- 70% keyword
     'VECTORS.RECIPES_SAMPLE_50K_BM25_INDEX',
     'ENRICHED.RECIPES_SAMPLE_50K',
-    'VECTORS.RECIPES_50K_EMBEDDINGS'
+    'VECTORS.RECIPES_SAMPLE_50K_EMBEDDINGS'
 );
 
 -- With filters (dietary + time)
@@ -290,7 +290,7 @@ CALL VECTORS.SEARCH_SIMILAR_RECIPES(
     0.4,
     'VECTORS.RECIPES_SAMPLE_50K_BM25_INDEX',
     'ENRICHED.RECIPES_SAMPLE_50K',
-    'VECTORS.RECIPES_50K_EMBEDDINGS'
+    'VECTORS.RECIPES_SAMPLE_50K_EMBEDDINGS'
 );
 ```
 
@@ -471,7 +471,7 @@ For detailed configuration options, see [embeddings README](..\..\..\backend\dat
 vector_service.search_semantic(
     query="your query",
     top_k=10,
-    embeddings_table="VECTORS.RECIPES_50K_EMBEDDINGS",
+    embeddings_table="VECTORS.RECIPES_SAMPLE_50K_EMBEDDINGS",
     filter_conditions=None
 )
 ```
@@ -480,7 +480,7 @@ vector_service.search_semantic(
 -- Snowflake SQL version
 CALL VECTORS.search_semantic(
     'your query',
-    'VECTORS.RECIPES_50K_EMBEDDINGS',
+    'VECTORS.RECIPES_SAMPLE_50K_EMBEDDINGS',
     10,
     NULL
 );
@@ -520,7 +520,7 @@ service.search(
     bm25_weight=0.3,
     index_table="VECTORS.RECIPES_SAMPLE_50K_BM25_INDEX",
     source_table="ENRICHED.RECIPES_SAMPLE_50K",
-    embeddings_table="VECTORS.RECIPES_50K_EMBEDDINGS"
+    embeddings_table="VECTORS.RECIPES_SAMPLE_50K_EMBEDDINGS"
 )
 ```
 
@@ -534,7 +534,7 @@ CALL VECTORS.SEARCH_SIMILAR_RECIPES(
     0.3,
     'VECTORS.RECIPES_SAMPLE_50K_BM25_INDEX',
     'ENRICHED.RECIPES_SAMPLE_50K',
-    'VECTORS.RECIPES_50K_EMBEDDINGS'
+    'VECTORS.RECIPES_SAMPLE_50K_EMBEDDINGS'
 );
 ```
 
