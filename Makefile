@@ -1,4 +1,4 @@
-.PHONY: help run clean init_snowflake
+.PHONY: help run clean init_snowflake init_transform
 
 # Default target
 help:
@@ -33,5 +33,8 @@ init_snowflake:
 init_search:
 	@cd backend && python -m data.embeddings.create_table
 	@cd backend && python -m scripts.snowflake_search_init
+
+init_transform:
+	@cd backend && python -m scripts.create_procedure_transform_recipe
 
 .DEFAULT_GOAL := help

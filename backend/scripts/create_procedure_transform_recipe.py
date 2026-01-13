@@ -1,7 +1,5 @@
-import json
 import sys
 import os
-import pandas as pd
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from shared.snowflake.client import SnowflakeClient
@@ -19,7 +17,9 @@ def main():
 
     # Get the directory where this script is located
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    file_path = os.path.join(script_dir, "transform_recipe.py")
+    file_path = os.path.join(
+        script_dir, "..", "app", "services", "transform_recipe.py"
+    )
     code = read_code(file_path)
 
     # 3. Déploiement de la Procédure Stockée
