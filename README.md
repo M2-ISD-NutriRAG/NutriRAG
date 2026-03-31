@@ -5,6 +5,8 @@
 Projet Data & IA - Session 2025-2026 - Master ISD
 Encadrant : M. Anthony Coutant
 
+**Demo**: https://drive.google.com/file/d/1GlXLQwfc8T-9n_46arPhENhWDSeVD1kT/view?usp=sharing
+
 ## Vue d'ensemble
 
 NutriRAG est un assistant culinaire intelligent qui combine :
